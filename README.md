@@ -2,13 +2,13 @@
 
 [![PyPI](https://img.shields.io/pypi/v/photonflux)](https://pypi.org/project/photonflux/)
 [![PyPI Python](https://img.shields.io/pypi/pyversions/photonflux.svg)](https://pypi.python.org/pypi/photonflux)
-[![issues](https://img.shields.io/github/issues/photonflux/photonflux)](https://github.com/photonflux/photonflux/issues)
-[![forks](https://img.shields.io/github/forks/photonflux/photonflux.svg)](https://github.com/photonflux/photonflux/network/members)
-[![GitHub stars](https://img.shields.io/github/stars/photonflux/photonflux.svg)](https://github.com/photonflux/photonflux/stargazers)
+[![issues](https://img.shields.io/github/issues/alexsludds/photonflux)](https://github.com/alexsludds/photonflux/issues)
+[![forks](https://img.shields.io/github/forks/photonflux/photonflux.svg)](https://github.com/alexsludds/photonflux/network/members)
+[![GitHub stars](https://img.shields.io/github/stars/photonflux/photonflux.svg)](https://github.com/alexsludds/photonflux/stargazers)
 [![Downloads](https://pepy.tech/badge/photonflux)](https://pepy.tech/project/photonflux)
 [![Downloads](https://pepy.tech/badge/photonflux/month)](https://pepy.tech/project/photonflux)
 [![Downloads](https://pepy.tech/badge/photonflux/week)](https://pepy.tech/project/photonflux)
-[![MIT](https://img.shields.io/github/license/photonflux/photonflux)](https://choosealicense.com/licenses/mit/)
+[![MIT](https://img.shields.io/github/license/alexsludds/photonflux)](https://choosealicense.com/licenses/mit/)
 
 <!-- ![logo](https://i.imgur.com/v4wpHpg.png) -->
 

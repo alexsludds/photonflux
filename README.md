@@ -36,8 +36,10 @@ python -m pip install photonflux --upgrade
 ```
 
 ### Installation for developers
-First install the package from github.
-<!-- TODO: Add github link -->
+First install the package from github using:
+```
+git clone https://github.com/alexsludds/photonflux.git
+```
 Then, navigate to the download directory and install as an editable python package
 ```
 python -m pip install -e .

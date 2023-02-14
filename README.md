@@ -25,11 +25,7 @@ As opposed to other approaches, circuits / schematics are defined using a netlis
 
 Layouts for simulation in photonflux are defined in a yaml markup format that can be automatically generated using ![gdsfactory](https://gdsfactory.github.io/gdsfactory/).
 
-As an example of the need photonflux is meeting, consider an array of MZI switches in silicon photonics using thermal phase shifters.
-<!-- Add a figure here -->
-
-For a working product there are several things I would want to debug
-- Is thermal crosstalk between components 
+To see examples of what is possible in photonflux please see [our examples](https://github.com/alexsludds/photonflux/tree/main/examples).
 
 
 ## Installation

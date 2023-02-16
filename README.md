@@ -27,6 +27,8 @@ Layouts for simulation in photonflux are defined in a yaml markup format that ca
 
 To see examples of what is possible in photonflux please see [our examples](https://github.com/alexsludds/photonflux/tree/main/examples).
 
+For more information on the future of the package see [our roadmap](https://github.com/alexsludds/photonflux/blob/main/docs/ROADMAP).
+
 
 ## Installation
 ### Installation for new photonflux users

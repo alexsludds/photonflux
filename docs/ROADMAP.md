@@ -21,10 +21,9 @@ Below is a list of components that need models and goals for what should be mode
     - [ ] Wavelength dependence (Dispersion)
     - [ ] Insertion loss and process variation
     - Support for components:
-        - [ ] [1x2 MMI](https://gdsfactory.github.io/gdsfactory/components.html#mmi1x2)
-        - [ ] [2x2 MMI](https://gdsfactory.github.io/gdsfactory/components.html#mmi2x2)
+        - [ ] [1x2 MMI](https://github.com/gdsfactory/gdsfactory/blob/main/gdsfactory/components/mmi1x2_with_sbend.py)
+        - [ ] [2x2 MMI](https://github.com/gdsfactory/gdsfactory/blob/main/gdsfactory/components/mmi2x2_with_sbend.py)
         - [ ] [directional coupler](https://gdsfactory.github.io/gdsfactory/components.html#coupler)
-        - [ ] y-junction
         - [ ] [splitter_chain](https://gdsfactory.github.io/gdsfactory/components.html#splitter-chain)
         - [ ] [splitter_tree](https://gdsfactory.github.io/gdsfactory/components.html#splitter-tree)
 

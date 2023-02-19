@@ -21,7 +21,7 @@ classifiers = [
 	"Programming Language :: Python :: 3.11",
 	"Operating System :: OS Independent",
 ]
-version = "0.1.0"
+version = "0.1.1"
 
 dependencies = [
     "networkx",
@@ -30,7 +30,7 @@ dependencies = [
     "numpy",
     "scipy",
     "tqdm",
-    "seaborn",
+    "seaborn"
 ]
 
 [project.optional-dependencies]

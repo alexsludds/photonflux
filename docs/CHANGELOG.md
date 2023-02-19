@@ -1,5 +1,9 @@
 # [CHANGELOG](https://keepachangelog.com/en/1.0.0/)
 
+## 0.1.1
+- Added simulation files for straight pn junction
+- Updated organization of components to put related files in folders
+
 ## 0.1.0
 
 - Added initial code for modeling photon circuits

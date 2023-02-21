@@ -73,9 +73,9 @@ Below is a list of components that need models and goals for what should be mode
         - [ge_detector_straight_si_contacts](https://gdsfactory.github.io/gdsfactory/components.html#ge-detector-straight-si-contacts) 
 
 - [ ] Thermal phase shifter
-    - [ ] With and without undercut
+    - [x] With and without undercut
     - [ ] Thermal "RC" time constant
-    - [ ] TiN models and doped silicon models
+    - [x] TiN models and doped silicon models
     - Support for components:
         - [ ] [spiral_racetrack_heater_doped](https://gdsfactory.github.io/gdsfactory/components.html#spiral-racetrack-heater-doped)
         - [ ] [straight_heater_doped_rib](https://gdsfactory.github.io/gdsfactory/components.html#straight-heater-doped-rib)
@@ -86,7 +86,11 @@ Below is a list of components that need models and goals for what should be mode
         - [ ] [straight_heater_metal_undercut](https://gdsfactory.github.io/gdsfactory/components.html#straight-heater-metal-undercut)
 
 - [ ] Carrier phase shifter
-    - [ ] PIN and PN phase shifters
+    - [x] PIN and PN phase shifters
+    - [X] Lateral junction
+    - [ ] Vertical junction
+    - [ ] Interleaved junction
+    - [ ] U-shaped junction
     - [ ] Carrier injection "RC" time 
     - [ ] Carrier depletion "RC" time
     - Support for components:

@@ -21,7 +21,7 @@ classifiers = [
 	"Programming Language :: Python :: 3.11",
 	"Operating System :: OS Independent",
 ]
-version = "0.2.0"
+version = "0.2.1"
 
 dependencies = [
     "networkx",
@@ -37,3 +37,6 @@ dependencies = [
 
 [tool.setuptools.packages]
 find = {}
+
+[tool.flit.sdist]
+exclude = ["*.ldev","*.lms", "*.fsp","*.mat"]

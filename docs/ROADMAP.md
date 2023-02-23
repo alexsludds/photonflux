@@ -88,14 +88,17 @@ Below is a list of components that need models and goals for what should be mode
 - [ ] Carrier phase shifter
     - [x] PIN and PN phase shifters
     - [X] Lateral junction
-    - [ ] Vertical junction
+    - [X] Vertical junction
     - [ ] Interleaved junction
-    - [ ] U-shaped junction
+    - [X] U-shaped junction
+    - [ ] MOSCAP junction
     - [ ] Carrier injection "RC" time 
     - [ ] Carrier depletion "RC" time
+    - [ ] A lookup table from voltage to current and capacitance to calculate static and dynamic power consumption
     - Support for components:
-        - [ ] [straight_pin](https://gdsfactory.github.io/gdsfactory/components.html#straight-pin)
-        - [ ] [straight_pn](https://gdsfactory.github.io/gdsfactory/components.html#straight-pn)
+        - [X] [straight_pin](https://gdsfactory.github.io/gdsfactory/components.html#straight-pin)
+        - [X] [straight_pn](https://gdsfactory.github.io/gdsfactory/components.html#straight-pn)
+        - Note, straight_pn in gdsfactory is a subset of straight_pin, and is referred to by the name straight_pin. Can we fix this?
 
 - [ ] Ring resonators
     - [ ] Process variation

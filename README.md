@@ -1,4 +1,4 @@
-# Photonflux 0.2.0
+# Photonflux 0.2.1
 
 [![PyPI](https://img.shields.io/pypi/v/photonflux)](https://pypi.org/project/photonflux/)
 [![PyPI Python](https://img.shields.io/pypi/pyversions/photonflux.svg)](https://pypi.python.org/pypi/photonflux)

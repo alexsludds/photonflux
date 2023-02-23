@@ -31,7 +31,7 @@ class PhotonicCircuit():
                 G.add_node(
                     i,
                     name=str(i), 
-                    model=models_dict[nodes[i]['component']](info,settings),
+                    model=models_dict[nodes[i]['component']](info=info,settings=settings),
                     ready=False,
                     )
                 

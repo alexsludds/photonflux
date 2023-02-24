@@ -82,8 +82,8 @@ Below is a list of components that need models and goals for what should be mode
         - [ ] [straight_heater_doped_strip](https://gdsfactory.github.io/gdsfactory/components.html#straight-heater-doped-strip)
         - [ ] [straight_heater_meander](https://gdsfactory.github.io/gdsfactory/components.html#straight-heater-meander)
         - [ ] [straight_heater_meander_doped](https://gdsfactory.github.io/gdsfactory/components.html#straight-heater-meander-doped)
-        - [ ] [straight_heater_metal](https://gdsfactory.github.io/gdsfactory/components.html#straight-heater-metal)
-        - [ ] [straight_heater_metal_undercut](https://gdsfactory.github.io/gdsfactory/components.html#straight-heater-metal-undercut)
+        - [X] [straight_heater_metal](https://gdsfactory.github.io/gdsfactory/components.html#straight-heater-metal)
+        - [X] [straight_heater_metal_undercut](https://gdsfactory.github.io/gdsfactory/components.html#straight-heater-metal-undercut)
 
 - [ ] Carrier phase shifter
     - [x] PIN and PN phase shifters

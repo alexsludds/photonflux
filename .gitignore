@@ -159,3 +159,4 @@ cython_debug/
 #  option (not recommended) you can uncomment the following to ignore the entire idea folder.
 #.idea/
 photonflux/component_models/pn_pin_junction/charge.mat
+photonflux/component_models/heater/T.mat

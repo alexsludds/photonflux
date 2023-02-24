@@ -12,6 +12,8 @@ from photonflux.component_models.ring_resonators.pn_ring import ring_resonator_p
 from photonflux.component_models.pn_pin_junction.straight_pn import straight_pn
 
 straight_pn_u_shaped = functools.partial(straight_pn, junction="U_doping", doping=1E17)
+straight_pn_lateral = functools.partial(straight_pn, junction="lateral_doping", doping=1E17)
+straight_pn_vertical = functools.partial(straight_pn, junction="vertical_doping", doping=1E17)
 
 models_dict = {
     "bend_euler": bend_euler_model,
@@ -19,7 +21,7 @@ models_dict = {
     "mmi1x2":mmi1x2_model,
     "straight":straight_model,
     "straight_heater_metal_undercut":straight_heater_metal_model,
-    "straight_pin":straight_pn_u_shaped,
+    "straight_pin":straight_pn_lateral,
     "laser": laser_model,
     "detector": detector_model,
     "ring_single": ring_resonator_model,

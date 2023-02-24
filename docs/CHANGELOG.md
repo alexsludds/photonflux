@@ -1,5 +1,9 @@
 # [CHANGELOG](https://keepachangelog.com/en/1.0.0/)
 
+## 0.2.2
+- Updated imbalanced_MZI example with regular and undercut thermal phase shifters
+- Incorporated simulation models for regular and undercut thermal phase shifters
+
 ## 0.2.1
 - Added example of PN junction MZI
 - Added simulations for vertical junctions, U-shaped junctions, MOSCAP junctions. Interleaved junction to come soon.

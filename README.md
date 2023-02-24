@@ -32,7 +32,6 @@ For more information on the future of the package see [our roadmap](https://gith
 
 ## Installation
 ### Installation for new photonflux users
-It's as simple as:
 ```
 python -m pip install photonflux --upgrade
 ```

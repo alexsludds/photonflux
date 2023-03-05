@@ -6,11 +6,11 @@ Please feel free to work on any of these topics or recommend changes to the road
 A high level goal for components is to create reasonable models of active and passive components for a standard 220nm SOI platform.
 Below is a list of components that need models and goals for what should be modeled for specific components.
 - [ ] strip + partially etched silicon + nitride waveguides
-    - [ ] Wavelength dependence (Dispersion)
-    - [ ] Waveguide width index dependence
+    - [X] Wavelength dependence (Dispersion)
+    - [X] Waveguide width index dependence
     - [ ] Waveguide height index dependence
     - Support for components:
-        - [ ] [straight](https://gdsfactory.github.io/gdsfactory/components.html#straight)
+        - [X] [straight](https://gdsfactory.github.io/gdsfactory/components.html#straight)
         - [ ] [straight_rib](https://gdsfactory.github.io/gdsfactory/components.html#straight-rib)
         - [ ] [spiral_double](https://gdsfactory.github.io/gdsfactory/components.html#spiral-double)
         - [ ] [spiral_external_io](https://gdsfactory.github.io/gdsfactory/components.html#spiral-external-io)

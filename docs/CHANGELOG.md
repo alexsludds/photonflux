@@ -1,5 +1,10 @@
 # [CHANGELOG](https://keepachangelog.com/en/1.0.0/)
 
+## 0.2.3
+- Added simulations of PN junction time constant
+- Updated formatting of PN junction data storage
+- Added modeling of dispersion to waveguides through group index extraction
+
 ## 0.2.2
 - Updated imbalanced_MZI example with regular and undercut thermal phase shifters
 - Incorporated simulation models for regular and undercut thermal phase shifters

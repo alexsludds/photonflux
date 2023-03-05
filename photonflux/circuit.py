@@ -28,16 +28,17 @@ class PhotonicCircuit():
                     settings = nodes[i]['settings']
                 except:
                     settings = {}
+
                 G.add_node(
                     i,
                     name=str(i), 
                     model=models_dict[nodes[i]['component']](info=info,settings=settings),
                     ready=False,
-                    )
-                
+                )
+
                 G.nodes[i]['port_names'] = G.nodes[i]['model'].port_names
             except Exception as e:
-                print(f"Model for component {e} not found")
+                print(f"Model for component {i} or {e} not found")
 
         for i in edges.keys():
             source = i.split(",")[0]

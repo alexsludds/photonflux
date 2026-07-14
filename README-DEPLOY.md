@@ -48,10 +48,47 @@ its `COPY --from=ovbuild …` line — the photonic path needs no native toolcha
 runtime. (`webapp/warmup.py` already tolerates FET failures; set `WARMUP_STRICT=1`
 to make any failure fail the build instead.)
 
-## Option A — Hugging Face Spaces (recommended, free)
+## Option A — Google Cloud Run (recommended free path)
 
-Free CPU (2 vCPU / 16 GB — comfortable for JAX), Docker SDK, a persistent public
-URL; it sleeps after ~48 h idle, so the first run after a nap is a cold start.
+**Free for a low-traffic demo** via Google's Always Free tier (2M requests +
+180k vCPU-sec + 360k GB-sec/month), scale-to-zero, and it **builds the image in
+the cloud** — no local Docker needed. Requires a GCP project with **billing
+enabled** (a card on file; you pay ~$0 at demo traffic). The heavy OpenVAF build
+needs a **two-step** flow — the naive `gcloud run deploy --source .` hits Cloud
+Build's 10-min default timeout.
+
+```bash
+# 0) one-time: install gcloud, log in, pick a project + region
+gcloud init
+PROJECT=$(gcloud config get-value project); REGION=us-central1
+gcloud services enable run.googleapis.com cloudbuild.googleapis.com \
+    artifactregistry.googleapis.com
+gcloud artifacts repositories create lightspice \
+    --repository-format=docker --location=$REGION
+
+IMG=$REGION-docker.pkg.dev/$PROJECT/lightspice/app:latest
+
+# 1) build in the cloud — raise the timeout (Rust/LLVM + PDK is slow) and use a
+#    bigger builder so it finishes; watch the log for the warmup PASS/FAIL summary
+gcloud builds submit --tag "$IMG" --timeout=3600s --machine-type=e2-highcpu-8 .
+
+# 2) deploy the built image
+gcloud run deploy lightspice --image "$IMG" --region $REGION \
+    --port 7860 --memory 4Gi --cpu 2 --allow-unauthenticated \
+    --timeout 900 --min-instances 0 --max-instances 3
+```
+
+`--min-instances 0` → $0 when idle (cold start on the next hit); `--max-instances`
+caps runaway cost; `--memory 4Gi` gives JAX headroom (try 2Gi to trim cost).
+`e2-highcpu-8` is a small paid build cost but keeps the LLVM compile under the
+timeout; drop it to use free build minutes if you don't mind a slower build.
+
+## Option B — Hugging Face Spaces (Docker SDK — now paid)
+
+As of early 2026 HF moved the Docker (and Gradio) SDKs behind a paid plan for
+free accounts, so a free Docker Space is no longer available. If you have HF PRO
+(or the policy reverts): free CPU is 2 vCPU / 16 GB, Docker SDK, a persistent
+public URL that sleeps after ~48 h idle.
 
 1. Create a **Docker** Space at https://huggingface.co/new-space (SDK = Docker,
    hardware = CPU basic).
@@ -80,17 +117,6 @@ URL; it sleeps after ~48 h idle, so the first run after a nap is a cold start.
    The Space builds the image and serves it at
    `https://<user>-lightspice.hf.space`. First build is long (Rust/LLVM +
    PDK download); watch the build log for the warmup summary.
-
-## Option B — Google Cloud Run (always-on-ish, custom domain)
-
-Scale-to-zero, generous free tier, needs a GCP project with billing enabled.
-
-```bash
-gcloud run deploy lightspice --source . --port 7860 \
-    --memory 4Gi --cpu 2 --allow-unauthenticated --timeout 900
-```
-
-(`--memory 4Gi` gives JAX headroom; `--timeout 900` matches the run ceiling.)
 
 ## Build and run locally (optional pre-flight)
 

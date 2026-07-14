@@ -49,7 +49,7 @@ from circulax.components.photonic import OpticalWaveguide
 # reuse the optical->electrical bridge from the example-01 port
 from photodiode_tia import Photodiode
 
-from lightspice import cx
+from photonflux import cx
 
 # --- optics ------------------------------------------------------------------
 WAVELENGTH_NM = 1310.0

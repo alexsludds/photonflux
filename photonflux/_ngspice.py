@@ -11,7 +11,7 @@ co-sim flow needs and nothing else:
 
 libngspice keeps *global* state: there is exactly one simulator instance
 per process. `NgSpice.get()` returns the process-wide singleton. Parallel
-sweeps therefore run one process per worker (see lightspice.sweep).
+sweeps therefore run one process per worker (see photonflux.sweep).
 """
 from __future__ import annotations
 

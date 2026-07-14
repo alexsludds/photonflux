@@ -438,11 +438,11 @@ def openvaf_ir_path() -> Path:
 
     The stock ``bin/openvaf-r`` (23.5.0) miscompiles BSIM4 to OSDI on this
     machine (segfault in setup); the fork binary produces a correct binary.
-    Override with ``LIGHTSPICE_OPENVAF_IR``.
+    Override with ``PHOTONFLUX_OPENVAF_IR``.
     """
     import os
 
-    env = os.environ.get("LIGHTSPICE_OPENVAF_IR")
+    env = os.environ.get("PHOTONFLUX_OPENVAF_IR")
     if env:
         return Path(env)
     return toolchain.REPO / "bin" / "openvaf-ir"
@@ -457,7 +457,7 @@ def _bsim4_osdi() -> Path:
         raise FileNotFoundError(
             f"{binary} not found — build the ChipFlow openvaf fork "
             "(github.com/robtaylor/OpenVAF, branch vajax) and install it as "
-            "bin/openvaf-ir, or set LIGHTSPICE_OPENVAF_IR"
+            "bin/openvaf-ir, or set PHOTONFLUX_OPENVAF_IR"
         )
     key = _hash(BSIM4_VA.read_text(), str(binary.stat().st_mtime_ns))
     out = CACHE_DIR / f"bsim4_{key}.osdi"

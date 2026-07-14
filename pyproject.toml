@@ -3,7 +3,7 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "lightspice"
+name = "photonflux"
 version = "0.1.0"
 description = "Analog + photonic co-simulation in Python: Verilog-A (OpenVAF/OSDI) photonics + SPICE electronics over native libngspice"
 readme = "README.md"
@@ -17,10 +17,10 @@ dependencies = [
 dev = ["pytest"]
 
 [project.scripts]
-lightspice = "lightspice.cli:main"
+photonflux = "photonflux.cli:main"
 
 [tool.setuptools]
-packages = ["lightspice"]
+packages = ["photonflux"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

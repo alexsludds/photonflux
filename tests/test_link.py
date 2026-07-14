@@ -2,7 +2,7 @@
 import numpy as np
 import pytest
 
-import lightspice as ls
+import photonflux as ls
 
 
 def build_link() -> ls.Circuit:

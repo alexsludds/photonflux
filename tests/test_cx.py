@@ -1,4 +1,4 @@
-"""lightspice.cx — Verilog-A photonics and SKY130 FETs as circulax components.
+"""photonflux.cx — Verilog-A photonics and SKY130 FETs as circulax components.
 
 These tests need the circulax stack (``pip install circulax[verilog-a]
 openvaf-py`` into the venv) and the ChipFlow openvaf fork at
@@ -22,8 +22,8 @@ import jax.numpy as jnp  # noqa: E402
 from circulax import compile_circuit  # noqa: E402
 from circulax.components.electronic import Resistor, VoltageSource  # noqa: E402
 
-import lightspice as ls  # noqa: E402
-from lightspice import cx  # noqa: E402
+import photonflux as ls  # noqa: E402
+from photonflux import cx  # noqa: E402
 
 needs_openvaf_ir = pytest.mark.skipif(
     not cx.openvaf_ir_path().exists(), reason="bin/openvaf-ir not built"

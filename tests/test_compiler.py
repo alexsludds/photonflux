@@ -3,8 +3,8 @@ import time
 
 import pytest
 
-import lightspice as ls
-from lightspice.compiler import compile_va, parse_va
+import photonflux as ls
+from photonflux.compiler import compile_va, parse_va
 
 
 def test_compile_all_models():

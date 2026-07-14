@@ -2,7 +2,7 @@
   "version": "0.0.1",
   "configurations": [
     {
-      "name": "lightspice-web",
+      "name": "photonflux-web",
       "runtimeExecutable": ".venv-circulax/bin/python",
       "runtimeArgs": ["webapp/server.py", "--port", "8642"],
       "port": 8642

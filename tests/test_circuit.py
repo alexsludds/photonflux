@@ -1,7 +1,7 @@
 """Circuit builder: cards, devices, params, validation."""
 import pytest
 
-import lightspice as ls
+import photonflux as ls
 
 
 def test_device_emits_model_and_instance():

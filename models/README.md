@@ -3,8 +3,8 @@
 Compiled to OSDI by the native arm64 `openvaf-r`:
 
 ```
-python3 -m lightspice compile          # all models, content-hash cached
-python3 -m lightspice compile models/mzm.va --force
+python3 -m photonflux compile          # all models, content-hash cached
+python3 -m photonflux compile models/mzm.va --force
 ```
 
 ## Power-domain models (node voltage = optical power [W])
@@ -47,5 +47,5 @@ The **module name** is what ngspice `.model` cards reference. It must not
 collide with a builtin ngspice model type (`res`, `r`, `c`, `l`, `d`,
 `diode`, `sw`, `npn`, `nmos`, ...) or the deck parser binds the builtin
 and elaboration fails with `incorrect model type! Expected OSDI device`.
-`lightspice` refuses to compile colliding names — that is why the
+`photonflux` refuses to compile colliding names — that is why the
 resistor model is `res_va`, not `res`.

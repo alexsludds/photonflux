@@ -75,8 +75,8 @@ from drivers import (
     two_stage_inverter,
 )
 
-from lightspice import cx
-from lightspice.signals import prbs
+from photonflux import cx
+from photonflux.signals import prbs
 
 # --- testbench knobs (also settable from the command line) ---------------------
 BAUD = 50e9                 # NRZ symbol rate [baud] — the reconfigurable knob

@@ -47,7 +47,7 @@ from dataclasses import dataclass
 
 from circulax.components.electronic import Capacitor
 
-from lightspice import cx
+from photonflux import cx
 
 __all__ = [
     "DriverParts",

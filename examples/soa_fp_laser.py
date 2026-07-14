@@ -51,7 +51,7 @@ import numpy as np
 from circulax import compile_circuit
 
 from cavity import port_power, run_transient, staircase_source, terminator
-from lightspice import cx
+from photonflux import cx
 
 # --- the device -------------------------------------------------------------
 R1 = 0.9                   # back-mirror power reflectivity

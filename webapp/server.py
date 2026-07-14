@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Local web frontend for lightspice/circulax: schematic editor + simulator.
+"""Local web frontend for photonflux/circulax: schematic editor + simulator.
 
     .venv-circulax/bin/python webapp/server.py [--port 8642]
 
@@ -20,7 +20,7 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
-sys.path.insert(0, str(HERE.parent))  # repo root -> lightspice importable
+sys.path.insert(0, str(HERE.parent))  # repo root -> photonflux importable
 
 import jax  # noqa: E402
 
@@ -41,13 +41,13 @@ _RUN_LOCK = threading.Lock()
 # Verilog-A upload compiles untrusted source through the native OpenVAF
 # toolchain, so a public host must turn it OFF. It defaults ON so running
 # `server.py` locally is unchanged; the container image sets this to "0".
-_ALLOW_VA_UPLOAD = os.environ.get("LIGHTSPICE_ALLOW_VA_UPLOAD", "1") == "1"
+_ALLOW_VA_UPLOAD = os.environ.get("PHOTONFLUX_ALLOW_VA_UPLOAD", "1") == "1"
 # Wall-clock guard on a single /api/run. 0 (the default) means "no limit" so
 # local dev and the heavy showcase examples (e.g. the Vernier laser, which
 # takes minutes) are unaffected. The container sets a generous ceiling to bound
 # runaways without killing legitimate long solves.
 try:
-    _RUN_TIMEOUT_S = float(os.environ.get("LIGHTSPICE_RUN_TIMEOUT_S", "0") or "0")
+    _RUN_TIMEOUT_S = float(os.environ.get("PHOTONFLUX_RUN_TIMEOUT_S", "0") or "0")
 except ValueError:
     _RUN_TIMEOUT_S = 0.0
 
@@ -228,7 +228,7 @@ def main() -> int:
     ap.add_argument("--host", default=os.environ.get("HOST", "127.0.0.1"))
     args = ap.parse_args()
     server = ThreadingHTTPServer((args.host, args.port), Handler)
-    print(f"lightspice web UI: http://{args.host}:{args.port}")
+    print(f"photonflux web UI: http://{args.host}:{args.port}")
     try:
         server.serve_forever()
     except KeyboardInterrupt:

@@ -69,7 +69,7 @@ from circulax.components.base_component import Signals, States, source
 from circulax.solvers.transient import BDF2VectorizedTransientSolver
 
 from cavity import terminator
-from lightspice import cx
+from photonflux import cx
 
 C0 = 2.99792458e8
 

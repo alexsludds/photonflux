@@ -1,4 +1,4 @@
-# lightspice web UI — schematic editor + simulator in the browser
+# photonflux web UI — schematic editor + simulator in the browser
 
 Drag-and-drop photonic/electronic schematic capture with circulax (JAX)
 simulation behind a Run button. No build step, no extra Python dependencies —

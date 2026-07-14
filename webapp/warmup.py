@@ -26,7 +26,7 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))                 # webapp/  -> catalog, simulate
-sys.path.insert(0, str(HERE.parent))          # repo root -> lightspice
+sys.path.insert(0, str(HERE.parent))          # repo root -> photonflux
 
 import jax  # noqa: E402
 

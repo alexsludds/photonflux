@@ -1,6 +1,6 @@
-# Deploying lightspice as a public web demo
+# Deploying photonflux as a public web demo
 
-The lightspice web editor runs **real** JAX/circulax circuit solves, so it
+The photonflux web editor runs **real** JAX/circulax circuit solves, so it
 cannot be a pure static / WebAssembly site: `jaxlib` (XLA) and `klujax` have no
 WebAssembly build, and adding a model shells out to native OpenVAF. Instead we
 ship **one container that serves both** the static editor and the `/api/run`
@@ -24,10 +24,10 @@ Everything is in the repo-root [`Dockerfile`](Dockerfile) + build-time
 | photonic `models/__jax__/*.py` + Linux `*.osdi` | warmup | pre-compiled into the image |
 
 Runtime env baked in: `HOST=0.0.0.0`, `PORT=7860`,
-`LIGHTSPICE_ALLOW_VA_UPLOAD=0` (public safety — untrusted VA upload compiles
-native code, so it is **off**), `LIGHTSPICE_RUN_TIMEOUT_S=600` (10-min ceiling —
+`PHOTONFLUX_ALLOW_VA_UPLOAD=0` (public safety — untrusted VA upload compiles
+native code, so it is **off**), `PHOTONFLUX_RUN_TIMEOUT_S=600` (10-min ceiling —
 generous enough for the multi-minute Vernier example, bounds runaways),
-`LIGHTSPICE_OPENVAF_IR=/app/bin/openvaf-ir`.
+`PHOTONFLUX_OPENVAF_IR=/app/bin/openvaf-ir`.
 
 ## ⚠️ The one step to watch on the first build
 
@@ -63,17 +63,17 @@ gcloud init
 PROJECT=$(gcloud config get-value project); REGION=us-central1
 gcloud services enable run.googleapis.com cloudbuild.googleapis.com \
     artifactregistry.googleapis.com
-gcloud artifacts repositories create lightspice \
+gcloud artifacts repositories create photonflux \
     --repository-format=docker --location=$REGION
 
-IMG=$REGION-docker.pkg.dev/$PROJECT/lightspice/app:latest
+IMG=$REGION-docker.pkg.dev/$PROJECT/photonflux/app:latest
 
 # 1) build in the cloud — raise the timeout (Rust/LLVM + PDK is slow) and use a
 #    bigger builder so it finishes; watch the log for the warmup PASS/FAIL summary
 gcloud builds submit --tag "$IMG" --timeout=3600s --machine-type=e2-highcpu-8 .
 
 # 2) deploy the built image
-gcloud run deploy lightspice --image "$IMG" --region $REGION \
+gcloud run deploy photonflux --image "$IMG" --region $REGION \
     --port 7860 --memory 4Gi --cpu 2 --allow-unauthenticated \
     --timeout 900 --min-instances 0 --max-instances 3
 ```
@@ -97,7 +97,7 @@ public URL that sleeps after ~48 h idle.
 
    ```yaml
    ---
-   title: lightspice
+   title: photonflux
    emoji: 🔦
    colorFrom: indigo
    colorTo: purple
@@ -110,12 +110,12 @@ public URL that sleeps after ~48 h idle.
 3. Push this repo (with the `Dockerfile`) to the Space's git remote:
 
    ```bash
-   git remote add space https://huggingface.co/spaces/<user>/lightspice
+   git remote add space https://huggingface.co/spaces/<user>/photonflux
    git push space main
    ```
 
    The Space builds the image and serves it at
-   `https://<user>-lightspice.hf.space`. First build is long (Rust/LLVM +
+   `https://<user>-photonflux.hf.space`. First build is long (Rust/LLVM +
    PDK download); watch the build log for the warmup summary.
 
 ## Build and run locally (optional pre-flight)
@@ -124,8 +124,8 @@ Requires Docker running on an x86_64 builder (or `buildx` emulation on Apple
 Silicon — slow):
 
 ```bash
-docker build -t lightspice .
-docker run --rm -p 7860:7860 lightspice
+docker build -t photonflux .
+docker run --rm -p 7860:7860 photonflux
 # open http://localhost:7860 ; load example 39 (photonics) and 04 (SKY130 FET)
 docker logs <id>        # confirm /api/run 200s, no missing-binary/PDK errors
 ```
@@ -135,7 +135,7 @@ docker logs <id>        # confirm /api/run 200s, no missing-binary/PDK errors
 - **Single-flight compute.** `webapp/server.py` serializes runs behind one lock,
   so concurrent visitors queue — fine for a demo, not a load-bearing service.
 - **VA upload is disabled** on the public image. To allow it on a trusted deploy,
-  set `LIGHTSPICE_ALLOW_VA_UPLOAD=1` (it compiles untrusted Verilog-A natively —
+  set `PHOTONFLUX_ALLOW_VA_UPLOAD=1` (it compiles untrusted Verilog-A natively —
   only do this behind auth).
 - **Local dev is unchanged.** Running `.venv-circulax/bin/python webapp/server.py`
   with no env vars keeps 127.0.0.1:8642, VA upload on, and no run timeout — every

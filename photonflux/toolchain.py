@@ -2,8 +2,8 @@
 
 Everything is overridable via environment variables:
 
-  LIGHTSPICE_OPENVAF     path to the openvaf-r binary
-  LIGHTSPICE_INCLUDE     Verilog-A include directory (discipline.h, ...)
+  PHOTONFLUX_OPENVAF     path to the openvaf-r binary
+  PHOTONFLUX_INCLUDE     Verilog-A include directory (discipline.h, ...)
   NGSPICE_LIBRARY_PATH   libngspice shared library
   SKY130_NGSPICE_LIB     sky130.lib.spice (wins over PDK_ROOT / volare)
   PDK_ROOT               open_pdks-style root containing sky130A/
@@ -23,14 +23,14 @@ OUT_DIR = REPO / "out"
 
 
 def openvaf_path() -> Path:
-    env = os.environ.get("LIGHTSPICE_OPENVAF")
+    env = os.environ.get("PHOTONFLUX_OPENVAF")
     if env:
         return Path(env)
     return REPO / "bin" / "openvaf-r"
 
 
 def include_dir() -> Path:
-    env = os.environ.get("LIGHTSPICE_INCLUDE")
+    env = os.environ.get("PHOTONFLUX_INCLUDE")
     if env:
         return Path(env)
     return REPO / "include"

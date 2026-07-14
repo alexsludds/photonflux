@@ -1,4 +1,4 @@
-"""Command-line entry point: `python -m lightspice <cmd>` or `lightspice <cmd>`.
+"""Command-line entry point: `python -m photonflux <cmd>` or `photonflux <cmd>`.
 
   doctor      check every toolchain prerequisite
   compile     compile models/*.va -> .osdi (content-hash cached)
@@ -59,7 +59,7 @@ def cmd_smoke(_args) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
-    ap = argparse.ArgumentParser(prog="lightspice")
+    ap = argparse.ArgumentParser(prog="photonflux")
     sub = ap.add_subparsers(dest="cmd", required=True)
     sub.add_parser("doctor", help="check toolchain prerequisites")
     pc = sub.add_parser("compile", help="compile Verilog-A models to OSDI")

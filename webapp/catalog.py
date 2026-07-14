@@ -1,6 +1,6 @@
 """Component catalog for the web schematic editor.
 
-Single source of truth mapping UI component types onto circulax/lightspice
+Single source of truth mapping UI component types onto circulax/photonflux
 models. Each entry declares:
 
   ports    ordered list of {name, domain} — domain is "optical" (complex
@@ -12,7 +12,7 @@ models. Each entry declares:
            field<->re/im adapters around the Verilog-A core
 
 ``build_models()`` returns the models_map for ``circulax.compile_circuit``.
-Heavyweight imports (jax, circulax, lightspice) happen lazily inside it so
+Heavyweight imports (jax, circulax, photonflux) happen lazily inside it so
 the catalog itself can be served instantly.
 """
 from __future__ import annotations
@@ -1758,7 +1758,7 @@ def register_user_va(stem: str) -> dict:
     Ereal/Eimag node pairs bridged manually; power-domain optical ports can
     be bridged with the opt_f2p / opt_p2f adapter components.
     """
-    from lightspice import cx
+    from photonflux import cx
 
     path = USER_VA_DIR / f"{stem}.va"
     comp = cx.va(path)
@@ -1826,7 +1826,7 @@ def build_models(sky130_geoms: dict[str, tuple[str, float, float]] | None = None
         Splitter,
     )
 
-    from lightspice import cx
+    from photonflux import cx
 
     models: dict[str, Any] = {
         "ground": lambda: 0,

@@ -2,7 +2,7 @@
 
 `bsim4.va` is the cogenda **VA-BSIM48** port of BSIM4 version 4.8
 (https://github.com/cogenda/VA-BSIM48; see `readme` and `LICENSE` alongside).
-It supplies the device physics for `lightspice.cx.sky130_fet(...)`: the
+It supplies the device physics for `photonflux.cx.sky130_fet(...)`: the
 SKY130 model card (extracted from the volare PDK via ngspice `showmod`) is
 applied to this model, compiled to OSDI with `bin/openvaf-ir`, and evaluated
 natively inside circulax.

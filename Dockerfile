@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 # ---------------------------------------------------------------------------
-# lightspice public web demo — single image that serves the static editor AND
+# photonflux public web demo — single image that serves the static editor AND
 # runs the JAX/circulax solver (webapp/server.py). Target: a Linux x86_64 host
 # that can run a container (Hugging Face Spaces "Docker" SDK, Google Cloud Run,
 # a VPS, …). The whole app is one origin, so there is no CORS/frontend change.
@@ -107,9 +107,9 @@ RUN python /app/webapp/warmup.py
 # --- server config ---------------------------------------------------------
 ENV HOST=0.0.0.0 \
     PORT=7860 \
-    LIGHTSPICE_OPENVAF_IR=/app/bin/openvaf-ir \
-    LIGHTSPICE_ALLOW_VA_UPLOAD=0 \
-    LIGHTSPICE_RUN_TIMEOUT_S=600 \
+    PHOTONFLUX_OPENVAF_IR=/app/bin/openvaf-ir \
+    PHOTONFLUX_ALLOW_VA_UPLOAD=0 \
+    PHOTONFLUX_RUN_TIMEOUT_S=600 \
     JAX_ENABLE_X64=1
 EXPOSE 7860
 CMD ["python", "/app/webapp/server.py"]

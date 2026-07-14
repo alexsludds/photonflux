@@ -8,7 +8,7 @@ transient).
 
 The conventions differ, which is the interesting part:
 
-* **lightspice** rides the *power* convention — an optical node voltage *is*
+* **photonflux** rides the *power* convention — an optical node voltage *is*
   the optical power in watts, and the photonics are compiled Verilog-A
   (``models/photodiode.va``: ``Iph = R*V(popt)``) solved inside ngspice.
 
@@ -184,7 +184,7 @@ def build() -> dict:
 
 
 def _models() -> dict:
-    from lightspice import cx
+    from photonflux import cx
 
     return {
         "ground": lambda: 0,

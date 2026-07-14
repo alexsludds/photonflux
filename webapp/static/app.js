@@ -1,4 +1,4 @@
-/* lightspice web schematic editor + simulation frontend.
+/* photonflux web schematic editor + simulation frontend.
  *
  * Vanilla JS + SVG. State is a plain JSON document (instances/wires/probes)
  * that maps 1:1 onto the backend's /api/run schematic payload; rendering is
@@ -118,7 +118,7 @@ function redo() {
 }
 
 function autosave() {
-  try { localStorage.setItem("lightspice_sch", JSON.stringify(state)); } catch {}
+  try { localStorage.setItem("photonflux_sch", JSON.stringify(state)); } catch {}
 }
 
 function newId(type) {
@@ -955,11 +955,11 @@ function readRunCfg() {
            param2: $("rc-param2").value, values2: $("rc-values2").value };
 }
 function persistRunCfg() {
-  try { localStorage.setItem("lightspice_runcfg",
+  try { localStorage.setItem("photonflux_runcfg",
     JSON.stringify(readRunCfg())); } catch {}
 }
 function restoreRunCfg() {
-  let c; try { c = JSON.parse(localStorage.getItem("lightspice_runcfg")); } catch {}
+  let c; try { c = JSON.parse(localStorage.getItem("photonflux_runcfg")); } catch {}
   refreshRunCfgSelectors();
   if (c) {
     $("rc-enable").checked = !!c.enabled;
@@ -1075,9 +1075,9 @@ $("btn-exprs").addEventListener("click", () => {
   if (!p.hidden) $("expr-text").focus();
 });
 $("expr-text").addEventListener("change", () => {
-  try { localStorage.setItem("lightspice_exprs", exprText()); } catch {}
+  try { localStorage.setItem("photonflux_exprs", exprText()); } catch {}
 });
-try { $("expr-text").value = localStorage.getItem("lightspice_exprs") || ""; } catch {}
+try { $("expr-text").value = localStorage.getItem("photonflux_exprs") || ""; } catch {}
 
 function withExprs(a) {
   if (exprText().trim()) a.expressions = exprText();
@@ -1164,7 +1164,7 @@ function collectAnalysisBase() {
 function applyAnalysis(a) {
   if (!a) return;
   $("expr-text").value = a.expressions || "";
-  try { localStorage.setItem("lightspice_exprs", $("expr-text").value); } catch {}
+  try { localStorage.setItem("photonflux_exprs", $("expr-text").value); } catch {}
   // "dcsweep" is no longer a dropdown mode — a DC sweep is DC + a pane sweep
   $("sel-analysis").value = a.mode === "dcsweep" ? "dc" : (a.mode || "transient");
   $("sel-analysis").dispatchEvent(new Event("change"));
@@ -1333,7 +1333,7 @@ function rerenderResults() {
 
 // per-unit-group plot preferences (y/x scale), persisted across sessions
 let plotPrefs = {};
-try { plotPrefs = JSON.parse(localStorage.getItem("lightspice_plotprefs")) || {}; } catch {}
+try { plotPrefs = JSON.parse(localStorage.getItem("photonflux_plotprefs")) || {}; } catch {}
 
 function plotPref(unit) {
   return Object.assign({ y: "linear", x: "linear" }, plotPrefs[unit] || {});
@@ -1341,7 +1341,7 @@ function plotPref(unit) {
 
 function setPlotPref(unit, key, val) {
   plotPrefs[unit] = Object.assign(plotPref(unit), { [key]: val });
-  try { localStorage.setItem("lightspice_plotprefs", JSON.stringify(plotPrefs)); } catch {}
+  try { localStorage.setItem("photonflux_plotprefs", JSON.stringify(plotPrefs)); } catch {}
   if (lastResult?.ok && lastResult.traces) renderPlots(lastResult);
 }
 
@@ -1461,7 +1461,7 @@ function renderPlots(res) {
         })),
       ],
       cursor: { drag: { x: true, y: false },
-                sync: { key: "lightspice", setSeries: false } },
+                sync: { key: "photonflux", setSeries: false } },
       legend: { live: true },
     };
     // AC dB plots: dashed 0 dB reference — |h21| crossing it marks f_T
@@ -1542,7 +1542,7 @@ function renderPlots(res) {
 // --- results panel resize (drag the strip above the tab bar) ---------------
 (() => {
   const rz = $("results-resizer"), panel = $("results");
-  const saved = parseInt(localStorage.getItem("lightspice_results_h") || "", 10);
+  const saved = parseInt(localStorage.getItem("photonflux_results_h") || "", 10);
   if (saved >= 140) panel.style.height = saved + "px";
   let drag = null;
   rz.addEventListener("mousedown", (ev) => {
@@ -1562,7 +1562,7 @@ function renderPlots(res) {
     if (!drag) return;
     drag = null;
     rz.classList.remove("active");
-    try { localStorage.setItem("lightspice_results_h", String(panel.clientHeight)); } catch {}
+    try { localStorage.setItem("photonflux_results_h", String(panel.clientHeight)); } catch {}
   });
 })();
 
@@ -1995,7 +1995,7 @@ $("btn-csv").addEventListener("click", () => {
       csv += [ep.x[i], ...eTraces.map((t) => t.values[i])].join(",") + "\n";
     }
   }
-  download("lightspice_results.csv", csv, "text/csv");
+  download("photonflux_results.csv", csv, "text/csv");
 });
 
 // ---------------------------------------------------------------------------
@@ -2011,7 +2011,7 @@ function download(name, text, mime) {
 
 function saveJSON() {
   download("circuit.json", JSON.stringify(
-    { title: "lightspice circuit", schematic: state, analysis: collectAnalysis() },
+    { title: "photonflux circuit", schematic: state, analysis: collectAnalysis() },
     null, 2), "application/json");
 }
 $("btn-save").addEventListener("click", saveJSON);
@@ -2162,7 +2162,7 @@ async function boot() {
   await loadExamples();
   $("sel-analysis").dispatchEvent(new Event("change"));
 
-  const saved = localStorage.getItem("lightspice_sch");
+  const saved = localStorage.getItem("photonflux_sch");
   let loaded = false;
   if (saved) {
     try {

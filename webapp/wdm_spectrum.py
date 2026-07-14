@@ -26,7 +26,7 @@ import numpy as np
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, _HERE)                       # webapp modules
-sys.path.insert(0, os.path.dirname(_HERE))      # repo root (lightspice/circulax)
+sys.path.insert(0, os.path.dirname(_HERE))      # repo root (photonflux/circulax)
 import simulate
 
 EX = os.path.join(_HERE, "examples", "18_wdm_oband_testbench.json")

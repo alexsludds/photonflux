@@ -21,7 +21,7 @@ from __future__ import annotations
 import json
 import math
 
-from lightspice import toolchain
+from photonflux import toolchain
 
 CACHE_FILE = toolchain.MODELS_DIR / "__jax__" / "sky130_passives.json"
 _AC_FREQ = 1e6  # far below any parasitic pole, far above numeric noise
@@ -67,7 +67,7 @@ def resolve(requests: list[tuple[str, float, float]]) -> dict[str, float]:
     if not misses:
         return out
 
-    from lightspice._ngspice import NgSpice
+    from photonflux._ngspice import NgSpice
 
     lines = [".title sky130 passive extraction",
              f".lib {toolchain.sky130_lib()} tt"]

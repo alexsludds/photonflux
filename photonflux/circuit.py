@@ -29,7 +29,7 @@ def _fmt(v: Any) -> str:
 
 
 class Circuit:
-    def __init__(self, title: str = "lightspice circuit"):
+    def __init__(self, title: str = "photonflux circuit"):
         self.title = title
         self._cards: list[str] = []
         self._model_cards: list[str] = []

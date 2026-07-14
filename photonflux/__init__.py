@@ -1,4 +1,4 @@
-"""lightspice — analog + photonic co-simulation in Python.
+"""photonflux — analog + photonic co-simulation in Python.
 
 Verilog-A photonics (compiled by OpenVAF to OSDI) and SPICE electronics
 (PDK transistors included) solved together in one native ngspice matrix,
@@ -6,7 +6,7 @@ with numpy results and link-level analysis on top.
 
 Quick start:
 
-    import lightspice as ls
+    import photonflux as ls
 
     ckt = ls.Circuit("photonic link")
     ckt.raw("Vdrv drv 0 PULSE(1.30 1.55 0.5n 50p 50p 0.5n 1.5n)")

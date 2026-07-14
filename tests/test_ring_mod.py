@@ -17,7 +17,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-import lightspice as ls
+import photonflux as ls
 
 # the user-specified device
 RADIUS_UM = 7.5
@@ -99,7 +99,7 @@ def test_ring_circulax_matches_ngspice():
     from circulax import compile_circuit
     from circulax.components.electronic import VoltageSource
 
-    from lightspice import cx
+    from photonflux import cx
 
     net = {
         "instances": {

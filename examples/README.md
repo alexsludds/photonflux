@@ -55,7 +55,7 @@ Two conventions worth knowing before building your own cavities:
 
 ## `link_sky130.py` — the real PDK inside circulax
 
-`lightspice.cx` (see the module docstring for details) provides:
+`photonflux.cx` (see the module docstring for details) provides:
 
 * `cx.cw_laser()` / `cx.mzm()` — the CW source and Mach-Zehnder modulator
   (intensity transfer identical to `models/mzm.va`, electrodes present a real
@@ -84,9 +84,9 @@ ingestion miscompiles BSIM4's nested conditionals (nfet subthreshold broken,
 pfet unusable). The fixed ingestion path (`--dump-unopt-mir-with-split`) is
 not yet in any published openvaf build.
 
-## lightspice vs circulax, same circuit
+## photonflux vs circulax, same circuit
 
-|                | lightspice/ngspice (reference flow)     | circulax (`photodiode_tia.py`)                    |
+|                | photonflux/ngspice (reference flow)     | circulax (`photodiode_tia.py`)                    |
 |----------------|-----------------------------------------|---------------------------------------------------|
 | solver         | ngspice matrix, native libngspice       | JAX: Newton DC + Diffrax adaptive transient       |
 | photonics      | compiled Verilog-A → OSDI               | Python `@component` functions                     |
@@ -145,9 +145,9 @@ stepper from striding over the 200 ps gate edges.
 ## Components
 
 - `cx.cw_laser()` — **the** laser: CW, `{wavelength_nm, power, phase}`,
-  emits `E = √P·e^{jφ}` (in `lightspice/cx.py`).
+  emits `E = √P·e^{jφ}` (in `photonflux/cx.py`).
 - `cx.mzm()` — Mach-Zehnder modulator, field-convention twin of
-  `models/mzm.va` with capacitive drive electrodes (in `lightspice/cx.py`).
+  `models/mzm.va` with capacitive drive electrodes (in `photonflux/cx.py`).
 - `PulseModulator` (`@source`, `photodiode_tia.py`) — ideal intensity
   modulator carving an NRZ-like pulse out of a CW field.
 - `Photodiode` (`@component`, `photodiode_tia.py`) — optical matched absorber
@@ -160,11 +160,11 @@ stepper from striding over the 200 ps gate edges.
 ## Setup
 
 circulax needs Python ≥ 3.12 and pulls in JAX/Diffrax/SAX. To keep it out of
-the lightspice/ngspice environment it was installed into a local venv:
+the photonflux/ngspice environment it was installed into a local venv:
 
 ```bash
 python3 -m venv .venv-circulax
 .venv-circulax/bin/pip install "circulax[verilog-a]" openvaf-py
-.venv-circulax/bin/pip install -e .                # lightspice (for cx)
+.venv-circulax/bin/pip install -e .                # photonflux (for cx)
 .venv-circulax/bin/python examples/photodiode_tia.py
 ```

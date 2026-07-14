@@ -11,7 +11,7 @@ import numpy as np
 import pytest
 from scipy.optimize import brentq
 
-import lightspice as ls
+import photonflux as ls
 
 C0 = 2.99792458e8
 HPL = 6.62607015e-34

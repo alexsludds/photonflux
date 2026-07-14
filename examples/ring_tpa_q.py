@@ -46,7 +46,7 @@ from scipy.optimize import brentq
 from circulax import compile_circuit
 
 from cavity import port_power, terminator
-from lightspice import cx
+from photonflux import cx
 
 C0 = 2.99792458e8
 HPL = 6.62607015e-34

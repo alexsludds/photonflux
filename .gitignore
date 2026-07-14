@@ -24,3 +24,6 @@ webapp/models_user/
 .vscode/
 .idea/
 *.swp
+
+# Python build artifact
+*.egg-info/

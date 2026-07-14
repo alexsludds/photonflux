@@ -1,5 +1,5 @@
 ---
-title: lightspice
+title: photonflux
 emoji: 🔦
 colorFrom: indigo
 colorTo: purple
@@ -13,7 +13,7 @@ short_description: Verilog-A photonics + SKY130 electronics circuit simulator
      7860). It must stay at the very top of this file. Full deploy guide:
      README-DEPLOY.md. -->
 
-# lightspice — Verilog-A photonics + SKY130 electronics in circulax
+# photonflux — Verilog-A photonics + SKY130 electronics in circulax
 
 Simulate **Verilog-A photonic compact models** together with **real SKY130
 PDK transistors** inside [circulax](https://github.com/gdsfactory/circulax)
@@ -21,7 +21,7 @@ PDK transistors** inside [circulax](https://github.com/gdsfactory/circulax)
 Apple Silicon.
 
 ```python
-from lightspice import cx
+from photonflux import cx
 
 LASER = cx.cw_laser()                                # CW: wavelength + power -> field E
 MOD   = cx.mzm()                                     # field-convention MZM (twin of models/mzm.va)
@@ -127,7 +127,7 @@ emitted Python, OSDI binaries).
 ## Repo layout
 
 ```
-lightspice/       Python package
+photonflux/       Python package
   cx.py           THE circulax bridge: cx.va / cx.sky130_fet / cx.cw_laser /
                   cx.mzm (+ the emitted-code repairs and collapse filtering
                   documented in its docstrings)
@@ -135,7 +135,7 @@ lightspice/       Python package
                   and the ngspice reference/validation flow
   engine.py, circuit.py, compiler.py, toolchain.py, devices.py, ...
                   the ngspice-side toolchain (reference simulations, VA->OSDI
-                  compile cache, PDK discovery, `python -m lightspice doctor`)
+                  compile cache, PDK discovery, `python -m photonflux doctor`)
 models/           Verilog-A photonic model library (single source of truth)
 vendor/BSIM4/     cogenda BSIM4.8 Verilog-A (the SKY130 device physics)
 examples/         circulax examples (links + ring-modulator testbench)
@@ -196,7 +196,7 @@ dylibs; the ChipFlow fork already carries that fix.)
 
 ## Known circulax/bosdi gotchas
 
-Documented in detail in the `lightspice/cx.py` docstrings and pinned by
+Documented in detail in the `photonflux/cx.py` docstrings and pinned by
 tests; the short list: bosdi's `$mfactor` defaults to 0 (cx passes 1.0 and
 NaN-fills not-given params), ngspice `showmod` reports `tnom` in Kelvin (cx
 converts), and with OSDI devices in a complex-valued system use fixed-step

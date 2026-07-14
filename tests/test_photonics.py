@@ -6,7 +6,7 @@ they catch model regressions and toolchain breakage alike.
 import numpy as np
 import pytest
 
-import lightspice as ls
+import photonflux as ls
 
 
 def _laser_op(eng, v_drive: float, **params) -> float:

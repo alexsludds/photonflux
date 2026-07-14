@@ -1,6 +1,6 @@
 """Batch pre-extraction of SKY130 FET model cards (one ngspice library parse).
 
-``lightspice.cx.sky130_card`` extracts one BSIM4 card per call, and each call
+``photonflux.cx.sky130_card`` extracts one BSIM4 card per call, and each call
 re-loads the volare corner library — the ~30-80 s cost. An AC/DC *sweep* over
 ``w_um``/``l_um`` needs a distinct card per value, so doing them one at a time
 is minutes of the same library parse repeated.
@@ -18,7 +18,7 @@ from __future__ import annotations
 import json
 import re
 
-from lightspice import cx, toolchain
+from photonflux import cx, toolchain
 
 _CACHE = toolchain.MODELS_DIR / "__jax__"
 _CARD_RE = re.compile(r"^\s*([a-z0-9_]+)\s+(-?[0-9][0-9.eE+-]*)\s*$")
@@ -56,7 +56,7 @@ def prewarm(device: str, geoms: list[tuple[float, float]], corner: str = "tt") -
     lines.append("Vg g 0 0")
     lines.append(".end")
 
-    from lightspice._ngspice import NgSpice
+    from photonflux._ngspice import NgSpice
 
     ng = NgSpice.get()
     ng.load_netlist("\n".join(lines))

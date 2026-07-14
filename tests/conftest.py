@@ -1,6 +1,6 @@
 import pytest
 
-import lightspice as ls
+import photonflux as ls
 
 
 @pytest.fixture(scope="session")

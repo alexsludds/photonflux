@@ -1,0 +1,148 @@
+{
+  "title": "09 \u2014 DML vs rate-equation laser: turn-on delay + relaxation oscillations",
+  "group": "Lasers & modulators",
+  "schematic": {
+    "instances": {
+      "VP1": {
+        "type": "vpulse",
+        "x": 100,
+        "y": 160,
+        "rot": 0,
+        "settings": {
+          "v1": 0.0,
+          "v2": 2.7,
+          "td": 1e-09,
+          "tr": 5e-11,
+          "tf": 5e-11,
+          "pw": 1e-06,
+          "per": 2e-06
+        }
+      },
+      "GNDV": {
+        "type": "ground",
+        "x": 100,
+        "y": 264,
+        "rot": 0,
+        "settings": {}
+      },
+      "R1": {
+        "type": "resistor",
+        "x": 220,
+        "y": 130,
+        "rot": 0,
+        "settings": {
+          "R": 25.0
+        }
+      },
+      "R2": {
+        "type": "resistor",
+        "x": 220,
+        "y": 270,
+        "rot": 0,
+        "settings": {
+          "R": 25.0
+        }
+      },
+      "LD1": {
+        "type": "laser_dml",
+        "x": 360,
+        "y": 120,
+        "rot": 0,
+        "settings": {
+          "Ith": 0.019,
+          "slope": 0.3
+        }
+      },
+      "LR1": {
+        "type": "laser_rate",
+        "x": 360,
+        "y": 260,
+        "rot": 0,
+        "settings": {}
+      },
+      "GND1": {
+        "type": "ground",
+        "x": 300,
+        "y": 250,
+        "rot": 0,
+        "settings": {}
+      },
+      "GND2": {
+        "type": "ground",
+        "x": 380,
+        "y": 224,
+        "rot": 0,
+        "settings": {}
+      },
+      "GND3": {
+        "type": "ground",
+        "x": 300,
+        "y": 390,
+        "rot": 0,
+        "settings": {}
+      },
+      "GND4": {
+        "type": "ground",
+        "x": 380,
+        "y": 364,
+        "rot": 0,
+        "settings": {}
+      }
+    },
+    "wires": [
+      {
+        "from": "VP1,p1",
+        "to": "R1,p1"
+      },
+      {
+        "from": "VP1,p1",
+        "to": "R2,p1"
+      },
+      {
+        "from": "VP1,p2",
+        "to": "GNDV,p1"
+      },
+      {
+        "from": "R1,p2",
+        "to": "LD1,an"
+      },
+      {
+        "from": "LD1,cat",
+        "to": "GND1,p1"
+      },
+      {
+        "from": "LD1,gnd",
+        "to": "GND2,p1"
+      },
+      {
+        "from": "R2,p2",
+        "to": "LR1,an"
+      },
+      {
+        "from": "LR1,cat",
+        "to": "GND3,p1"
+      },
+      {
+        "from": "LR1,gnd",
+        "to": "GND4,p1"
+      }
+    ],
+    "probes": [
+      {
+        "name": "p_dml",
+        "at": "LD1,pout",
+        "color": "#e6862c"
+      },
+      {
+        "name": "p_rate",
+        "at": "LR1,pout",
+        "color": "#31a354"
+      }
+    ]
+  },
+  "analysis": {
+    "mode": "transient",
+    "t_stop": 8e-09,
+    "points": 1600
+  }
+}

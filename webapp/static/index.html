@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>lightspice — photonic circuit editor</title>
+<link rel="stylesheet" href="/vendor/uPlot.min.css">
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<header id="toolbar">
+  <div class="brand">light<span>spice</span></div>
+  <button id="btn-new" title="Clear schematic">New</button>
+  <select id="sel-example" title="Load an example circuit">
+    <option value="">Examples…</option>
+  </select>
+  <button id="btn-save" title="Download schematic as JSON (Cmd+S)">Save</button>
+  <button id="btn-load" title="Load schematic JSON">Load</button>
+  <input type="file" id="file-load" accept=".json" hidden>
+  <span class="sep"></span>
+  <button id="btn-undo" title="Undo (Cmd+Z)">&#x21A9;</button>
+  <button id="btn-redo" title="Redo (Shift+Cmd+Z)">&#x21AA;</button>
+  <span class="sep"></span>
+  <label class="an-label">Analysis
+    <select id="sel-analysis">
+      <option value="transient">Transient</option>
+      <option value="dc">DC operating point</option>
+      <option value="ac">AC (S-parameters)</option>
+      <option value="noise">Noise (small-signal)</option>
+      <option value="pulse">Pulse / COM</option>
+      <option value="optimize">Optimize</option>
+    </select>
+  </label>
+  <span id="analysis-settings">
+    <span class="an-group" data-mode="transient">
+      <label>t_stop <input id="an-tstop" type="text" value="4n" size="5"> s</label>
+      <label>points <input id="an-points" type="text" value="800" size="5"></label>
+      <label>solver
+        <select id="an-solver">
+          <option value="">auto</option>
+          <option value="adaptive">adaptive</option>
+          <option value="bdf2">fixed BDF2</option>
+        </select>
+      </label>
+      <label>max&nbsp;dt <input id="an-dtmax" type="text" value="" size="5" placeholder="auto"> s</label>
+      <label title="BER/Q link report against the PRBS source's known data — pick the received probe. FFE/DFE taps are data-aided least-squares (0 = off).">
+        BER&nbsp;vs <select id="an-link-probe"><option value="">—</option></select></label>
+      <label>FFE <input id="an-link-ffe" type="text" value="0" size="2"></label>
+      <label>DFE <input id="an-link-dfe" type="text" value="0" size="2"></label>
+      <label title="Transient noise: photodiode shot noise, laser RIN (set rin_db < 0 on the CW laser) and TIA input noise, band-limited to bw. N seeds re-run the compiled circuit; the eye and BER report pool all seeds.">
+        noise <input id="an-nz-seeds" type="text" value="" size="2"
+          placeholder="off"> seeds</label>
+      <label>bw <input id="an-nz-bw" type="text" value="50G" size="4"> Hz</label>
+    </span>
+    <span class="an-group" data-mode="noise" hidden
+          title="Output-referred voltage noise density at the chosen probe: resistor thermal (incl. PDK), TIA in_noise, diode shot. Electrical circuits only; use transient noise seeds for optical chains.">
+      <label>from <input id="an-nq-fstart" type="text" value="1meg" size="5"> Hz</label>
+      <label>to <input id="an-nq-fstop" type="text" value="100G" size="5"> Hz</label>
+      <label>points <input id="an-nq-points" type="text" value="121" size="4"></label>
+      <label>at <select id="an-nq-probe"></select></label>
+    </span>
+    <span class="an-group" data-mode="optimize" hidden
+          title="Nelder-Mead over up to 4 instance parameters (runtime or compile-time), objective from: expr:<name> (a scalar from the fx panel), eye:<probe> (inner eye opening, needs a PRBS source), ber:<probe> (Q-fit BER, minimized), fom (pulse/COM). The inner run is a transient with the fields here; finite-difference sensitivities are reported at the optimum.">
+      <label>params <input id="an-op-params" type="text" size="26"
+        placeholder="MN1.w_um=0.5:4, R1.R=100:1k"></label>
+      <label>objective <input id="an-op-obj" type="text" size="9"
+        placeholder="eye:vout"></label>
+      <label>iters <input id="an-op-iters" type="text" value="30" size="3"></label>
+      <label>t_stop <input id="an-op-tstop" type="text" value="25.6n" size="5"> s</label>
+      <label>points <input id="an-op-points" type="text" value="4000" size="5"></label>
+    </span>
+    <span class="an-group" data-mode="pulse" hidden
+          title="Runs the PRBS source in single-pulse mode, extracts the symbol-spaced pulse response at the probe, designs a Wiener FFE/DFE and reports a COM-style FOM.">
+      <label>t_stop <input id="an-pl-tstop" type="text" value="8n" size="5"> s</label>
+      <label>points <input id="an-pl-points" type="text" value="2000" size="5"></label>
+      <label>probe <select id="an-pl-probe"></select></label>
+      <label>FFE <input id="an-pl-ffe" type="text" value="5" size="2"></label>
+      <label>DFE <input id="an-pl-dfe" type="text" value="1" size="2"></label>
+    </span>
+    <span class="an-group" data-mode="ac" hidden
+          title="Pairs probes by name: in_<x> drives, out_<x> responds. Reports |S21| and |h21| (f_T at 0 dB).">
+      <label>from <input id="an-ac-fstart" type="text" value="1meg" size="5"> Hz</label>
+      <label>to <input id="an-ac-fstop" type="text" value="1T" size="5"> Hz</label>
+      <label>points <input id="an-ac-points" type="text" value="121" size="4"></label>
+      <label>z0 <input id="an-ac-z0" type="text" value="50" size="4"> &#8486;</label>
+    </span>
+  </span>
+  <button id="btn-run" title="Run simulation (Cmd+Enter)">&#9654; Run</button>
+  <button id="btn-runcfg" class="caret" aria-expanded="false"
+    title="Run configuration — sweep a parameter and overlay runs">&#9662;</button>
+  <span id="run-status"></span>
+</header>
+
+<div id="runcfg-panel" hidden>
+  <label class="rc-enable">
+    <input type="checkbox" id="rc-enable"> Sweep a parameter and overlay runs
+  </label>
+  <div id="rc-body">
+    <div class="rc-row">
+      <span class="an-label">sweep</span>
+      <select id="rc-inst"></select>
+      <select id="rc-param"></select>
+      <label>values <input id="rc-values" type="text" size="22"
+        placeholder="0.02, 0.05, 0.1, 0.2   or   0.02:0.2:5"
+        title="Comma-separated values, or start:stop:count"></label>
+    </div>
+    <div class="rc-row">
+      <label class="rc-2nd"><input type="checkbox" id="rc-2nd-on"> then</label>
+      <select id="rc-inst2" disabled></select>
+      <select id="rc-param2" disabled></select>
+      <label>values <input id="rc-values2" type="text" size="16" disabled
+        placeholder="0.01, 0.02"
+        title="Optional 2nd parameter (nested); on DC this is the fast vectorized step"></label>
+    </div>
+    <div class="rc-row">
+      <label>colors
+        <select id="rc-colormode">
+          <option value="shaded">shaded family</option>
+          <option value="distinct">distinct hue / run</option>
+        </select></label>
+      <span id="rc-hint" class="rc-hint">runs the current analysis once per value and overlays the plots</span>
+      <span id="rc-count" class="rc-count">1 run</span>
+    </div>
+  </div>
+</div>
+
+<div id="main">
+  <aside id="palette">
+    <button id="btn-upva"
+      title="Upload a Verilog-A model: compiled via openvaf/bosdi to a JAX component and added to the palette (all ports electrical; bridge power-domain optical ports with the Field/Power adapters)">
+      + Upload .va&hellip;</button>
+    <div id="palette-items"></div>
+    <div class="palette-hint">
+      Click a part, then click the canvas to place it.<br>
+      <b>Click a port</b> to start a wire.<br>
+      <b>P</b>: probe &nbsp;<b>R</b>: rotate &nbsp;<b>Del</b>: delete<br>
+      Wheel: zoom &nbsp; drag background: pan
+    </div>
+  </aside>
+
+  <div id="canvas-wrap">
+    <svg id="canvas" tabindex="0">
+      <defs>
+        <pattern id="grid" width="20" height="20" patternUnits="userSpaceOnUse">
+          <circle cx="10" cy="10" r="0.8" fill="var(--grid-dot)"/>
+        </pattern>
+      </defs>
+      <rect id="grid-bg" fill="url(#grid)"/>
+      <g id="viewport">
+        <g id="layer-wires"></g>
+        <g id="layer-comps"></g>
+        <g id="layer-probes"></g>
+        <g id="layer-tool"></g>
+      </g>
+    </svg>
+    <div id="canvas-hint"></div>
+  </div>
+
+  <aside id="inspector">
+    <div id="inspector-body"><div class="insp-empty">Nothing selected.<br><br>
+      Select a component to edit its parameters, a wire to inspect the net,
+      or a probe to rename it.</div></div>
+  </aside>
+</div>
+
+<div id="results" class="collapsed">
+  <div id="results-resizer" title="Drag to resize"></div>
+  <div id="results-bar">
+    <button class="rtab active" data-tab="plots">Waveforms</button>
+    <button class="rtab" data-tab="eye">Eye</button>
+    <button class="rtab" data-tab="link">Link</button>
+    <button class="rtab" data-tab="op">Operating point</button>
+    <button class="rtab" data-tab="log">Log</button>
+    <span class="spacer"></span>
+    <button id="btn-exprs" title="Derived-trace expressions">&fnof;x</button>
+    <button id="btn-csv" title="Download results as CSV">CSV</button>
+    <button id="btn-results-toggle" title="Collapse/expand results">&#9650;</button>
+  </div>
+  <div id="expr-panel" hidden>
+    <textarea id="expr-text" rows="4" spellcheck="false"
+      placeholder="one derived trace per line, e.g.&#10;iph [A] = (1.8 - vout) / 500&#10;gain_db [dB] = db(vout / vin)&#10;spectrum = spec(vout)      # extra log-f plot&#10;vpp = pk2pk(vout)          # scalar -> log"></textarea>
+    <div id="expr-hint">traces by probe name + t/x &middot; db dbp abs abs2 sqrt log10 exp
+      deriv integ rms pk2pk min max mean spec psd &middot; applied on Run</div>
+  </div>
+  <div id="results-body">
+    <div id="tab-plots" class="rpane active"></div>
+    <div id="tab-eye" class="rpane">
+      <div id="eye-controls">
+        <label>trace <select id="eye-trace"></select></label>
+        <label>UI <input id="eye-ui" value="100p" size="7"></label>
+        <label>skip <input id="eye-skip" value="10%" size="5"
+          title="Settling time to drop: absolute (2n) or % of the record"></label>
+        <label>levels <select id="eye-mod">
+          <option value="auto" selected>auto</option>
+          <option value="2">NRZ (2)</option>
+          <option value="4">PAM4 (4)</option>
+        </select></label>
+        <span id="eye-metrics"></span>
+      </div>
+      <canvas id="eye-canvas" width="900" height="420"></canvas>
+      <div id="eye-hint" class="insp-empty" hidden></div>
+    </div>
+    <div id="tab-link" class="rpane"></div>
+    <div id="tab-op" class="rpane"></div>
+    <div id="tab-log" class="rpane"><pre id="log-pre"></pre></div>
+  </div>
+</div>
+
+<script src="/vendor/uPlot.iife.min.js"></script>
+<script src="/symbols.js"></script>
+<script src="/app.js"></script>
+</body>
+</html>

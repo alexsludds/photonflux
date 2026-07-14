@@ -1,0 +1,476 @@
+{
+ "title": "29 — 5-stage CMOS ring oscillator: kicked off its metastable point at t = 1 ns, settles to a ~1 ns period set by the 30 fF stage loads",
+ "group": "Electronics — digital",
+ "schematic": {
+  "instances": {
+   "VDD": {
+    "type": "vdc",
+    "x": 60,
+    "y": 40,
+    "rot": 0,
+    "settings": {
+     "V": 3.3
+    }
+   },
+   "GDD": {
+    "type": "ground",
+    "x": 140,
+    "y": 40,
+    "rot": 0,
+    "settings": {}
+   },
+   "VK": {
+    "type": "vpulse",
+    "x": 40,
+    "y": 400,
+    "rot": 0,
+    "settings": {
+     "v1": 0.0,
+     "v2": 3.3,
+     "td": 1e-09,
+     "tr": 2e-10,
+     "tf": 2e-10,
+     "pw": 2e-09,
+     "per": 0.001
+    }
+   },
+   "GK": {
+    "type": "ground",
+    "x": 40,
+    "y": 500,
+    "rot": 0,
+    "settings": {}
+   },
+   "CK": {
+    "type": "capacitor",
+    "x": 160,
+    "y": 380,
+    "rot": 0,
+    "settings": {
+     "C": 5e-15
+    }
+   },
+   "MP0": {
+    "type": "pmos",
+    "x": 240,
+    "y": 140,
+    "rot": 0,
+    "settings": {
+     "Kp": 1e-05,
+     "W": 2e-05,
+     "L": 1e-06,
+     "Vth": -1.0,
+     "lam": 0.0
+    }
+   },
+   "MN0": {
+    "type": "nmos",
+    "x": 240,
+    "y": 300,
+    "rot": 0,
+    "settings": {
+     "Kp": 2e-05,
+     "W": 1e-05,
+     "L": 1e-06,
+     "Vth": 1.0,
+     "lam": 0.0
+    }
+   },
+   "G0": {
+    "type": "ground",
+    "x": 240,
+    "y": 410,
+    "rot": 0,
+    "settings": {}
+   },
+   "C0": {
+    "type": "capacitor",
+    "x": 320,
+    "y": 230,
+    "rot": 0,
+    "settings": {
+     "C": 3e-14
+    }
+   },
+   "GC0": {
+    "type": "ground",
+    "x": 320,
+    "y": 330,
+    "rot": 0,
+    "settings": {}
+   },
+   "MP1": {
+    "type": "pmos",
+    "x": 420,
+    "y": 140,
+    "rot": 0,
+    "settings": {
+     "Kp": 1e-05,
+     "W": 2e-05,
+     "L": 1e-06,
+     "Vth": -1.0,
+     "lam": 0.0
+    }
+   },
+   "MN1": {
+    "type": "nmos",
+    "x": 420,
+    "y": 300,
+    "rot": 0,
+    "settings": {
+     "Kp": 2e-05,
+     "W": 1e-05,
+     "L": 1e-06,
+     "Vth": 1.0,
+     "lam": 0.0
+    }
+   },
+   "G1": {
+    "type": "ground",
+    "x": 420,
+    "y": 410,
+    "rot": 0,
+    "settings": {}
+   },
+   "C1": {
+    "type": "capacitor",
+    "x": 500,
+    "y": 230,
+    "rot": 0,
+    "settings": {
+     "C": 3e-14
+    }
+   },
+   "GC1": {
+    "type": "ground",
+    "x": 500,
+    "y": 330,
+    "rot": 0,
+    "settings": {}
+   },
+   "MP2": {
+    "type": "pmos",
+    "x": 600,
+    "y": 140,
+    "rot": 0,
+    "settings": {
+     "Kp": 1e-05,
+     "W": 2e-05,
+     "L": 1e-06,
+     "Vth": -1.0,
+     "lam": 0.0
+    }
+   },
+   "MN2": {
+    "type": "nmos",
+    "x": 600,
+    "y": 300,
+    "rot": 0,
+    "settings": {
+     "Kp": 2e-05,
+     "W": 1e-05,
+     "L": 1e-06,
+     "Vth": 1.0,
+     "lam": 0.0
+    }
+   },
+   "G2": {
+    "type": "ground",
+    "x": 600,
+    "y": 410,
+    "rot": 0,
+    "settings": {}
+   },
+   "C2": {
+    "type": "capacitor",
+    "x": 680,
+    "y": 230,
+    "rot": 0,
+    "settings": {
+     "C": 3e-14
+    }
+   },
+   "GC2": {
+    "type": "ground",
+    "x": 680,
+    "y": 330,
+    "rot": 0,
+    "settings": {}
+   },
+   "MP3": {
+    "type": "pmos",
+    "x": 780,
+    "y": 140,
+    "rot": 0,
+    "settings": {
+     "Kp": 1e-05,
+     "W": 2e-05,
+     "L": 1e-06,
+     "Vth": -1.0,
+     "lam": 0.0
+    }
+   },
+   "MN3": {
+    "type": "nmos",
+    "x": 780,
+    "y": 300,
+    "rot": 0,
+    "settings": {
+     "Kp": 2e-05,
+     "W": 1e-05,
+     "L": 1e-06,
+     "Vth": 1.0,
+     "lam": 0.0
+    }
+   },
+   "G3": {
+    "type": "ground",
+    "x": 780,
+    "y": 410,
+    "rot": 0,
+    "settings": {}
+   },
+   "C3": {
+    "type": "capacitor",
+    "x": 860,
+    "y": 230,
+    "rot": 0,
+    "settings": {
+     "C": 3e-14
+    }
+   },
+   "GC3": {
+    "type": "ground",
+    "x": 860,
+    "y": 330,
+    "rot": 0,
+    "settings": {}
+   },
+   "MP4": {
+    "type": "pmos",
+    "x": 960,
+    "y": 140,
+    "rot": 0,
+    "settings": {
+     "Kp": 1e-05,
+     "W": 2e-05,
+     "L": 1e-06,
+     "Vth": -1.0,
+     "lam": 0.0
+    }
+   },
+   "MN4": {
+    "type": "nmos",
+    "x": 960,
+    "y": 300,
+    "rot": 0,
+    "settings": {
+     "Kp": 2e-05,
+     "W": 1e-05,
+     "L": 1e-06,
+     "Vth": 1.0,
+     "lam": 0.0
+    }
+   },
+   "G4": {
+    "type": "ground",
+    "x": 960,
+    "y": 410,
+    "rot": 0,
+    "settings": {}
+   },
+   "C4": {
+    "type": "capacitor",
+    "x": 1040,
+    "y": 230,
+    "rot": 0,
+    "settings": {
+     "C": 3e-14
+    }
+   },
+   "GC4": {
+    "type": "ground",
+    "x": 1040,
+    "y": 330,
+    "rot": 0,
+    "settings": {}
+   }
+  },
+  "wires": [
+   {
+    "from": "VDD,p2",
+    "to": "GDD,p1"
+   },
+   {
+    "from": "VK,p2",
+    "to": "GK,p1"
+   },
+   {
+    "from": "VK,p1",
+    "to": "CK,p1"
+   },
+   {
+    "from": "VDD,p1",
+    "to": "MP0,s"
+   },
+   {
+    "from": "MP0,d",
+    "to": "MN0,d"
+   },
+   {
+    "from": "MN0,s",
+    "to": "G0,p1"
+   },
+   {
+    "from": "MP0,d",
+    "to": "C0,p1"
+   },
+   {
+    "from": "C0,p2",
+    "to": "GC0,p1"
+   },
+   {
+    "from": "VDD,p1",
+    "to": "MP1,s"
+   },
+   {
+    "from": "MP1,d",
+    "to": "MN1,d"
+   },
+   {
+    "from": "MN1,s",
+    "to": "G1,p1"
+   },
+   {
+    "from": "MP1,d",
+    "to": "C1,p1"
+   },
+   {
+    "from": "C1,p2",
+    "to": "GC1,p1"
+   },
+   {
+    "from": "VDD,p1",
+    "to": "MP2,s"
+   },
+   {
+    "from": "MP2,d",
+    "to": "MN2,d"
+   },
+   {
+    "from": "MN2,s",
+    "to": "G2,p1"
+   },
+   {
+    "from": "MP2,d",
+    "to": "C2,p1"
+   },
+   {
+    "from": "C2,p2",
+    "to": "GC2,p1"
+   },
+   {
+    "from": "VDD,p1",
+    "to": "MP3,s"
+   },
+   {
+    "from": "MP3,d",
+    "to": "MN3,d"
+   },
+   {
+    "from": "MN3,s",
+    "to": "G3,p1"
+   },
+   {
+    "from": "MP3,d",
+    "to": "C3,p1"
+   },
+   {
+    "from": "C3,p2",
+    "to": "GC3,p1"
+   },
+   {
+    "from": "VDD,p1",
+    "to": "MP4,s"
+   },
+   {
+    "from": "MP4,d",
+    "to": "MN4,d"
+   },
+   {
+    "from": "MN4,s",
+    "to": "G4,p1"
+   },
+   {
+    "from": "MP4,d",
+    "to": "C4,p1"
+   },
+   {
+    "from": "C4,p2",
+    "to": "GC4,p1"
+   },
+   {
+    "from": "MP0,d",
+    "to": "MP1,g"
+   },
+   {
+    "from": "MP0,d",
+    "to": "MN1,g"
+   },
+   {
+    "from": "MP1,d",
+    "to": "MP2,g"
+   },
+   {
+    "from": "MP1,d",
+    "to": "MN2,g"
+   },
+   {
+    "from": "MP2,d",
+    "to": "MP3,g"
+   },
+   {
+    "from": "MP2,d",
+    "to": "MN3,g"
+   },
+   {
+    "from": "MP3,d",
+    "to": "MP4,g"
+   },
+   {
+    "from": "MP3,d",
+    "to": "MN4,g"
+   },
+   {
+    "from": "MP4,d",
+    "to": "MP0,g"
+   },
+   {
+    "from": "MP4,d",
+    "to": "MN0,g"
+   },
+   {
+    "from": "CK,p2",
+    "to": "MP0,d"
+   }
+  ],
+  "probes": [
+   {
+    "name": "n1",
+    "at": "MP0,d",
+    "color": "#6ecbf5"
+   },
+   {
+    "name": "n3",
+    "at": "MP2,d",
+    "color": "#e6862c"
+   }
+  ]
+ },
+ "analysis": {
+  "mode": "transient",
+  "t_stop": 5e-08,
+  "points": 5000,
+  "solver": "bdf2"
+ }
+}

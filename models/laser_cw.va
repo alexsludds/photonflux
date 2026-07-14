@@ -1,0 +1,30 @@
+`include "discipline.h"
+`include "constants.h"
+
+module laser_cw(gnd, Ereal, Eimag, Htemp, ampin);
+    inout gnd;
+    output Ereal, Eimag;
+    input Htemp, ampin;
+
+    electrical gnd, Ereal, Eimag, ampin;
+    thermal Htemp;
+
+    // Internal nodes (polar form)
+    electrical Emag, Ephi;
+
+    // Parameters
+    parameter real gain = 1e10;
+    parameter real offsetfreq = 0;
+
+    analog begin
+        // Magnitude from electrical drive
+        V(Emag, gnd) <+ V(ampin);
+
+        // Phase from temperature + offset
+        V(Ephi, gnd) <+ gain * idt(Temp(Htemp) + offsetfreq * 2*`M_PI, 0);
+
+        // Convert polar → cartesian inline
+        V(Ereal, gnd) <+ V(Emag, gnd) * cos(V(Ephi, gnd));
+        V(Eimag, gnd) <+ V(Emag, gnd) * sin(V(Ephi, gnd));
+    end
+endmodule

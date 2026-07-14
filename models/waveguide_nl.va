@@ -1,0 +1,98 @@
+`include "discipline.h"
+`include "constants.h"
+
+`define P_C0 2.99792458e8      // speed of light [m/s]
+`define P_HPL 6.62607015e-34   // Planck constant [J*s]
+
+// Nonlinear silicon waveguide segment: two-photon absorption (TPA), the
+// free-carrier absorption (FCA) of the TPA-generated carriers, Kerr
+// self-phase modulation, and free-carrier dispersion (FCD).
+//
+// Coherent-field convention: optical ports are Ereal/Eimag node pairs with
+// |E|^2 = optical power [W]. The segment is UNIDIRECTIONAL (in -> out).
+//
+// Physics (lumped single segment; cascade instances for long/high-power
+// spans where the intensity changes a lot within one segment):
+//
+//   dP/dz = -alpha*P - (beta/A_eff)*P^2 - sigma*N*P
+//
+//   * linear + TPA use the exact closed form (with I = P_in/A_eff):
+//       T_tpa = exp(-alpha*L) / (1 + beta*I_in*L_eff),
+//       L_eff = (1 - exp(-alpha*L))/alpha
+//   * carriers are one lumped population N [1/m^3] driven by the
+//     segment-average intensity I_avg = (I_in + I_out)/2:
+//       tau_fc*dN/dt = tau_fc * beta*I_avg^2/(2*h*f0) - N
+//     and attenuate as T_fca = exp(-sigma*N*L_eff)
+//   * nonlinear phase (Kerr red + FCD blue), trapezoidal in z — the
+//     segment-average intensity (exact endpoints) over the GEOMETRIC length:
+//       phi = -(2*pi/lambda) * (n2*I_avg + dn_dN*N) * L
+//     second-order accurate: a cascade of N segments converges on the
+//     distributed integral (2*pi*n2/lambda)*int I dz = gamma_kerr*I_in*L_eff
+//     as 1/N^2 (pinned by examples/wg_fwm.py; over L_eff instead it would
+//     double-count the loss and only converge as 1/N)
+//
+// Defaults are silicon-wire numbers (beta ~ 8e-12 m/W, sigma ~ 1.45e-21 m^2,
+// dn/dN ~ -4e-27 m^3 linearised at ~1e23 m^-3, n2 ~ 4.5e-18 m^2/W). Set
+// n2 = dn_dn = 0 for a pure absorption study.
+//
+// Implementation notes: the carrier state rides an internal node scaled to
+// V(nc) = N/Nscl and its row is multiplied through by tau_fc (laser_rate.va
+// idiom); the ddt() coefficient stays CONSTANT (state-dependent decay lives
+// in the resistive terms — the ring_mod_inj.va rule for the bosdi lowering).
+module waveguide_nl(in_re, in_im, out_re, out_im, gnd);
+    inout in_re, in_im, out_re, out_im, gnd;
+    electrical in_re, in_im, out_re, out_im, gnd;
+
+    electrical nc;   // internal: N/Nscl, TPA-generated carrier density
+
+    parameter real lambda_nm   = 1310.0  from (0:inf);  // wavelength [nm]
+    parameter real length_um   = 1000.0  from (0:inf);  // segment length [um]
+    parameter real loss_db_m   = 200.0   from (0:inf);  // linear loss [dB/m]
+    parameter real a_eff_um2   = 0.1     from (0:inf);  // effective area [um^2]
+    parameter real beta_tpa    = 8e-12   from [0:inf);  // TPA coefficient [m/W]
+    parameter real sigma_fca   = 1.45e-21 from [0:inf); // FCA cross-section [m^2]
+    parameter real tau_fc      = 1n      from (0:inf);  // carrier lifetime [s]
+    parameter real n2_kerr     = 4.5e-18;               // Kerr index [m^2/W]
+    parameter real dn_dn       = -4e-27;                // FCD dn/dN [m^3]
+
+    localparam real Nscl = 1e24;   // carrier normalisation [1/m^3]
+
+    real len, aeff, alpha, leff, eph;
+    real pin, iin, t_tpa, nfc, t_fca, tamp, iout, iavg, gen, phi;
+
+    analog begin
+        len   = length_um * 1e-6;
+        aeff  = a_eff_um2 * 1e-12;
+        alpha = loss_db_m * ln(10.0) / 10.0;             // power atten [1/m]
+        leff  = (1.0 - exp(-alpha * len)) / alpha;       // effective length [m]
+        eph   = `P_HPL * `P_C0 / (lambda_nm * 1e-9);       // photon energy [J]
+
+        pin   = V(in_re, gnd)*V(in_re, gnd) + V(in_im, gnd)*V(in_im, gnd);
+        iin   = pin / aeff;                              // input intensity [W/m^2]
+
+        // linear + TPA (exact closed form), then FCA from the carrier state
+        t_tpa = exp(-alpha * len) / (1.0 + beta_tpa * iin * leff);
+        nfc   = V(nc, gnd) * Nscl;
+        t_fca = exp(-sigma_fca * nfc * leff);
+        tamp  = sqrt(t_tpa * t_fca);
+
+        // segment-average intensity feeds carriers and nonlinear phase
+        iout  = iin * t_tpa * t_fca;
+        iavg  = 0.5 * (iin + iout);
+
+        // carrier rate equation, row scaled by tau_fc, node by Nscl
+        gen   = beta_tpa * iavg * iavg / (2.0 * eph);    // pairs [1/m^3/s]
+        I(nc, gnd) <+ tau_fc * ddt(V(nc, gnd)) + V(nc, gnd)
+                      - tau_fc * gen / Nscl;
+
+        // Kerr (n2 > 0: phase lag) + FCD (dn_dN < 0: phase advance),
+        // trapezoidal: average endpoint intensity x geometric length
+        phi = -2.0 * `M_PI / (lambda_nm * 1e-9)
+              * (n2_kerr * iavg + dn_dn * nfc) * len;
+
+        V(out_re, gnd) <+ tamp * (cos(phi) * V(in_re, gnd)
+                                  - sin(phi) * V(in_im, gnd));
+        V(out_im, gnd) <+ tamp * (sin(phi) * V(in_re, gnd)
+                                  + cos(phi) * V(in_im, gnd));
+    end
+endmodule

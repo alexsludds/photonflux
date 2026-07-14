@@ -1,0 +1,41 @@
+{
+  "title": "38 — Nonlinear absorption capping a high-Q ring (models/ring_nl.va): two identical loaded-Q ≈ 1.2e6 rings probed at 1 mW. The lower ring has beta_tpa = 0 (linear reference — deep 1.1 pm Lorentzian); the upper has silicon's TPA + free-carrier absorption of the ~100 mW circulating power, so its dip fills in and broadens ~6×. Above ~0.1 mW in the bus, TPA+FCA — not fabrication loss — sets the achievable Q. Try lowering the laser powers to 1e-6 W to recover matching lines, or re-enable n2_kerr = 4.5e-18 / dn_dn = -4e-27 to bend the hot line",
+  "group": "Passive photonics",
+  "analysis": {
+    "mode": "dcsweep",
+    "instance": "*",
+    "param": "wavelength_nm",
+    "start": 1309.99,
+    "stop": 1310.01,
+    "points": 1501
+  },
+  "schematic": {
+    "instances": {
+      "LASA": {"type": "cw_laser", "x": 60, "y": 120, "rot": 0,
+               "settings": {"wavelength_nm": 1310.0, "power": 1e-3}},
+      "LASB": {"type": "cw_laser", "x": 60, "y": 280, "rot": 0,
+               "settings": {"wavelength_nm": 1310.0, "power": 1e-3}},
+      "RGA": {"type": "ring_nl", "x": 300, "y": 120, "rot": 0,
+              "settings": {"n2_kerr": 0.0, "dn_dn": 0.0}},
+      "RGB": {"type": "ring_nl", "x": 300, "y": 280, "rot": 0,
+              "settings": {"beta_tpa": 0.0, "n2_kerr": 0.0, "dn_dn": 0.0}},
+      "TTA": {"type": "opt_term", "x": 520, "y": 120, "rot": 0, "settings": {}},
+      "TTB": {"type": "opt_term", "x": 520, "y": 280, "rot": 0, "settings": {}},
+      "GND1": {"type": "ground", "x": 80, "y": 400, "rot": 0, "settings": {}}
+    },
+    "wires": [
+      {"from": "LASA,p1", "to": "RGA,pin"},
+      {"from": "LASB,p1", "to": "RGB,pin"},
+      {"from": "RGA,pout", "to": "TTA,p1"},
+      {"from": "RGB,pout", "to": "TTB,p1"},
+      {"from": "LASA,p2", "to": "GND1,p1"},
+      {"from": "LASB,p2", "to": "GND1,p1"},
+      {"from": "RGA,gnd", "to": "GND1,p1"},
+      {"from": "RGB,gnd", "to": "GND1,p1"}
+    ],
+    "probes": [
+      {"name": "t_tpa", "at": "RGA,pout", "color": "#e6862c"},
+      {"name": "t_linear", "at": "RGB,pout", "color": "#6ecbf5"}
+    ]
+  }
+}

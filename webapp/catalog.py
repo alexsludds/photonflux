@@ -1,0 +1,1895 @@
+"""Component catalog for the web schematic editor.
+
+Single source of truth mapping UI component types onto circulax/lightspice
+models. Each entry declares:
+
+  ports    ordered list of {name, domain} — domain is "optical" (complex
+           coherent field, power = |E|^2) or "electrical" (real volts)
+  params   UI-editable settings with defaults/units/descriptions; defaults
+           mirror the underlying component signatures exactly
+  expand   (composites only) how one symbol becomes several circulax
+           instances — used for the ring modulator, which needs the
+           field<->re/im adapters around the Verilog-A core
+
+``build_models()`` returns the models_map for ``circulax.compile_circuit``.
+Heavyweight imports (jax, circulax, lightspice) happen lazily inside it so
+the catalog itself can be served instantly.
+"""
+from __future__ import annotations
+
+from typing import Any
+
+# ---------------------------------------------------------------------------
+# helpers to keep entries terse
+# ---------------------------------------------------------------------------
+
+def _p(name: str, default: float, unit: str, label: str, **kw: Any) -> dict:
+    d = {"name": name, "default": default, "unit": unit, "label": label}
+    d.update(kw)
+    return d
+
+
+def _ports(spec: str) -> list[dict]:
+    """"pin:o pout:o vp:e vn:e" -> port dicts (o=optical, e=electrical)."""
+    out = []
+    for tok in spec.split():
+        name, dom = tok.split(":")
+        out.append({"name": name, "domain": "optical" if dom == "o" else "electrical"})
+    return out
+
+
+# ---------------------------------------------------------------------------
+# the catalog
+# ---------------------------------------------------------------------------
+# NB: symbol geometry (pins' x/y offsets, drawing) lives in the frontend,
+# keyed by the same type id; the backend only cares about ports/params.
+
+CATALOG: dict[str, dict] = {
+    # --- photonic sources & modulators ------------------------------------
+    "cw_laser": {
+        "label": "CW Laser",
+        "category": "Lasers",
+        "doc": "CW laser: constant field E = sqrt(P)*exp(j*phase) across p1/p2 "
+               "(ground p2). All modulation belongs in modulators. For DWDM, "
+               "set ref_wavelength_nm to a shared reference so several lasers "
+               "at different wavelengths become distinct tones on one bus, "
+               "f_off = c*(1/ref - 1/wavelength); 0 = single-carrier (default).",
+        "ports": _ports("p1:o p2:o"),
+        "params": [
+            _p("wavelength_nm", 1310.0, "nm", "Wavelength"),
+            _p("power", 1e-3, "W", "Power"),
+            _p("phase", 0.0, "rad", "Phase"),
+            _p("rin_db", 0.0, "dB/Hz", "RIN (0 = off)"),
+            _p("ref_wavelength_nm", 0.0, "nm", "WDM ref. (0 = single-carrier)"),
+        ],
+    },
+    "mzm": {
+        "label": "Mach-Zehnder Modulator",
+        "category": "Modulators",
+        "doc": "Field-convention MZM: T(V) = IL*(0.5+0.5*eta*cos(pi*(V+vbias)/vpi)); "
+               "electrode capacitance cel loads the driver.",
+        "ports": _ports("pin:o pout:o vp:e vn:e"),
+        "params": [
+            _p("vpi", 3.0, "V", "V-pi"),
+            _p("vbias", 0.0, "V", "Bias offset"),
+            _p("il_db", 3.0, "dB", "Insertion loss"),
+            _p("er_db", 20.0, "dB", "Extinction ratio"),
+            _p("cel", 50e-15, "F", "Electrode cap."),
+        ],
+    },
+    "laser_dml": {
+        "label": "DML Laser (VA)",
+        "category": "Lasers",
+        "doc": "models/laser_dml.va — directly-modulated laser, static L-I: "
+               "P = slope*(I - Ith) above threshold, first-order optical "
+               "response tau. Drive current flows an->cat (linearised diode "
+               "Von/Rs). Power-domain model: pout carries E = sqrt(P), optical "
+               "phase is not modelled. gnd must be grounded.",
+        "ports": _ports("an:e cat:e pout:o gnd:e"),
+        "params": [
+            _p("Ith", 10e-3, "A", "Threshold current"),
+            _p("slope", 0.3, "W/A", "Slope efficiency"),
+            _p("Rs", 5.0, "Ohm", "Series resistance"),
+            _p("Von", 1.2, "V", "Turn-on voltage"),
+            _p("tau", 50e-12, "s", "Optical time const."),
+        ],
+        "expand": {
+            "instances": {
+                "lsr": {"component": "_dml_va", "settings": "ALL"},
+                "p2f": {"component": "_p2f"},
+            },
+            "connections": [("lsr,popt", "p2f,p")],
+            "port_map": {"an": "lsr,an", "cat": "lsr,cat",
+                         "pout": "p2f,c", "gnd": "lsr,gnd"},
+        },
+    },
+    "laser_rate": {
+        "label": "Rate-Eq. Laser (VA)",
+        "category": "Lasers",
+        "doc": "models/laser_rate.va — directly-modulated laser from the "
+               "single-mode rate equations: turn-on delay, relaxation "
+               "oscillations, pattern-dependent ringing (what the static DML "
+               "cannot show). Defaults are a generic 1.31 um DFB: Ith ~19 mA, "
+               "fr ~6 GHz at ~2x threshold. Power-domain model: pout carries "
+               "E = sqrt(P). gnd must be grounded.",
+        # the lasing turn-on is a bifurcation: plain Newton stalls at the
+        # threshold kink, so DC solves add a pseudo-transient settle
+        "hard_dc": True,
+        "ports": _ports("an:e cat:e pout:o gnd:e"),
+        "params": [
+            _p("Rs", 5.0, "Ohm", "Series resistance"),
+            _p("Von", 1.2, "V", "Turn-on voltage"),
+            _p("etai", 0.8, "", "Injection eff."),
+            _p("eta0", 0.4, "", "Optical eff."),
+            _p("Va", 1e-16, "m^3", "Active volume"),
+            _p("Ntr", 1e24, "1/m^3", "Transparency dens."),
+            _p("a0", 2.5e-20, "m^2", "Differential gain"),
+            _p("vg", 7.5e7, "m/s", "Group velocity"),
+            _p("taun", 2e-9, "s", "Carrier lifetime"),
+            _p("taup", 2e-12, "s", "Photon lifetime"),
+            _p("Gam", 0.3, "", "Confinement"),
+            _p("beta", 1e-4, "", "Spont. emission"),
+            _p("eps", 1.5e-23, "m^3", "Gain compression"),
+            _p("Eph", 1.516e-19, "J", "Photon energy"),
+        ],
+        "expand": {
+            "instances": {
+                "lsr": {"component": "_rate_va", "settings": "ALL"},
+                "p2f": {"component": "_p2f"},
+            },
+            "connections": [("lsr,popt", "p2f,p")],
+            "port_map": {"an": "lsr,an", "cat": "lsr,cat",
+                         "pout": "p2f,c", "gnd": "lsr,gnd"},
+        },
+    },
+    "mzm_tw": {
+        "label": "MZM Traveling-Wave (VA)",
+        "category": "Modulators",
+        "doc": "models/mzm_tw.va — traveling-wave MZM. On top of the "
+               "quasi-static cos() transfer it models the two effects that "
+               "set a real TW electrode's EO bandwidth: frequency-dependent "
+               "electrode loss (pole at f_el) and optical/RF velocity "
+               "walk-off (pole at 0.443*c/(|n_rf-n_opt|*len)). Power-domain "
+               "model: optical phase/chirp is discarded — keep coherent "
+               "chains (dispersive fiber) on the field MZM. gnd must be "
+               "grounded.",
+        "ports": _ports("pin:o pout:o vp:e vn:e gnd:e"),
+        "params": [
+            _p("vpi", 1.5, "V", "V-pi"),
+            _p("vbias", 0.0, "V", "Bias offset"),
+            _p("il_db", 3.0, "dB", "Insertion loss"),
+            _p("er_db", 20.0, "dB", "Extinction ratio"),
+            _p("cel", 5e-15, "F", "Pad capacitance"),
+            _p("len_mm", 4.0, "mm", "Electrode length",
+               map={"to": "len", "scale": 1e-3}),
+            _p("n_rf", 2.4, "", "RF group index"),
+            _p("n_opt", 4.2, "", "Optical group index"),
+            _p("f_el", 35e9, "Hz", "Electrode loss BW"),
+            _p("f_el2", 0.0, "Hz", "2nd loss pole (0=off)"),
+        ],
+        "expand": {
+            "instances": {
+                "f2p": {"component": "_f2p"},
+                "twm": {"component": "_tw_va", "settings": "ALL"},
+                "p2f": {"component": "_p2f"},
+            },
+            "connections": [("f2p,p", "twm,pin"), ("twm,pout", "p2f,p")],
+            "port_map": {"pin": "f2p,c", "pout": "p2f,c", "vp": "twm,vp",
+                         "vn": "twm,vn", "gnd": "twm,gnd"},
+        },
+    },
+    "ring_mod_inj": {
+        "label": "Microring, Injection (VA)",
+        "category": "Modulators",
+        "doc": "models/ring_mod_inj.va — carrier-INJECTION microring: "
+               "forward-biased PIN shifter, resonance BLUE-shifts with the "
+               "lifetime-filtered injected current (tau_c limits the "
+               "modulation bandwidth to ~1/(2 pi tau_c) — drive with "
+               "pre-emphasis to beat it), and free-carrier absorption adds "
+               "loss with injection. Contrast with the depletion ring "
+               "(ring_mod). gnd must be grounded.",
+        "stiff": True,   # ps photon + ns carrier scales: default to BDF2
+        "ports": _ports("pin:o pout:o vp:e vn:e gnd:e"),
+        "params": [
+            _p("lambda_nm", 1309.9772, "nm", "Laser wavelength"),
+            _p("lambda_res_nm", 1310.0, "nm", "Resonance (0 mA)"),
+            _p("radius_um", 7.5, "um", "Ring radius"),
+            _p("n_g", 4.0, "", "Group index"),
+            _p("loss_db_m", 3000.0, "dB/m", "Passive loss"),
+            _p("kappa2", 0.05, "", "Power coupling k^2"),
+            _p("tau_c", 1e-9, "s", "Carrier lifetime"),
+            _p("dl_di_pm_ma", 50.0, "pm/mA", "Blue shift"),
+            _p("fca_db_m_ma", 400.0, "dB/m/mA", "FCA loss"),
+            _p("Von", 0.9, "V", "Diode turn-on"),
+            _p("Rs", 50.0, "Ohm", "Series resistance"),
+            _p("cj_ff_um", 1.0, "fF/um", "Junction cap."),
+        ],
+        "expand": {
+            "instances": {
+                "tap": {"component": "_f2ri"},
+                "ring": {"component": "_ring_inj_va", "settings": "ALL"},
+                "join": {"component": "_ri2f"},
+            },
+            "connections": [
+                ("tap,re", "ring,in_re"),
+                ("tap,im", "ring,in_im"),
+                ("ring,out_re", "join,re"),
+                ("ring,out_im", "join,im"),
+            ],
+            "port_map": {
+                "pin": "tap,c", "pout": "join,c",
+                "vp": "ring,vp", "vn": "ring,vn", "gnd": "ring,gnd",
+            },
+        },
+    },
+    "mzm_seg": {
+        "label": "MZM Segmented (VA)",
+        "category": "Modulators",
+        "doc": "models/mzm_seg.va — segmented-electrode MZM (optical DAC): "
+               "three binary-weighted segments (4/7, 2/7, 1/7 of the "
+               "electrode) driven independently synthesise up to 8 phase "
+               "levels from plain digital rails — drive segments 1+2 for "
+               "PAM4. vpi is the full-length half-wave voltage; short "
+               "unused segments (vp = vn). Power-domain model. gnd must "
+               "be grounded.",
+        "ports": _ports("pin:o pout:o vp1:e vn1:e vp2:e vn2:e vp3:e vn3:e gnd:e"),
+        "params": [
+            _p("vpi", 3.0, "V", "V-pi (full length)"),
+            _p("vbias", 1.5, "V", "Bias offset"),
+            _p("il_db", 3.0, "dB", "Insertion loss"),
+            _p("er_db", 20.0, "dB", "Extinction ratio"),
+            _p("cel", 60e-15, "F", "Electrode cap (full)"),
+        ],
+        "expand": {
+            "instances": {
+                "f2p": {"component": "_f2p"},
+                "seg": {"component": "_seg_va", "settings": "ALL"},
+                "p2f": {"component": "_p2f"},
+            },
+            "connections": [("f2p,p", "seg,pin"), ("seg,pout", "p2f,p")],
+            "port_map": {
+                "pin": "f2p,c", "pout": "p2f,c",
+                "vp1": "seg,vp1", "vn1": "seg,vn1",
+                "vp2": "seg,vp2", "vn2": "seg,vn2",
+                "vp3": "seg,vp3", "vn3": "seg,vn3",
+                "gnd": "seg,gnd",
+            },
+        },
+    },
+    "pulse_mod": {
+        "label": "Pulse Modulator (ideal)",
+        "category": "Modulators",
+        "doc": "Ideal intensity modulator carving one power pulse "
+               "p_off -> p_on -> p_off (sigmoid edges) out of a CW field of "
+               "power p_on.",
+        "ports": _ports("pin:o pout:o"),
+        "params": [
+            _p("p_on", 18e-3, "W", "Pulse-top power"),
+            _p("p_off", 3e-3, "W", "Baseline power"),
+            _p("t0", 0.5e-9, "s", "Rise time point"),
+            _p("t1", 2.0e-9, "s", "Fall time point"),
+            _p("tr", 80e-12, "s", "Edge time const."),
+        ],
+    },
+    "ring_mod": {
+        "label": "Microring Modulator (VA)",
+        "category": "Modulators",
+        "doc": "models/ring_mod.va — coupled-mode-theory microring modulator "
+               "compiled from Verilog-A to JAX. gnd must be grounded.",
+        "ports": _ports("pin:o pout:o vp:e vn:e gnd:e"),
+        "params": [
+            _p("lambda_nm", 1309.9772, "nm", "Laser wavelength"),
+            _p("lambda_res_nm", 1310.0, "nm", "Resonance (0 V)"),
+            _p("radius_um", 7.5, "um", "Ring radius"),
+            _p("n_g", 4.0, "", "Group index"),
+            _p("n_eff", 2.4, "", "Effective index"),
+            _p("loss_db_m", 7000.0, "dB/m", "Round-trip loss"),
+            _p("kappa2", 0.10, "", "Power coupling k^2"),
+            _p("dl_dv_pm", 45.0, "pm/V", "Tuning slope"),
+            _p("cj_ff_um", 0.5, "fF/um", "Junction cap."),
+        ],
+        # one symbol -> f2ri adapter + VA ring + ri2f adapter
+        "expand": {
+            "instances": {
+                "tap": {"component": "_f2ri"},
+                "ring": {"component": "_ring_va", "settings": "ALL"},
+                "join": {"component": "_ri2f"},
+            },
+            "connections": [
+                ("tap,re", "ring,in_re"),
+                ("tap,im", "ring,in_im"),
+                ("ring,out_re", "join,re"),
+                ("ring,out_im", "join,im"),
+            ],
+            "port_map": {
+                "pin": "tap,c", "pout": "join,c",
+                "vp": "ring,vp", "vn": "ring,vn", "gnd": "ring,gnd",
+            },
+        },
+    },
+    # --- SOA + cavity building blocks (directed-wave VA models) ------------
+    # These four carry DIRECTED waves: optical inputs are read at infinite
+    # impedance, outputs are driven. Wire outputs to inputs (never output to
+    # output); terminate dark inputs and unused outputs with the optical
+    # terminator.
+    "soa": {
+        "label": "SOA (VA)",
+        "category": "Lasers",
+        "doc": "models/soa.va — semiconductor optical amplifier: lumped "
+               "Agrawal-Olsson gain reservoir tau_c*dh/dt = h0(I) - h - "
+               "(G-1)*P/p_sat, G = e^h. BIDIRECTIONAL: forward (fin->fout) "
+               "and backward (bin->bout) waves share the reservoir, so it "
+               "drops into Fabry-Perot cavities (example 36). h0 is linear "
+               "in bias current: transparent at i_tr, g0_db of gain at i_op "
+               "(linearised diode Von/Rs on an/cat). tau_bw is the gain-"
+               "bandwidth pole AND the cavity memory when a loop is closed "
+               "around it; p_seed is a deterministic ASE stand-in that "
+               "starts lasing and pins the phase. Terminate unused bin/bout "
+               "with optical terminators. gnd must be grounded.",
+        "hard_dc": True,
+        "ports": _ports("fin:o fout:o bin:o bout:o an:e cat:e gnd:e"),
+        "params": [
+            _p("g0_db", 20.0, "dB", "Gain at i_op"),
+            _p("i_op_ma", 80.0, "mA", "Operating current"),
+            _p("i_tr_ma", 8.0, "mA", "Transparency current"),
+            _p("p_sat", 10e-3, "W", "Saturation power"),
+            _p("tau_c", 0.3e-9, "s", "Carrier lifetime"),
+            _p("tau_bw", 1e-12, "s", "Gain-BW pole"),
+            _p("alpha_h", 0.0, "", "Linewidth-enh. factor"),
+            _p("p_seed", 1e-9, "W", "ASE seed power"),
+            _p("Von", 1.2, "V", "Turn-on voltage"),
+            _p("Rs", 3.0, "Ohm", "Series resistance"),
+        ],
+        "expand": {
+            "instances": {
+                "fi": {"component": "_f2ri"},
+                "bi": {"component": "_f2ri"},
+                "amp": {"component": "_soa_va", "settings": "ALL"},
+                "fo": {"component": "_ri2f"},
+                "bo": {"component": "_ri2f"},
+            },
+            "connections": [
+                ("fi,re", "amp,fi_re"), ("fi,im", "amp,fi_im"),
+                ("bi,re", "amp,bi_re"), ("bi,im", "amp,bi_im"),
+                ("amp,fo_re", "fo,re"), ("amp,fo_im", "fo,im"),
+                ("amp,bo_re", "bo,re"), ("amp,bo_im", "bo,im"),
+            ],
+            "port_map": {
+                "fin": "fi,c", "fout": "fo,c", "bin": "bi,c", "bout": "bo,c",
+                "an": "amp,an", "cat": "amp,cat", "gnd": "amp,gnd",
+            },
+        },
+    },
+    "ase_src": {
+        "label": "ASE Noise Source",
+        "category": "Lasers",
+        "doc": "In-line broadband amplified-spontaneous-emission injector: "
+               "E_out = E_in + n(t) with n complex white Gaussian noise of "
+               "one-sided power density s_ase_dbm_hz (white to the transient "
+               "noise bandwidth). Put it inside an SOA laser cavity, set the "
+               "SOA's p_seed to 0, and the laser starts from NOISE — every "
+               "cavity mode is seeded, so mode competition and the winning "
+               "line are emergent (example 37). Physical level: S = "
+               "n_sp*h*nu*(G-1) ~ -144 dBm/Hz for a 20 dB SOA. ACTIVE ONLY "
+               "when the transient's noise seeds >= 1; otherwise a "
+               "transparent pass-through. Directed: pin read, pout driven.",
+        "ports": _ports("pin:o pout:o"),
+        "params": [_p("s_ase_dbm_hz", -144.0, "dBm/Hz", "ASE density")],
+    },
+    "wmirror": {
+        "label": "Mirror 2x2 (VA, waves)",
+        "category": "Photonic Passives",
+        "doc": "models/mirror.va — partial reflector on DIRECTED waves: "
+               "lo = r*e^{j*phi}*li + jt*ri, ro = jt*li + r*e^{j*phi}*ri "
+               "(unitary, r = sqrt(refl)). The cavity-forming twin of the "
+               "nodal Partial Mirror: use it to close loops around the SOA "
+               "(li/lo face the left, ri/ro the right; phi_r_deg trims the "
+               "round-trip phase). Inputs read, outputs drive — terminate "
+               "dark inputs and unused outputs. gnd must be grounded.",
+        "ports": _ports("li:o lo:o ri:o ro:o gnd:e"),
+        "params": [
+            _p("refl", 0.3, "", "Power reflectivity", min=0.0, max=1.0),
+            _p("loss_db", 0.0, "dB", "Excess loss"),
+            _p("phi_r_deg", 0.0, "deg", "Reflection phase"),
+        ],
+        "expand": {
+            "instances": {
+                "l_in": {"component": "_f2ri"},
+                "r_in": {"component": "_f2ri"},
+                "mir": {"component": "_mirror_va", "settings": "ALL"},
+                "l_out": {"component": "_ri2f"},
+                "r_out": {"component": "_ri2f"},
+            },
+            "connections": [
+                ("l_in,re", "mir,li_re"), ("l_in,im", "mir,li_im"),
+                ("r_in,re", "mir,ri_re"), ("r_in,im", "mir,ri_im"),
+                ("mir,lo_re", "l_out,re"), ("mir,lo_im", "l_out,im"),
+                ("mir,ro_re", "r_out,re"), ("mir,ro_im", "r_out,im"),
+            ],
+            "port_map": {
+                "li": "l_in,c", "lo": "l_out,c",
+                "ri": "r_in,c", "ro": "r_out,c", "gnd": "mir,gnd",
+            },
+        },
+    },
+    "ring_comb": {
+        "label": "Ring Filter Comb (VA)",
+        "category": "Photonic Passives",
+        "doc": "models/ring_filter.va — add-drop microring with FIVE "
+               "longitudinal modes (m = -2..+2 at FSR = c/(n_g*2*pi*R)), so "
+               "the resonance COMB is modelled — the Vernier-laser building "
+               "block (example 37). Heater hp/hn is a plain resistor whose "
+               "power red-shifts the whole comb by dl_dmw_pm per mW. "
+               "wavelength_nm is the probe/frame reference: DC-sweep it with "
+               "instance \"*\" to trace the comb. Directed 3-port (in -> "
+               "thru, in -> drop). gnd must be grounded.",
+        "ports": _ports("pin:o thru:o drop:o hp:e hn:e gnd:e"),
+        "params": [
+            _p("wavelength_nm", 1310.0, "nm", "Probe wavelength",
+               map={"to": "lambda_nm"}),
+            _p("lambda_res_nm", 1310.0, "nm", "Cold m=0 resonance"),
+            _p("radius_um", 100.0, "um", "Ring radius"),
+            _p("n_g", 4.0, "", "Group index"),
+            _p("loss_db_m", 100.0, "dB/m", "Propagation loss"),
+            _p("kappa2_in", 0.05, "", "Bus coupling k^2"),
+            _p("kappa2_drop", 0.05, "", "Drop coupling k^2"),
+            _p("dl_dmw_pm", 20.0, "pm/mW", "Thermal shift"),
+            _p("r_heater", 500.0, "Ohm", "Heater resistance"),
+        ],
+        "expand": {
+            "instances": {
+                "tap": {"component": "_f2ri"},
+                "ring": {"component": "_ringcomb_va", "settings": "ALL"},
+                "jt": {"component": "_ri2f"},
+                "jd": {"component": "_ri2f"},
+            },
+            "connections": [
+                ("tap,re", "ring,in_re"), ("tap,im", "ring,in_im"),
+                ("ring,thru_re", "jt,re"), ("ring,thru_im", "jt,im"),
+                ("ring,drop_re", "jd,re"), ("ring,drop_im", "jd,im"),
+            ],
+            "port_map": {
+                "pin": "tap,c", "thru": "jt,c", "drop": "jd,c",
+                "hp": "ring,hp", "hn": "ring,hn", "gnd": "ring,gnd",
+            },
+        },
+    },
+    "ring_kerr": {
+        "label": "Kerr FWM Ring (VA)",
+        "category": "Photonic Passives",
+        "doc": "models/ring_kerr.va — add-drop microring whose FIVE modes "
+               "(m = -2..+2 at the FSR) mix through the intracavity chi(3) "
+               "Kerr nonlinearity: the modal (Lugiato-Lefever) form of "
+               "four-wave mixing in a resonator. Pump one resonance and "
+               "seed the next (two WDM lasers one FSR apart): the idler "
+               "grows in the mode one FSR on the other side (2f_p = f_s + "
+               "f_i, momentum matched), cascading into modes +-2 at mW "
+               "drive — a comb seed (example 40). SPM, XPM (x2) and FWM "
+               "all come from one momentum-matched triple sum; d2_hz (comb "
+               "dispersion) detunes the idler mode off the FWM frequency — "
+               "the ring's phase-matching knob. Pure Kerr, no TPA/FCA "
+               "(that is ring_nl). Directed 3-port (in -> thru, in -> "
+               "drop). gnd must be grounded.",
+        "ports": _ports("pin:o thru:o drop:o gnd:e"),
+        "params": [
+            _p("wavelength_nm", 1310.0, "nm", "Probe wavelength",
+               map={"to": "lambda_nm"}),
+            _p("lambda_res_nm", 1310.0, "nm", "Cold m=0 resonance"),
+            _p("radius_um", 2000.0, "um", "Ring radius"),
+            _p("n_g", 4.0, "", "Group index"),
+            _p("loss_db_m", 30.0, "dB/m", "Propagation loss"),
+            _p("kappa2_in", 0.035, "", "Bus coupling k^2"),
+            _p("kappa2_drop", 0.035, "", "Drop coupling k^2"),
+            _p("a_eff_um2", 0.1, "um^2", "Effective area"),
+            _p("n2_kerr", 4.5e-18, "m^2/W", "Kerr index"),
+            _p("d2_hz", 0.0, "Hz", "Comb dispersion /mode^2"),
+        ],
+        "expand": {
+            "instances": {
+                "tap": {"component": "_f2ri"},
+                "ring": {"component": "_ringkerr_va", "settings": "ALL"},
+                "jt": {"component": "_ri2f"},
+                "jd": {"component": "_ri2f"},
+            },
+            "connections": [
+                ("tap,re", "ring,in_re"), ("tap,im", "ring,in_im"),
+                ("ring,thru_re", "jt,re"), ("ring,thru_im", "jt,im"),
+                ("ring,drop_re", "jd,re"), ("ring,drop_im", "jd,im"),
+            ],
+            "port_map": {
+                "pin": "tap,c", "thru": "jt,c", "drop": "jd,c",
+                "gnd": "ring,gnd",
+            },
+        },
+    },
+    "ring_nl": {
+        "label": "Nonlinear Ring TPA/FCA (VA)",
+        "category": "Photonic Passives",
+        "doc": "models/ring_nl.va — high-Q all-pass ring whose intrinsic "
+               "loss grows with the stored field: two-photon absorption of "
+               "the circulating intensity + free-carrier absorption of the "
+               "TPA-generated carriers (lifetime tau_fc), plus Kerr red / "
+               "free-carrier blue dispersive shifts (set n2_kerr = dn_dn = 0 "
+               "for a pure absorption study). This is why a 1e6-Q silicon "
+               "ring stops being 1e6-Q above ~0.1 mW in the bus (example "
+               "38). Defaults: Q_i ~ 2.8e6, kappa2 = 6e-4 -> loaded Q ~ "
+               "1.2e6 mildly overcoupled. DC-sweep wavelength_nm with "
+               "instance \"*\". Directed 2-port. gnd must be grounded. "
+               "(Solved cold per sweep point — with the dispersive shifts "
+               "enabled the pulled line is bistable and a cold Newton picks "
+               "one branch.)",
+        "ports": _ports("pin:o pout:o gnd:e"),
+        "params": [
+            _p("wavelength_nm", 1310.0, "nm", "Probe wavelength",
+               map={"to": "lambda_nm"}),
+            _p("lambda_res_nm", 1310.0, "nm", "Cold resonance"),
+            _p("radius_um", 10.0, "um", "Ring radius"),
+            _p("n_g", 4.0, "", "Group index"),
+            _p("loss_db_m", 30.0, "dB/m", "Linear intrinsic loss"),
+            _p("kappa2", 6e-4, "", "Bus coupling k^2"),
+            _p("a_eff_um2", 0.1, "um^2", "Mode area"),
+            _p("beta_tpa", 8e-12, "m/W", "TPA coefficient"),
+            _p("sigma_fca", 1.45e-21, "m^2", "FCA cross-section"),
+            _p("tau_fc", 1e-9, "s", "Carrier lifetime"),
+            _p("n2_kerr", 4.5e-18, "m^2/W", "Kerr index"),
+            _p("dn_dn", -4e-27, "m^3", "FCD dn/dN"),
+        ],
+        "expand": {
+            "instances": {
+                "tap": {"component": "_f2ri"},
+                "ring": {"component": "_ringnl_va", "settings": "ALL"},
+                "join": {"component": "_ri2f"},
+            },
+            "connections": [
+                ("tap,re", "ring,in_re"), ("tap,im", "ring,in_im"),
+                ("ring,out_re", "join,re"), ("ring,out_im", "join,im"),
+            ],
+            "port_map": {"pin": "tap,c", "pout": "join,c", "gnd": "ring,gnd"},
+        },
+    },
+    "wg_nl": {
+        "label": "Nonlinear Waveguide (VA)",
+        "category": "Photonic Passives",
+        "doc": "models/waveguide_nl.va — silicon-wire segment with two-"
+               "photon absorption (exact closed form), free-carrier "
+               "absorption of the TPA carriers (lifetime tau_fc), Kerr SPM "
+               "and free-carrier dispersion phase. Lumped single segment: "
+               "cascade several for long/high-power spans. Directed 2-port "
+               "(pin -> pout). gnd must be grounded.",
+        "ports": _ports("pin:o pout:o gnd:e"),
+        "params": [
+            _p("wavelength_nm", 1310.0, "nm", "Wavelength",
+               map={"to": "lambda_nm"}),
+            _p("length_m", 1e-3, "m", "Length",
+               map={"to": "length_um", "scale": 1e6}),
+            _p("loss_db_m", 200.0, "dB/m", "Linear loss"),
+            _p("a_eff_um2", 0.1, "um^2", "Effective area"),
+            _p("beta_tpa", 8e-12, "m/W", "TPA coefficient"),
+            _p("sigma_fca", 1.45e-21, "m^2", "FCA cross-section"),
+            _p("tau_fc", 1e-9, "s", "Carrier lifetime"),
+            _p("n2_kerr", 4.5e-18, "m^2/W", "Kerr index"),
+            _p("dn_dn", -4e-27, "m^3", "FCD dn/dN"),
+        ],
+        "expand": {
+            "instances": {
+                "tap": {"component": "_f2ri"},
+                "wg": {"component": "_wgnl_va", "settings": "ALL"},
+                "join": {"component": "_ri2f"},
+            },
+            "connections": [
+                ("tap,re", "wg,in_re"), ("tap,im", "wg,in_im"),
+                ("wg,out_re", "join,re"), ("wg,out_im", "join,im"),
+            ],
+            "port_map": {"pin": "tap,c", "pout": "join,c", "gnd": "wg,gnd"},
+        },
+    },
+    # --- photonic passives -------------------------------------------------
+    "waveguide": {
+        "label": "Waveguide",
+        "category": "Photonic Passives",
+        "doc": "Single-mode integrated waveguide with first-order dispersion "
+               "and propagation loss (circulax OpticalWaveguide). For a long "
+               "fibre span with real chromatic dispersion use Fiber "
+               "(dispersion) instead. Length in "
+               "meters (SI suffixes work: 100u, 1.5m, 2). wavelength_nm is "
+               "a live parameter — DC-sweep it with instance \"*\" to trace "
+               "spectral responses; interferometer FSR follows the *group* "
+               "index: FSR = lam^2/(n_group*dL).",
+        "ports": _ports("p1:o p2:o"),
+        "params": [
+            # UI is SI meters; circulax wants um -> mapped in simulate.py
+            _p("length_m", 1e-4, "m", "Length",
+               map={"to": "length_um", "scale": 1e6}),
+            _p("loss_dB_cm", 1.0, "dB/cm", "Loss"),
+            _p("neff", 2.4, "", "n_eff"),
+            _p("n_group", 4.0, "", "n_group"),
+            _p("center_wavelength_nm", 1310.0, "nm", "Center wavelength"),
+            _p("wavelength_nm", 1310.0, "nm", "Operating wavelength"),
+        ],
+    },
+    "splitter": {
+        "label": "Y-Splitter",
+        "category": "Photonic Passives",
+        "doc": "Lossless Y-junction; split_ratio of input power goes to p2, "
+               "the rest to p3. Reciprocal: used in reverse (feed p2/p3, "
+               "take p1) it is the coherent combiner of an MZI — "
+               "E_p1 = sqrt(r)*E_p2 + j*sqrt(1-r)*E_p3.",
+        "ports": _ports("p1:o p2:o p3:o"),
+        "params": [_p("split_ratio", 0.5, "", "Split ratio -> p2", min=0.0, max=1.0)],
+    },
+    "dir_coupler": {
+        "label": "Directional Coupler",
+        "category": "Photonic Passives",
+        "doc": "2x2 beamsplitter: inputs p1/p2 (left), outputs p3/p4 "
+               "(right). Bar p1->p3 / p2->p4 with sqrt(1-coupling), cross "
+               "p1->p4 / p2->p3 with j*sqrt(coupling) (unitary). Reciprocal "
+               "— feed any port. Terminate unused ports with the optical "
+               "terminator: an open optical port reflects.",
+        "ports": _ports("p1:o p2:o p3:o p4:o"),
+        "params": [_p("coupling", 0.5, "", "Power coupling", min=0.0, max=1.0)],
+    },
+    "photodiode": {
+        "label": "Photodiode",
+        "category": "Detectors & Bridges",
+        "doc": "PIN photodiode bridge: matched optical absorber (po_p/po_n), "
+               "photocurrent Iph = R*|E|^2 + Idk into an/cat with junction "
+               "capacitance Cj. Optional intrinsic (transit-time) bandwidth "
+               "f_3dB (two real poles; 0 = unlimited) and soft output "
+               "saturation current (0 = off). Shot noise 2q*Iph is used by "
+               "the noise analyses.",
+        "ports": _ports("po_p:o po_n:o an:e cat:e"),
+        "params": [
+            _p("R", 0.8, "A/W", "Responsivity"),
+            _p("Idk", 1e-9, "A", "Dark current"),
+            _p("Cj", 100e-15, "F", "Junction cap."),
+            _p("f3db", 0.0, "Hz", "Transit BW (0 = inf)"),
+            _p("isat", 0.0, "A", "Saturation (0 = off)"),
+        ],
+    },
+    "channel": {
+        "label": "Copper Channel",
+        "category": "Channels",
+        "doc": "Parametric PCB/cable channel: sqrt(f) skin-effect loss "
+               "(loss_db at f_nyq) with minimum phase, vector-fitted to a "
+               "compact state-space at compile time (parameter edits "
+               "recompile). Voltage-transfer block: high-Z input, driven "
+               "output — add your own source/termination resistors. The "
+               "same shape as the user's serdes channel.py.",
+        "ports": _ports("inp:e out:e"),
+        "params": [
+            _p("loss_db", 10.0, "dB", "Loss @ f_nyq", rebuild=True),
+            _p("f_nyq", 14e9, "Hz", "Nyquist freq", rebuild=True),
+            _p("n_poles", 10, "", "Fit order", rebuild=True),
+        ],
+        "lti": "chan",
+    },
+    "s2p_channel": {
+        "label": "S2P Channel (file)",
+        "category": "Channels",
+        "doc": "Two-port from a Touchstone .s2p file: the matched-"
+               "termination insertion transfer S21/2 is vector-fitted to a "
+               "state-space (fit error logged). Input presents a z0 shunt, "
+               "output is driven. Upload the file with the inspector "
+               "button; the matched approximation ignores re-reflections "
+               "with your actual source/load.",
+        "ports": _ports("inp:e out:e"),
+        "params": [
+            _p("file", "", "", "Touchstone file", rebuild=True, kind="file"),
+            _p("z0", 50.0, "Ohm", "Reference Z", rebuild=True),
+            _p("n_poles", 12, "", "Fit order", rebuild=True),
+        ],
+        "lti": "s2p",
+    },
+    "fiber_cd": {
+        "label": "Fiber (dispersion)",
+        "category": "Channels",
+        "doc": "Chromatic dispersion on the coherent field: the all-pass "
+               "exp(-j*(beta2/2*w^2 + beta3/6*w^3)*L) (+ flat attenuation) "
+               "vector-fitted over +-fit_bw with a causal transit delay "
+               "(waveforms arrive later — that's the fiber's latency). "
+               "C-band: set D (and optionally slope S). O-band / near the "
+               "zero-dispersion wavelength: set lambda0_nm > 0 and S (read "
+               "as S0) — D(lambda) then follows the G.652 profile "
+               "S0/4*(l - l0^4/l^3) and the beta3 slope term dominates, so "
+               "the model stays correct where D ~ 0. Compile-time fit; the "
+               "log reports D, beta2*L, beta3*L and fit error. Keep fit_bw "
+               "~3x the signal bandwidth.",
+        "ports": _ports("p1:o p2:o"),
+        "params": [
+            _p("length_km", 10.0, "km", "Length", rebuild=True),
+            _p("D_ps", 17.0, "ps/nm/km", "Dispersion D", rebuild=True),
+            _p("S_ps", 0.0, "ps/nm^2/km", "Slope S (S0 if l0 set)",
+               rebuild=True),
+            _p("lambda0_nm", 0.0, "nm", "Zero-disp. l0 (0 = use D)",
+               rebuild=True),
+            _p("lambda_nm", 1550.0, "nm", "Wavelength", rebuild=True),
+            _p("atten_db_km", 0.2, "dB/km", "Attenuation", rebuild=True),
+            _p("fit_bw", 60e9, "Hz", "Fit bandwidth", rebuild=True),
+            _p("n_poles", 28, "", "Fit order", rebuild=True),
+        ],
+        "lti": "fiber",
+    },
+    # --- passive integrated optics (coherent field, wavelength-aware) -------
+    "grating": {
+        "label": "Grating Coupler",
+        "category": "Photonic Passives",
+        "doc": "Grating coupler: Gaussian spectral response — insertion loss "
+               "grows quadratically with detuning from center_wavelength_nm "
+               "(bandwidth_1dB = full 1 dB width) — plus a finite "
+               "back-reflection at the fiber interface (back_refl_db return "
+               "loss, ~25 dB for a typical uniform GC; clamped to keep the "
+               "2-port passive). Two gratings on one chip therefore form a "
+               "weak parasitic Fabry-Perot — the ripple real measurements "
+               "show. wavelength_nm is live: include it in a \"*\" "
+               "wavelength sweep to see the passband.",
+        "ports": _ports("grating:o waveguide:o"),
+        "params": [
+            _p("center_wavelength_nm", 1310.0, "nm", "Center wavelength"),
+            _p("peak_loss_dB", 1.5, "dB", "Peak insertion loss"),
+            _p("bandwidth_1dB", 20.0, "nm", "1 dB bandwidth"),
+            _p("back_refl_db", 25.0, "dB", "Back-reflection (RL)"),
+            _p("wavelength_nm", 1310.0, "nm", "Operating wavelength"),
+        ],
+    },
+    "opt_mirror": {
+        "label": "Partial Mirror",
+        "category": "Photonic Passives",
+        "doc": "Partially reflective element (facet, DBR, loop mirror): "
+               "S11 = S22 = √R, S12 = S21 = j√(1-R) — the j keeps the "
+               "lossless 2-port unitary; il_db adds excess loss to both "
+               "paths. R = 0 is a transparent thru, R -> 1 a hard mirror "
+               "(clamped at 0.995 for conditioning). Two of these around a "
+               "waveguide make a Fabry-Perot cavity solved self-consistently "
+               "by the nodal field solve (example 35): FSR = "
+               "lam^2/(2*n_group*L), finesse = pi*sqrt(r1*r2*a)/(1-r1*r2*a).",
+        "ports": _ports("p1:o p2:o"),
+        "params": [
+            _p("R", 0.9, "", "Power reflectivity"),
+            _p("il_db", 0.0, "dB", "Excess loss"),
+        ],
+    },
+    "opt_term": {
+        "label": "Opt. Terminator",
+        "category": "Photonic Passives",
+        "doc": "Optical absorber terminating a port. Real terminations are "
+               "not perfectly matched: return_loss_db sets the residual "
+               "reflection (40 dB default — a good index-matched absorber; "
+               "raise it to 60+ dB for an ideal load). Terminate unused "
+               "splitter/coupler ports and probe transmission at its node — "
+               "an open optical port reflects like an open transmission "
+               "line.",
+        "ports": _ports("p1:o"),
+        "params": [
+            _p("return_loss_db", 40.0, "dB", "Return loss"),
+        ],
+    },
+    "opt_filter": {
+        "label": "Tunable Add-Drop Filter",
+        "category": "Photonic Passives",
+        "doc": "Tunable optical add-drop filter acting on the coherent field: a "
+               "Butterworth (maximally-flat, flat-top) response of the given "
+               "order, mapped to the baseband envelope around the carrier and "
+               "realised as a compile-time state-space filter, so it filters "
+               "the modulation sidebands (narrowing bandwidth_nm below the "
+               "signal bandwidth cuts the sidebands and closes the eye). Three "
+               "ports: pin (input), drop (the selected channel, Butterworth "
+               "lowpass in the shifted frame), and thru (the power-"
+               "complementary same-pole highpass, |H_drop|^2+|H_thru|^2 = 1 — "
+               "a unitary add-drop like a real lossless filter). FWHM = "
+               "bandwidth_nm at -3 dB; higher order = flatter top / steeper "
+               "skirts. Tune center_nm relative to lambda_nm (the reference/"
+               "carrier). Cascade them (thru -> next pin), each tuned to a "
+               "different wavelength, to demultiplex a WDM bus. il_db applies "
+               "to the drop path.",
+        "ports": _ports("pin:o drop:o thru:o"),
+        "params": [
+            _p("center_nm", 1310.0, "nm", "Center (tunable)", rebuild=True),
+            _p("bandwidth_nm", 0.6, "nm", "Bandwidth (FWHM)", rebuild=True),
+            _p("order", 3.0, "", "Butterworth order", rebuild=True),
+            _p("il_db", 0.0, "dB", "Insertion loss", rebuild=True),
+            _p("lambda_nm", 1310.0, "nm", "Carrier wavelength", rebuild=True),
+        ],
+        "lti": "filter",
+    },
+    "tia": {
+        "label": "TIA (macro)",
+        "category": "Amplifiers & EQ",
+        "doc": "Behavioural transimpedance amplifier: `inp` is a virtual-"
+               "ground current input, `out` drives -gain*Iin through a two-"
+               "real-pole response (-3 dB at f3db) with an optional tanh "
+               "swing limit (0 = off). in_noise is the input-referred "
+               "current noise density used by the noise analyses. Parameter "
+               "names follow the user's behavioural TIA conventions.",
+        "ports": _ports("inp:e out:e"),
+        "params": [
+            _p("gain_ohm", 10e3, "Ohm", "Transimpedance"),
+            _p("f3db", 20e9, "Hz", "Bandwidth"),
+            _p("vmax", 0.0, "V", "Swing limit (0 = off)"),
+            _p("in_noise", 0.0, "A/rtHz", "Input noise"),
+        ],
+    },
+    "ctle": {
+        "label": "CTLE",
+        "category": "Amplifiers & EQ",
+        "doc": "Continuous-time linear equalizer, 1 zero / 2 poles: "
+               "A_dc*(1+s/wz)/((1+s/wp1)(1+s/wp2)). The zero is placed "
+               "peaking_db below f_p1 and A_dc = 1/peaking so the peaked "
+               "band sits at ~0 dB while low frequencies are attenuated — "
+               "the standard receive-side ISI equalizer shape. "
+               "High-impedance input, driven output.",
+        "ports": _ports("inp:e out:e"),
+        "params": [
+            _p("peaking_db", 6.0, "dB", "Peaking"),
+            _p("f_p1", 10e9, "Hz", "First pole"),
+            _p("fp2_mult", 2.0, "x", "2nd pole mult."),
+            _p("A_out", 1.0, "V/V", "Output scale"),
+        ],
+    },
+    # --- electrical sources -------------------------------------------------
+    "vdc": {
+        "label": "DC Voltage",
+        "category": "Sources",
+        "doc": "Step voltage source: V after `delay`, 0 before.",
+        "ports": _ports("p1:e p2:e"),
+        "params": [_p("V", 1.0, "V", "Voltage"), _p("delay", 0.0, "s", "Delay")],
+    },
+    "vpulse": {
+        "label": "Pulse Voltage",
+        "category": "Sources",
+        "doc": "SPICE-style PULSE(v1 v2 td tr tf pw per) source.",
+        "ports": _ports("p1:e p2:e"),
+        "params": [
+            _p("v1", 0.0, "V", "Low level"),
+            _p("v2", 1.0, "V", "High level"),
+            _p("td", 1e-9, "s", "Delay"),
+            _p("tr", 2e-10, "s", "Rise"),
+            _p("tf", 2e-10, "s", "Fall"),
+            _p("pw", 2e-9, "s", "Pulse width"),
+            _p("per", 5e-9, "s", "Period"),
+        ],
+    },
+    "vsin": {
+        "label": "Sine Voltage",
+        "category": "Sources",
+        "doc": "V*sin(2*pi*freq*t + phase) after `delay`.",
+        "ports": _ports("p1:e p2:e"),
+        "params": [
+            _p("V", 1.0, "V", "Amplitude"),
+            _p("freq", 1e9, "Hz", "Frequency"),
+            _p("phase", 0.0, "rad", "Phase"),
+            _p("delay", 0.0, "s", "Delay"),
+        ],
+    },
+    "prbs": {
+        "label": "PRBS / Pattern Source",
+        "category": "Sources",
+        "doc": "Serial-data pattern source: PRBS7/9/11/15/23/31 (LFSR), NRZ "
+               "or Gray-coded PAM4 levels between v0/v1, raised-cosine edges. "
+               "Optional TX FFE pre/post-cursor de-emphasis (dB), RLM "
+               "predistortion for a quadrature-biased MZM (set rlm_vpi to "
+               "its V-pi), and RJ/PJ/DCD jitter on the edge times. "
+               "mode=pulse emits one isolated UI for pulse-response runs. "
+               "The waveform is baked at compile time: parameter edits "
+               "recompile the circuit (seconds).",
+        "ports": _ports("p1:e p2:e"),
+        "params": [
+            _p("ui", 100e-12, "s", "Unit interval", rebuild=True),
+            _p("mode", "nrz", "", "Mode", rebuild=True, kind="enum",
+               choices=["nrz", "pam4", "pulse"]),
+            _p("order", 7, "", "PRBS order", rebuild=True, kind="enum",
+               choices=[7, 9, 11, 15, 23, 31]),
+            _p("v0", -0.5, "V", "Low level", rebuild=True),
+            _p("v1", 0.5, "V", "High level", rebuild=True),
+            _p("tr", 20e-12, "s", "Edge time (20-80%)", rebuild=True),
+            _p("seed", 1, "", "PRBS seed", rebuild=True),
+            _p("ffe_pre_db", 0.0, "dB", "TX FFE pre-cursor", rebuild=True),
+            _p("ffe_post_db", 0.0, "dB", "TX FFE post-cursor", rebuild=True),
+            _p("rlm_vpi", 0.0, "V", "RLM V-pi (0 = off)", rebuild=True),
+            _p("rj_ui", 0.0, "UI", "Random jitter (rms)", rebuild=True),
+            _p("pj_ui", 0.0, "UI", "Periodic jitter (amp)", rebuild=True),
+            _p("pj_freq", 10e6, "Hz", "PJ frequency", rebuild=True),
+            _p("dcd_ui", 0.0, "UI", "Duty-cycle distortion", rebuild=True),
+        ],
+        "wave": "prbs",
+    },
+    "vpwl": {
+        "label": "PWL Source",
+        "category": "Sources",
+        "doc": "Piecewise-linear voltage source. `data` holds 't v' break-"
+               "point pairs (one per line, comma or space separated; SI "
+               "notation like 1e-9 works). The value holds before the first "
+               "and after the last point. Use the inspector's Load CSV "
+               "button to fill it from a file (e.g. a waveform exported "
+               "from another simulator).",
+        "ports": _ports("p1:e p2:e"),
+        "params": [
+            _p("data", "0 0\n1e-9 0\n1.1e-9 1\n3e-9 1", "", "Breakpoints",
+               rebuild=True, kind="text"),
+        ],
+        "wave": "pwl",
+    },
+    "idc": {
+        "label": "DC Current",
+        "category": "Sources",
+        "doc": "Constant current source, p1 -> p2.",
+        "ports": _ports("p1:e p2:e"),
+        "params": [_p("I", 1e-3, "A", "Current")],
+    },
+    # --- electrical passives ------------------------------------------------
+    "resistor": {
+        "label": "Resistor",
+        "category": "Electrical",
+        "doc": "Ohm's law.",
+        "ports": _ports("p1:e p2:e"),
+        "params": [_p("R", 1e3, "Ohm", "Resistance")],
+    },
+    "capacitor": {
+        "label": "Capacitor",
+        "category": "Electrical",
+        "doc": "Linear capacitor.",
+        "ports": _ports("p1:e p2:e"),
+        "params": [_p("C", 1e-12, "F", "Capacitance")],
+    },
+    "inductor": {
+        "label": "Inductor",
+        "category": "Electrical",
+        "doc": "Linear inductor.",
+        "ports": _ports("p1:e p2:e"),
+        "params": [_p("L", 1e-9, "H", "Inductance")],
+    },
+    "diode": {
+        "label": "Diode",
+        "category": "Electrical",
+        "doc": "Shockley diode: I = Is*(exp(Vd/(n*Vt)) - 1). p1 = anode.",
+        "ports": _ports("p1:e p2:e"),
+        "params": [
+            _p("Is", 1e-12, "A", "Saturation current"),
+            _p("n", 1.0, "", "Ideality"),
+            _p("Vt", 0.02585, "V", "Thermal voltage"),
+        ],
+    },
+    "nmos": {
+        "label": "NMOS (square-law)",
+        "category": "Electrical",
+        "doc": "Square-law N-channel MOSFET with channel-length modulation.",
+        "ports": _ports("d:e g:e s:e"),
+        "params": [
+            _p("Kp", 2e-5, "A/V^2", "Transconductance"),
+            _p("W", 1e-5, "m", "Width"),
+            _p("L", 1e-6, "m", "Length"),
+            _p("Vth", 1.0, "V", "Threshold"),
+            _p("lam", 0.0, "1/V", "Lambda (CLM)"),
+        ],
+    },
+    "pmos": {
+        "label": "PMOS (square-law)",
+        "category": "Electrical",
+        "doc": "Square-law P-channel MOSFET (Vth negative).",
+        "ports": _ports("d:e g:e s:e"),
+        "params": [
+            _p("Kp", 1e-5, "A/V^2", "Transconductance"),
+            _p("W", 2e-5, "m", "Width"),
+            _p("L", 1e-6, "m", "Length"),
+            _p("Vth", -1.0, "V", "Threshold"),
+            _p("lam", 0.0, "1/V", "Lambda (CLM)"),
+        ],
+    },
+}
+
+
+def _sky130_fet_entry(device: str, label: str, doc: str,
+                      w: float, l: float) -> dict:  # noqa: E741
+    return {
+        "label": label,
+        "category": "SKY130 FETs",
+        "doc": f"Real sky130_fd_pr__{device}, BSIM4.8 via OSDI — exact PDK "
+               f"physics. {doc} Transient auto-switches to the fixed-step "
+               "BDF2 solver. First use of a new geometry extracts + compiles "
+               "the model card (slow once, cached forever).",
+        "ports": _ports("d:e g:e s:e b:e"),
+        "params": [
+            _p("w_um", w, "um", "Width", rebuild=True),
+            _p("l_um", l, "um", "Length", rebuild=True),
+        ],
+        "sky130": {"kind": "fet", "device": device},
+    }
+
+
+def _sky130_res_entry(cell: str, label: str, doc: str,
+                      params: list[dict]) -> dict:
+    return {
+        "label": label,
+        "category": "SKY130 Passives",
+        "doc": f"{doc} The R value is measured from the real PDK model by "
+               "ngspice (body tied to ground) and backs an ideal resistor — "
+               "first use of a new geometry parses the sky130 library "
+               "(slow once, cached forever).",
+        "ports": _ports("p1:e p2:e"),
+        "params": params,
+        "sky130": {"kind": "res", "cell": cell},
+    }
+
+
+CATALOG.update({
+    # --- SKY130 FETs (BSIM4 via OSDI) --------------------------------------
+    "sky130_nfet": _sky130_fet_entry(
+        "nfet_01v8", "SKY130 NFET 1.8V", "Standard-Vt 1.8 V core device.",
+        1.0, 0.15),
+    "sky130_nfet_lvt": _sky130_fet_entry(
+        "nfet_01v8_lvt", "SKY130 NFET 1.8V LVT", "Low-Vt 1.8 V device.",
+        1.0, 0.35),
+    "sky130_nfet_5v": _sky130_fet_entry(
+        "nfet_g5v0d10v5", "SKY130 NFET 5V", "5.0 V (10.5 V drain) I/O device.",
+        1.0, 0.5),
+    "sky130_nfet_nvt": _sky130_fet_entry(
+        "nfet_05v0_nvt", "SKY130 NFET 5V native", "Native (~0 Vt) 5 V device.",
+        1.0, 0.9),
+    "sky130_pfet": _sky130_fet_entry(
+        "pfet_01v8", "SKY130 PFET 1.8V", "Standard-Vt 1.8 V core device.",
+        2.0, 0.15),
+    "sky130_pfet_lvt": _sky130_fet_entry(
+        "pfet_01v8_lvt", "SKY130 PFET 1.8V LVT", "Low-Vt 1.8 V device.",
+        2.0, 0.35),
+    "sky130_pfet_hvt": _sky130_fet_entry(
+        "pfet_01v8_hvt", "SKY130 PFET 1.8V HVT", "High-Vt 1.8 V device.",
+        2.0, 0.15),
+    "sky130_pfet_5v": _sky130_fet_entry(
+        "pfet_g5v0d10v5", "SKY130 PFET 5V", "5.0 V (10.5 V drain) I/O device.",
+        2.0, 0.5),
+    # --- SKY130 passives (values measured from the PDK by ngspice) ---------
+    "sky130_res_po": _sky130_res_entry(
+        "res_generic_po", "SKY130 Poly Res",
+        "Generic poly resistor, ~48.2 Ohm/sq; free W/L.",
+        [_p("w_um", 1.0, "um", "Width", rebuild=True),
+         _p("l_um", 10.0, "um", "Length", rebuild=True)]),
+    "sky130_res_nd": _sky130_res_entry(
+        "res_generic_nd", "SKY130 N-Diff Res",
+        "Generic n-diffusion resistor, ~120 Ohm/sq; free W/L.",
+        [_p("w_um", 1.0, "um", "Width", rebuild=True),
+         _p("l_um", 10.0, "um", "Length", rebuild=True)]),
+    "sky130_res_high_po": _sky130_res_entry(
+        "res_high_po_0p69", "SKY130 High-R Poly",
+        "Precision P+ poly resistor, ~320 Ohm/sq, fixed 0.69 um width.",
+        [_p("l_um", 5.0, "um", "Length", rebuild=True)]),
+    "sky130_res_xhigh_po": _sky130_res_entry(
+        "res_xhigh_po_0p69", "SKY130 X-High-R Poly",
+        "Precision poly resistor, ~2 kOhm/sq, fixed 0.69 um width.",
+        [_p("l_um", 5.0, "um", "Length", rebuild=True)]),
+    "sky130_cap_mim": {
+        "label": "SKY130 MiM Cap (M3)",
+        "category": "SKY130 Passives",
+        "doc": "Metal-insulator-metal capacitor between met3/capm. The C "
+               "value is measured from the real PDK model by ngspice and "
+               "backs an ideal capacitor — first use of a new geometry "
+               "parses the sky130 library (slow once, cached forever).",
+        "ports": _ports("p1:e p2:e"),
+        "params": [_p("w_um", 10.0, "um", "Width", rebuild=True),
+                   _p("l_um", 10.0, "um", "Length", rebuild=True)],
+        "sky130": {"kind": "cap", "cell": "cap_mim_m3_1"},
+    },
+    "sky130_cap_mim2": {
+        "label": "SKY130 MiM Cap (M4)",
+        "category": "SKY130 Passives",
+        "doc": "Metal-insulator-metal capacitor between met4/cap2m. The C "
+               "value is measured from the real PDK model by ngspice and "
+               "backs an ideal capacitor — first use of a new geometry "
+               "parses the sky130 library (slow once, cached forever).",
+        "ports": _ports("p1:e p2:e"),
+        "params": [_p("w_um", 10.0, "um", "Width", rebuild=True),
+                   _p("l_um", 10.0, "um", "Length", rebuild=True)],
+        "sky130": {"kind": "cap", "cell": "cap_mim_m3_2"},
+    },
+    # --- analog blocks -------------------------------------------------------
+    "opamp": {
+        "label": "Op-Amp (ideal)",
+        "category": "Amplifiers & EQ",
+        "doc": "Ideal VCVS op-amp: V(out_p,out_m) = A * V(in_p,in_m); inputs "
+               "draw no current.",
+        "ports": _ports("out_p:e out_m:e in_p:e in_m:e"),
+        "params": [_p("A", 1e6, "V/V", "Open-loop gain")],
+    },
+    # --- optical <-> electrical power-domain bridges -------------------------
+    "opt_f2p": {
+        "label": "Field -> Power tap",
+        "category": "Detectors & Bridges",
+        "doc": "Bridge for power-domain models (e.g. uploaded .va with a "
+               "popt-style port): absorbs the coherent field (matched, no "
+               "reflection) and drives an electrical node with V = |E|^2 "
+               "in watts.",
+        "ports": _ports("c:o p:e"),
+        "params": [],
+    },
+    "opt_p2f": {
+        "label": "Power -> Field source",
+        "category": "Detectors & Bridges",
+        "doc": "Bridge from a power-domain node (V = watts) back into the "
+               "coherent-field world: E = sqrt(max(V, 0)), zero phase.",
+        "ports": _ports("p:e c:o"),
+        "params": [],
+    },
+    # --- reference ------------------------------------------------------------
+    "ground": {
+        "label": "Ground",
+        "category": "Reference",
+        "doc": "0 V / zero-field reference. Required in every circuit.",
+        "ports": _ports("p1:e"),
+        "params": [],
+    },
+})
+
+
+# ---------------------------------------------------------------------------
+# models_map construction (lazy, heavyweight)
+# ---------------------------------------------------------------------------
+
+def _photodiode():
+    import jax.numpy as jnp
+    from circulax.components.base_component import Signals, States, component
+
+    @component(ports=("po_p", "po_n", "an", "cat"), states=("x1", "x2"))
+    def Photodiode(
+        signals: Signals,
+        s: States,
+        R: float = 0.8,
+        Idk: float = 1e-9,
+        Cj: float = 100e-15,
+        f3db: float = 0.0,
+        isat: float = 0.0,
+        Yopt: float = 1.0,
+    ) -> tuple[dict, dict]:
+        e = signals.po_p - signals.po_n
+        i_opt = Yopt * e
+        power = jnp.abs(e) ** 2
+        iph = R * power + Idk
+        # intrinsic (transit-time) bandwidth: two identical real poles with
+        # -3 dB at f3db; f3db = 0 collapses tau to 0 and the states become
+        # algebraic copies of iph (no extra dynamics)
+        tau = jnp.where(f3db > 0.0,
+                        0.6436 / (2.0 * jnp.pi * jnp.maximum(f3db, 1.0)), 0.0)
+        f_x1 = s.x1 - iph
+        f_x2 = s.x2 - s.x1
+        i_bw = s.x2.real
+        # soft output saturation (space-charge screening); isat = 0 -> off
+        i_out = jnp.where(
+            isat > 0.0,
+            jnp.maximum(isat, 1e-30) * jnp.tanh(
+                i_bw / jnp.maximum(isat, 1e-30)),
+            i_bw)
+        f = {"po_p": i_opt, "po_n": -i_opt, "cat": i_out, "an": -i_out,
+             "x1": f_x1, "x2": f_x2}
+        vj = signals.cat - signals.an
+        q = {"cat": Cj * vj, "an": -Cj * vj,
+             "x1": tau * s.x1, "x2": tau * s.x2}
+        return f, q
+
+    return Photodiode
+
+
+def _tia():
+    """Behavioural TIA macro, parameter names mirroring the user's tia.py.
+
+    ``in`` is a virtual-ground current input (V = 0, like an ideal feedback
+    summing node); ``out`` drives ``-gain_ohm * i_in`` through a two-real-
+    pole low-pass (-3 dB at f3db) with an optional tanh swing limit.
+    ``in_noise`` (A/sqrt(Hz), input-referred) is used by the noise analyses.
+    """
+    import jax.numpy as jnp
+    from circulax.components.base_component import Signals, States, component
+
+    @component(ports=("inp", "out"), states=("i_vg", "x1", "x2", "i_out"))
+    def TIAMacro(
+        signals: Signals,
+        s: States,
+        gain_ohm: float = 10e3,
+        f3db: float = 20e9,
+        vmax: float = 0.0,
+        in_noise: float = 0.0,
+    ) -> tuple[dict, dict]:
+        tau = 0.6436 / (2.0 * jnp.pi * jnp.maximum(f3db, 1.0))
+        v_tgt = -gain_ohm * s.i_vg
+        f_x1 = s.x1 - v_tgt
+        f_x2 = s.x2 - s.x1
+        v_lp = s.x2.real
+        v_out = jnp.where(
+            vmax > 0.0,
+            jnp.maximum(vmax, 1e-30) * jnp.tanh(
+                v_lp / jnp.maximum(vmax, 1e-30)),
+            v_lp)
+        return {
+            "inp": s.i_vg,
+            "i_vg": signals.inp,                 # V(inp) = 0 (virtual ground)
+            "x1": f_x1, "x2": f_x2,
+            "out": s.i_out,
+            "i_out": signals.out - v_out,        # drive the output node
+        }, {"x1": tau * s.x1, "x2": tau * s.x2}
+
+    return TIAMacro
+
+
+def _ctle():
+    """CTLE: A_dc (1 + s/wz) / ((1 + s/wp1)(1 + s/wp2)) — the exact
+    1-zero/2-pole shape of the user's ctle.py. The zero is placed so
+    20*log10(wp1/wz) = peaking_db and A_dc = wz/wp1, giving ~unity gain in
+    the peaked band. High-impedance input, driven output.
+    """
+    import jax.numpy as jnp
+    from circulax.components.base_component import Signals, States, component
+
+    @component(ports=("inp", "out"), states=("x1", "x2", "i_out"))
+    def CTLE(
+        signals: Signals,
+        s: States,
+        peaking_db: float = 6.0,
+        f_p1: float = 10e9,
+        fp2_mult: float = 2.0,
+        A_out: float = 1.0,
+    ) -> tuple[dict, dict]:
+        wp1 = 2.0 * jnp.pi * jnp.maximum(f_p1, 1.0)
+        wp2 = fp2_mult * wp1
+        k = 10.0 ** (peaking_db / 20.0)
+        wz = wp1 / k
+        a_dc = 1.0 / k
+        vin = (signals.inp).real
+        # x1 = vin/(1+s/wp1), x2 = x1/(1+s/wp2); y needs x2 + s x2/wz where
+        # s x2 = wp2 (x1 - x2)
+        f_x1 = s.x1 - vin
+        f_x2 = s.x2 - s.x1
+        y = A_out * a_dc * (s.x2 + (wp2 / wz) * (s.x1 - s.x2)).real
+        return {
+            "inp": 0.0,
+            "x1": f_x1, "x2": f_x2,
+            "out": s.i_out,
+            "i_out": signals.out - y,
+        }, {"x1": s.x1 / wp1, "x2": s.x2 / wp2}
+
+    return CTLE
+
+
+def _pulse_mod():
+    import jax
+    import jax.numpy as jnp
+    from circulax.components.base_component import Signals, States, source
+
+    @source(ports=("pin", "pout"), states=("i_out",))
+    def PulseModulator(
+        signals: Signals,
+        s: States,
+        t: float,
+        p_on: float = 18e-3,
+        p_off: float = 3e-3,
+        t0: float = 0.5e-9,
+        t1: float = 2.0e-9,
+        tr: float = 80e-12,
+    ) -> tuple[dict, dict]:
+        k = 1.0 / tr
+        env = jax.nn.sigmoid(k * (t - t0)) - jax.nn.sigmoid(k * (t - t1))
+        trans = jnp.sqrt((p_off + (p_on - p_off) * env) / p_on)
+        constraint = signals.pout - trans * signals.pin
+        return {"pin": 0.0, "pout": s.i_out, "i_out": constraint}, {}
+
+    return PulseModulator
+
+
+def _waveform_source(wt, wv):
+    """Voltage source following precomputed (t, v) breakpoints (jnp.interp).
+
+    The arrays are baked as closure constants — not JAX leaves — so pattern
+    parameters are compile-time (rebuild=True in the catalog). Values clamp
+    to the first/last breakpoint outside the time range.
+    """
+    import jax.numpy as jnp
+    from circulax.components.base_component import Signals, States, source
+
+    wt_c = jnp.asarray(wt)
+    wv_c = jnp.asarray(wv)
+
+    @source(ports=("p1", "p2"), states=("i_src",), amplitude_param="scale")
+    def WaveformSource(
+        signals: Signals,
+        s: States,
+        t: float,
+        scale: float = 1.0,
+    ) -> tuple[dict, dict]:
+        v_val = scale * jnp.interp(t, wt_c, wv_c)
+        constraint = (signals.p1 - signals.p2) - v_val
+        return {"p1": s.i_src, "p2": -s.i_src, "i_src": constraint}, {}
+
+    return WaveformSource
+
+
+def _power_to_field():
+    """Adapter: power-domain optical node (V = watts) -> coherent field node.
+
+    The repo's power-convention VA models (laser_dml, laser_rate, mzm_tw)
+    carry optical power as a node voltage; the webapp's optical domain is the
+    coherent field E with |E|^2 = power. This source enforces
+    ``V(c) = sqrt(max(V(p), 0))`` (zero phase — power models carry none),
+    drawing nothing from the power node.
+    """
+    import jax.numpy as jnp
+    from circulax.components.base_component import Signals, States, component
+
+    @component(ports=("p", "c"), states=("i_c",))
+    def PowerToField(signals: Signals, s: States) -> tuple[dict, dict]:
+        power = jnp.maximum(signals.p.real, 0.0)
+        field = jnp.sqrt(power + 1e-30)
+        return {"p": 0.0, "c": s.i_c, "i_c": signals.c - field}, {}
+
+    return PowerToField
+
+
+def _field_to_power():
+    """Adapter: coherent field node -> power-domain optical node.
+
+    Matched absorber on the field side (like the photodiode: i = Yopt*E, no
+    reflection) that re-emits ``V(p) = |E|^2`` for a power-convention VA
+    model's optical input.
+    """
+    import jax.numpy as jnp
+    from circulax.components.base_component import Signals, States, component
+
+    @component(ports=("c", "p"), states=("i_p",))
+    def FieldToPower(signals: Signals, s: States) -> tuple[dict, dict]:
+        e = signals.c
+        return {"c": e, "p": s.i_p,
+                "i_p": signals.p - jnp.abs(e) ** 2}, {}
+
+    return FieldToPower
+
+
+def _opt_term():
+    """Optical terminator with finite return loss.
+
+    One-port with S11 = r = 10^(-RL/20): the equivalent nodal admittance is
+    Y = (1-r)/(1+r) (r = 0 recovers the matched absorber i = E). Real
+    absorbers reflect a little; 40 dB is a good index-matched load.
+    """
+    import jax.numpy as jnp
+    from circulax.components.base_component import Signals, States, component
+
+    @component(ports=("p1",))
+    def OptTerm(signals: Signals, s: States,
+                return_loss_db: float = 40.0) -> tuple[dict, dict]:
+        r = 10.0 ** (-jnp.abs(return_loss_db) / 20.0)
+        return {"p1": (1.0 - r) / (1.0 + r) * signals.p1}, {}
+
+    return OptTerm
+
+
+def _grating_r():
+    """Grating coupler: circulax's Gaussian passband + fiber-side
+    back-reflection.
+
+    Same spectral model as circulax.components.photonic.Grating, with
+    S11 = 10^(-back_refl_db/20) on the grating (fiber) port, clamped so the
+    lossy 2-port stays passive (|S11|^2 + |S21|^2 <= 1).
+    """
+    import jax.numpy as jnp
+    from circulax.components.base_component import Signals, States, component
+    from circulax.s_transforms import s_to_y
+
+    @component(ports=("grating", "waveguide"))
+    def GratingR(
+        signals: Signals,
+        s: States,
+        center_wavelength_nm: float = 1310.0,
+        peak_loss_dB: float = 0.0,
+        bandwidth_1dB: float = 20.0,
+        back_refl_db: float = 25.0,
+        wavelength_nm: float = 1310.0,
+    ) -> tuple[dict, dict]:
+        delta = wavelength_nm - center_wavelength_nm
+        loss_dB = peak_loss_dB + (delta / (0.5 * bandwidth_1dB)) ** 2
+        T = jnp.minimum(10.0 ** (-loss_dB / 20.0), 0.9999)
+        rb = 10.0 ** (-jnp.abs(back_refl_db) / 20.0)
+        rb = jnp.minimum(rb, jnp.sqrt(jnp.maximum(1.0 - T ** 2, 1e-8)))
+        S = jnp.array([[rb + 0j, T + 0j], [T + 0j, 0j]],
+                      dtype=jnp.complex128)
+        Y = s_to_y(S)
+        v = jnp.array([signals.grating, signals.waveguide],
+                      dtype=jnp.complex128)
+        iv = Y @ v
+        return {"grating": iv[0], "waveguide": iv[1]}, {}
+
+    return GratingR
+
+
+def _opt_mirror():
+    """Partially reflective element: S = [[r, jt], [jt, r]], r² + t² = 1.
+
+    The j on the transmitted path keeps the lossless 2-port unitary (same
+    convention as the couplers); il_db scales both paths. R is clamped to
+    0.995 so I + S stays well-conditioned in the S->Y conversion.
+    """
+    import jax.numpy as jnp
+    from circulax.components.base_component import Signals, States, component
+    from circulax.s_transforms import s_to_y
+
+    @component(ports=("p1", "p2"))
+    def OptMirror(signals: Signals, s: States, R: float = 0.9,
+                  il_db: float = 0.0) -> tuple[dict, dict]:
+        a = 10.0 ** (-jnp.abs(il_db) / 20.0)
+        Rc = jnp.clip(R, 0.0, 0.995)
+        r = a * jnp.sqrt(Rc)
+        t = a * jnp.sqrt(1.0 - Rc)
+        S = jnp.array([[r + 0j, 1j * t], [1j * t, r + 0j]],
+                      dtype=jnp.complex128)
+        Y = s_to_y(S)
+        v = jnp.array([signals.p1, signals.p2], dtype=jnp.complex128)
+        iv = Y @ v
+        return {"p1": iv[0], "p2": iv[1]}, {}
+
+    return OptMirror
+
+
+def _lti_vt(A, B, C, D, zin: float = 0.0):
+    """Electrical LTI voltage-transfer block from a real state-space.
+
+    High-impedance input (or a zin shunt when zin > 0, e.g. a matched
+    S-parameter port), driven output: out = C x + D vin, dx/dt = A x + B vin.
+    Matrices are baked per instance (vector-fitted channels).
+    """
+    import jax.numpy as jnp
+    from circulax.components.base_component import Signals, States, component
+
+    A_c = jnp.asarray(A)
+    B_c = jnp.asarray(B)
+    C_c = jnp.asarray(C)
+    D_c = float(D)
+    n = A_c.shape[0]
+    st = tuple(f"x{i}" for i in range(n)) + ("i_out",)
+
+    @component(ports=("inp", "out"), states=st)
+    def LTIBlock(signals: Signals, s: States) -> tuple[dict, dict]:
+        x = jnp.stack([getattr(s, f"x{i}") for i in range(n)])
+        vin = signals.inp
+        dx = A_c @ x + B_c * vin
+        y = (C_c @ x + D_c * vin).real
+        f = {"inp": signals.inp / zin if zin > 0 else 0.0,
+             "out": s.i_out, "i_out": signals.out - y}
+        for i in range(n):
+            f[f"x{i}"] = -dx[i]
+        q = {f"x{i}": getattr(s, f"x{i}") for i in range(n)}
+        return f, q
+
+    return LTIBlock
+
+
+def _lti_field(poles, res, d):
+    """Optical (coherent-field) LTI block from a complex diagonal fit.
+
+    Matched absorber at p1 (i = E_in, no reflection), driven field at p2:
+    E_out = sum_k c_k x_k + d E_in with dx_k/dt = p_k x_k + E_in. States are
+    complex — legal inside an is_complex circuit. Used for chromatic
+    dispersion, whose baseband envelope response is not conjugate-symmetric.
+    """
+    import jax.numpy as jnp
+    from circulax.components.base_component import Signals, States, component
+
+    p_c = jnp.asarray(poles)
+    c_c = jnp.asarray(res)
+    d_c = complex(d)
+    n = len(poles)
+    st = tuple(f"x{i}" for i in range(n)) + ("i_out",)
+
+    @component(ports=("p1", "p2"), states=st)
+    def FieldLTI(signals: Signals, s: States) -> tuple[dict, dict]:
+        x = jnp.stack([getattr(s, f"x{i}") for i in range(n)])
+        ein = signals.p1
+        y = jnp.sum(c_c * x) + d_c * ein
+        f = {"p1": ein, "p2": s.i_out, "i_out": signals.p2 - y}
+        for i in range(n):
+            f[f"x{i}"] = -(p_c[i] * x[i] + ein)
+        q = {f"x{i}": getattr(s, f"x{i}") for i in range(n)}
+        return f, q
+
+    return FieldLTI
+
+
+def _lti_field_drop(poles, res_d, res_t):
+    """Add-drop optical filter: coherent-field LTI with a DROP and a THRU port.
+
+    Three ports sharing one set of complex states (dx_k/dt = p_k x_k + E_in):
+    ``pin`` absorbs the input (matched, no reflection), ``drop`` carries the
+    selected channel E_drop = sum(res_d x), and ``thru`` carries the
+    power-complementary remainder E_thru = E_in + sum(res_t x) — the same-pole
+    highpass, so |H_drop|^2 + |H_thru|^2 = 1 at every frequency like a real
+    lossless (unitary) add-drop. (A naive thru of E_in - E_drop is NOT
+    passive: its skirt gains +4 dB where H_drop's phase rotates.) Cascading
+    these (each tuned to a different channel, thru -> next pin) demultiplexes
+    a WDM bus: on resonance the channel drops fully and thru nulls; off
+    resonance it passes to thru untouched.
+    """
+    import jax.numpy as jnp
+    from circulax.components.base_component import Signals, States, component
+
+    p_c = jnp.asarray(poles)
+    cd_c = jnp.asarray(res_d)
+    ct_c = jnp.asarray(res_t)
+    n = len(poles)
+    st = tuple(f"x{i}" for i in range(n)) + ("i_drop", "i_thru")
+
+    @component(ports=("pin", "drop", "thru"), states=st)
+    def FieldDrop(signals: Signals, s: States) -> tuple[dict, dict]:
+        x = jnp.stack([getattr(s, f"x{i}") for i in range(n)])
+        ein = signals.pin
+        y_drop = jnp.sum(cd_c * x)                 # lowpass:  wc^n / B(s)
+        y_thru = ein + jnp.sum(ct_c * x)           # highpass: s^n / B(s)
+        f = {"pin": ein,
+             "drop": s.i_drop, "i_drop": signals.drop - y_drop,
+             "thru": s.i_thru, "i_thru": signals.thru - y_thru}
+        for i in range(n):
+            f[f"x{i}"] = -(p_c[i] * x[i] + ein)
+        q = {f"x{i}": getattr(s, f"x{i}") for i in range(n)}
+        return f, q
+
+    return FieldDrop
+
+
+# ---------------------------------------------------------------------------
+# transient-noise variants: same physics + a baked per-instance noise bank
+# (unit-variance Gaussian rows, one per seed; runtime param seed_idx picks
+# the row so N seeds re-run without recompiling). Scale for a one-sided PSD
+# S is sqrt(S/(2*dt_n)) — see wavesrc.noise_bank.
+# ---------------------------------------------------------------------------
+
+def _noise_reader(bank, dt_n):
+    import jax.numpy as jnp
+
+    # sqrt(3/2) restores the variance lost to linear interpolation between
+    # samples (mean of f^2 + (1-f)^2 over a segment is 2/3)
+    bank_c = jnp.asarray(bank) * 1.22474487
+    tn = jnp.arange(bank.shape[1]) * dt_n
+
+    def nval(t, seed_idx):
+        row = jnp.take(bank_c,
+                       jnp.clip(jnp.asarray(seed_idx).astype(jnp.int32),
+                                0, bank_c.shape[0] - 1), axis=0)
+        return jnp.interp(t, tn, row)
+
+    return nval
+
+
+def _cw_laser_noisy(bank, dt_n):
+    import jax.numpy as jnp
+    from circulax.components.base_component import Signals, States, source
+
+    nval = _noise_reader(bank, dt_n)
+    c0 = 299792458.0
+
+    @source(ports=("p1", "p2"), states=("i_src",))
+    def CWLaserRIN(
+        signals: Signals,
+        s: States,
+        t: float,
+        wavelength_nm: float = 1310.0,
+        power: float = 1e-3,
+        phase: float = 0.0,
+        rin_db: float = 0.0,
+        ref_wavelength_nm: float = 0.0,
+        seed_idx: float = 0.0,
+    ) -> tuple[dict, dict]:
+        sigma = jnp.where(rin_db < 0.0,
+                          jnp.sqrt(10.0 ** (rin_db / 10.0) / (2.0 * dt_n)),
+                          0.0)
+        rel = jnp.maximum(1.0 + sigma * nval(t, seed_idx), 1e-6)
+        # WDM carrier offset in the shared baseband frame (see cx.cw_laser);
+        # select the never-zero reference before dividing
+        ref_safe = jnp.where(ref_wavelength_nm > 0.0,
+                             ref_wavelength_nm, wavelength_nm)
+        w_off = 2.0 * jnp.pi * c0 * (1.0 / (ref_safe * 1e-9)
+                                     - 1.0 / (wavelength_nm * 1e-9))
+        field = jnp.sqrt(power * rel) * jnp.exp(1j * (w_off * t + phase))
+        constraint = (signals.p1 - signals.p2) - field
+        return {"p1": s.i_src, "p2": -s.i_src, "i_src": constraint}, {}
+
+    return CWLaserRIN
+
+
+def _photodiode_noisy(bank, dt_n):
+    import jax
+    import jax.numpy as jnp
+    from circulax.components.base_component import Signals, States, source
+
+    nval = _noise_reader(bank, dt_n)
+    q_e = 1.602176634e-19
+
+    @source(ports=("po_p", "po_n", "an", "cat"), states=("x1", "x2"))
+    def PhotodiodeShot(
+        signals: Signals,
+        s: States,
+        t: float,
+        R: float = 0.8,
+        Idk: float = 1e-9,
+        Cj: float = 100e-15,
+        f3db: float = 0.0,
+        isat: float = 0.0,
+        Yopt: float = 1.0,
+        seed_idx: float = 0.0,
+    ) -> tuple[dict, dict]:
+        e = signals.po_p - signals.po_n
+        i_opt = Yopt * e
+        power = jnp.abs(e) ** 2
+        iph = R * power + Idk
+        tau = jnp.where(f3db > 0.0,
+                        0.6436 / (2.0 * jnp.pi * jnp.maximum(f3db, 1.0)), 0.0)
+        f_x1 = s.x1 - iph
+        f_x2 = s.x2 - s.x1
+        i_bw = s.x2.real
+        # shot noise on the instantaneous current: S_i = 2 q I  ->  scale
+        # sqrt(2 q I/(2 dt_n)) = sqrt(q I/dt_n). The amplitude is held out
+        # of the Jacobian (stop_gradient): d(sqrt I)/dI diverges at I -> 0
+        # and knocks Newton over, while physically the noise amplitude is
+        # quasi-static within a step.
+        i_qs = jax.lax.stop_gradient(jnp.maximum(i_bw, 0.0))
+        i_shot = jnp.sqrt(q_e * i_qs / dt_n) * nval(t, seed_idx)
+        i_tot = i_bw + i_shot
+        i_out = jnp.where(
+            isat > 0.0,
+            jnp.maximum(isat, 1e-30) * jnp.tanh(
+                i_tot / jnp.maximum(isat, 1e-30)),
+            i_tot)
+        f = {"po_p": i_opt, "po_n": -i_opt, "cat": i_out, "an": -i_out,
+             "x1": f_x1, "x2": f_x2}
+        vj = signals.cat - signals.an
+        q = {"cat": Cj * vj, "an": -Cj * vj,
+             "x1": tau * s.x1, "x2": tau * s.x2}
+        return f, q
+
+    return PhotodiodeShot
+
+
+def _tia_noisy(bank, dt_n):
+    import jax.numpy as jnp
+    from circulax.components.base_component import Signals, States, source
+
+    nval = _noise_reader(bank, dt_n)
+
+    @source(ports=("inp", "out"), states=("i_vg", "x1", "x2", "i_out"))
+    def TIAMacroNoisy(
+        signals: Signals,
+        s: States,
+        t: float,
+        gain_ohm: float = 10e3,
+        f3db: float = 20e9,
+        vmax: float = 0.0,
+        in_noise: float = 0.0,
+        seed_idx: float = 0.0,
+    ) -> tuple[dict, dict]:
+        tau = 0.6436 / (2.0 * jnp.pi * jnp.maximum(f3db, 1.0))
+        i_n = in_noise * jnp.sqrt(1.0 / (2.0 * dt_n)) * nval(t, seed_idx)
+        v_tgt = -gain_ohm * (s.i_vg + i_n)
+        f_x1 = s.x1 - v_tgt
+        f_x2 = s.x2 - s.x1
+        v_lp = s.x2.real
+        v_out = jnp.where(
+            vmax > 0.0,
+            jnp.maximum(vmax, 1e-30) * jnp.tanh(
+                v_lp / jnp.maximum(vmax, 1e-30)),
+            v_lp)
+        return {
+            "inp": s.i_vg,
+            "i_vg": signals.inp,
+            "x1": f_x1, "x2": f_x2,
+            "out": s.i_out,
+            "i_out": signals.out - v_out,
+        }, {"x1": tau * s.x1, "x2": tau * s.x2}
+
+    return TIAMacroNoisy
+
+
+def _ase_src_plain():
+    """ase_src without transient noise: a transparent pass-through (the doc
+    tells users the injector only fires when noise seeds >= 1)."""
+    from circulax.components.base_component import Signals, States, source
+
+    @source(ports=("pin", "pout"), states=("i_out",))
+    def ASESrcOff(
+        signals: Signals,
+        s: States,
+        t: float,
+        s_ase_dbm_hz: float = -144.0,
+    ) -> tuple[dict, dict]:
+        return {"pin": 0.0, "pout": s.i_out,
+                "i_out": signals.pout - signals.pin}, {}
+
+    return ASESrcOff
+
+
+def _ase_src_noisy(bank, dt_n):
+    """Broadband ASE injector: E_out = E_in + n(t), n complex white Gaussian
+    noise of one-sided power density s_ase_dbm_hz split between quadratures
+    (sigma_q = sqrt(S/(4*dt_n)) per sample). The bank carries TWO rows per
+    seed (real/imag streams) — see the ase branch of _make_noisy."""
+    import jax.numpy as jnp
+    from circulax.components.base_component import Signals, States, source
+
+    bank_c = jnp.asarray(bank) * 1.22474487   # interp variance restoration
+    tn = jnp.arange(bank.shape[1]) * dt_n
+    n_seeds = max(bank.shape[0] // 2, 1)
+
+    @source(ports=("pin", "pout"), states=("i_out",))
+    def ASESrc(
+        signals: Signals,
+        s: States,
+        t: float,
+        s_ase_dbm_hz: float = -144.0,
+        seed_idx: float = 0.0,
+    ) -> tuple[dict, dict]:
+        sigma = jnp.sqrt(10.0 ** (s_ase_dbm_hz / 10.0) * 1e-3 / (4.0 * dt_n))
+        k = jnp.clip(jnp.asarray(seed_idx).astype(jnp.int32), 0, n_seeds - 1)
+        nr = jnp.interp(t, tn, jnp.take(bank_c, 2 * k, axis=0))
+        ni = jnp.interp(t, tn, jnp.take(bank_c, 2 * k + 1, axis=0))
+        nval = sigma * (nr + 1j * ni)
+        return {"pin": 0.0, "pout": s.i_out,
+                "i_out": signals.pout - (signals.pin + nval)}, {}
+
+    return ASESrc
+
+
+_NOISY_BUILDERS = {"cwn": _cw_laser_noisy, "pdn": _photodiode_noisy,
+                   "ase": _ase_src_noisy,
+                   "tian": _tia_noisy}
+
+
+# ---------------------------------------------------------------------------
+# user-uploaded Verilog-A models (webapp/models_user/*.va)
+# ---------------------------------------------------------------------------
+
+USER_VA_DIR = __import__("pathlib").Path(__file__).resolve().parent / "models_user"
+
+
+def _doc_from_va(text: str) -> str:
+    lines = []
+    for raw in text.splitlines():
+        s = raw.strip()
+        if s.startswith("//"):
+            lines.append(s.lstrip("/ ").strip())
+        elif s and not s.startswith("`"):
+            break
+    return " ".join(lines)[:400] or "User-uploaded Verilog-A model."
+
+
+def register_user_va(stem: str) -> dict:
+    """Compile models_user/<stem>.va and register a catalog entry.
+
+    Ports come from the lowered component; parameters (with defaults) from
+    the VA text. All ports are electrical — coherent-field models need
+    Ereal/Eimag node pairs bridged manually; power-domain optical ports can
+    be bridged with the opt_f2p / opt_p2f adapter components.
+    """
+    from lightspice import cx
+
+    path = USER_VA_DIR / f"{stem}.va"
+    comp = cx.va(path)
+    text = path.read_text()
+    defaults = cx._va_literal_defaults(text)
+    # localparams are not user-facing: keep only `parameter` declarations
+    param_names = __import__("re").findall(
+        r"^\s*parameter\s+real\s+(\w+)", text, __import__("re").M)
+    key = f"uva_{stem}"
+    CATALOG[key] = {
+        "label": f"{stem} (.va)",
+        "category": "User VA",
+        "doc": _doc_from_va(text) + " [uploaded Verilog-A — all ports "
+               "electrical; bridge power-domain optical ports with the "
+               "Field->Power / Power->Field adapters]",
+        "ports": [{"name": p, "domain": "electrical"} for p in comp.ports],
+        "params": [_p(n, defaults.get(n, 0.0), "", n)
+                   for n in param_names],
+        "user_va": stem,
+    }
+    return CATALOG[key]
+
+
+def load_user_va() -> list[str]:
+    """Scan models_user/ at startup; returns the stems that registered."""
+    if not USER_VA_DIR.is_dir():
+        return []
+    out = []
+    for p in sorted(USER_VA_DIR.glob("*.va")):
+        try:
+            register_user_va(p.stem)
+            out.append(p.stem)
+        except Exception as e:  # a broken upload must not kill the server
+            print(f"user VA {p.name}: failed to load — {e}")
+    return out
+
+
+def build_models(sky130_geoms: dict[str, tuple[str, float, float]] | None = None,
+                 waveforms: dict[str, tuple] | None = None,
+                 noisy: dict[str, tuple] | None = None,
+                 ltis: dict[str, dict] | None = None) -> dict:
+    """models_map for compile_circuit.
+
+    ``sky130_geoms`` maps a model key (e.g. ``"sky130_nfet:1x0.15"``) to
+    (device, w_um, l_um) — each distinct FET flavor+geometry is its own OSDI
+    descriptor. ``waveforms`` maps a model key (``"prbs:<hash>"``) to its
+    (t, v) breakpoint arrays for the pattern/PWL sources.
+    """
+    from circulax.components.electronic import (
+        NMOS,
+        PMOS,
+        Capacitor,
+        CurrentSource,
+        Diode,
+        IdealOpAmp,
+        Inductor,
+        PulseVoltageSource,
+        Resistor,
+        VoltageSource,
+        VoltageSourceAC,
+    )
+    from circulax.components.photonic import (
+        DirectionalCoupler,
+        OpticalWaveguide,
+        Splitter,
+    )
+
+    from lightspice import cx
+
+    models: dict[str, Any] = {
+        "ground": lambda: 0,
+        "cw_laser": cx.cw_laser(),
+        "mzm": cx.mzm(),
+        "pulse_mod": _pulse_mod(),
+        "waveguide": OpticalWaveguide,
+        "splitter": Splitter,
+        "dir_coupler": DirectionalCoupler,
+        "grating": _grating_r(),
+        "opt_mirror": _opt_mirror(),
+        "opt_term": _opt_term(),
+        "photodiode": _photodiode(),
+        "_f2ri": cx.field_to_ri(),
+        "_ri2f": cx.ri_to_field(),
+        "_ring_va": cx.va("ring_mod"),
+        "_p2f": _power_to_field(),
+        "_f2p": _field_to_power(),
+        "_dml_va": cx.va("laser_dml"),
+        "_rate_va": cx.va("laser_rate"),
+        "_tw_va": cx.va("mzm_tw"),
+        "_ring_inj_va": cx.va("ring_mod_inj"),
+        "_seg_va": cx.va("mzm_seg"),
+        "_soa_va": cx.va("soa"),
+        "_mirror_va": cx.va("mirror"),
+        "_ringcomb_va": cx.va("ring_filter"),
+        "_ringnl_va": cx.va("ring_nl"),
+        "_ringkerr_va": cx.va("ring_kerr"),
+        "_wgnl_va": cx.va("waveguide_nl"),
+        "vdc": VoltageSource,
+        "vpulse": PulseVoltageSource,
+        "vsin": VoltageSourceAC,
+        "idc": CurrentSource,
+        "resistor": Resistor,
+        "capacitor": Capacitor,
+        "inductor": Inductor,
+        "diode": Diode,
+        "nmos": NMOS,
+        "pmos": PMOS,
+        "opamp": IdealOpAmp,
+        "tia": _tia(),
+        "ctle": _ctle(),
+        "opt_f2p": _field_to_power(),
+        "opt_p2f": _power_to_field(),
+        "ase_src": _ase_src_plain(),
+    }
+    for key, entry in CATALOG.items():
+        if entry.get("user_va"):
+            models[key] = cx.va(USER_VA_DIR / f"{entry['user_va']}.va")
+    for key, (device, w_um, l_um) in (sky130_geoms or {}).items():
+        models[key] = cx.sky130_fet(device, w=w_um, l=l_um)
+    for key, (wt, wv) in (waveforms or {}).items():
+        models[key] = _waveform_source(wt, wv)
+    for key, (kind, bank, dt_n) in (noisy or {}).items():
+        models[key] = _NOISY_BUILDERS[kind](bank, dt_n)
+    for key, payload in (ltis or {}).items():
+        if "real" in payload:
+            A, B, C, D, zin = payload["real"]
+            models[key] = _lti_vt(A, B, C, D, zin)
+        elif "cplx_drop" in payload:
+            poles, res_d, res_t = payload["cplx_drop"]
+            models[key] = _lti_field_drop(poles, res_d, res_t)
+        else:
+            poles, res, d = payload["cplx"]
+            models[key] = _lti_field(poles, res, d)
+    return models

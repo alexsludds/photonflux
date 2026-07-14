@@ -1,0 +1,825 @@
+{
+  "title": "18 \u2014 DWDM CPO link: 4-lambda microring TX bank + add-drop demux, one photodiode per channel (single coherent solve)",
+  "group": "WDM & crosstalk",
+  "schematic": {
+    "instances": {
+      "LAS1": {
+        "type": "cw_laser",
+        "x": 40,
+        "y": 80,
+        "rot": 0,
+        "settings": {
+          "power": 0.004,
+          "wavelength_nm": 1308.285,
+          "ref_wavelength_nm": 1310.0,
+          "phase": 0.0
+        }
+      },
+      "GL1": {
+        "type": "ground",
+        "x": 20,
+        "y": 164,
+        "rot": 0,
+        "settings": {}
+      },
+      "LAS2": {
+        "type": "cw_laser",
+        "x": 40,
+        "y": 200,
+        "rot": 0,
+        "settings": {
+          "power": 0.004,
+          "wavelength_nm": 1309.4278,
+          "ref_wavelength_nm": 1310.0,
+          "phase": 1.9
+        }
+      },
+      "GL2": {
+        "type": "ground",
+        "x": 20,
+        "y": 284,
+        "rot": 0,
+        "settings": {}
+      },
+      "LAS3": {
+        "type": "cw_laser",
+        "x": 40,
+        "y": 320,
+        "rot": 0,
+        "settings": {
+          "power": 0.004,
+          "wavelength_nm": 1310.5727,
+          "ref_wavelength_nm": 1310.0,
+          "phase": 3.7
+        }
+      },
+      "GL3": {
+        "type": "ground",
+        "x": 20,
+        "y": 404,
+        "rot": 0,
+        "settings": {}
+      },
+      "LAS4": {
+        "type": "cw_laser",
+        "x": 40,
+        "y": 440,
+        "rot": 0,
+        "settings": {
+          "power": 0.004,
+          "wavelength_nm": 1311.7195,
+          "ref_wavelength_nm": 1310.0,
+          "phase": 5.5
+        }
+      },
+      "GL4": {
+        "type": "ground",
+        "x": 20,
+        "y": 524,
+        "rot": 0,
+        "settings": {}
+      },
+      "CMBA": {
+        "type": "splitter",
+        "x": 220,
+        "y": 140,
+        "rot": 0,
+        "settings": {
+          "split_ratio": 0.5
+        },
+        "flip": true
+      },
+      "CMBB": {
+        "type": "splitter",
+        "x": 220,
+        "y": 380,
+        "rot": 0,
+        "settings": {
+          "split_ratio": 0.5
+        },
+        "flip": true
+      },
+      "CMBC": {
+        "type": "splitter",
+        "x": 360,
+        "y": 250,
+        "rot": 0,
+        "settings": {
+          "split_ratio": 0.5
+        },
+        "flip": true
+      },
+      "RM1": {
+        "type": "ring_mod",
+        "x": 500,
+        "y": 250,
+        "rot": 0,
+        "settings": {
+          "lambda_nm": 1310.0,
+          "lambda_res_nm": 1308.385,
+          "kappa2": 0.03,
+          "loss_db_m": 5000.0,
+          "radius_um": 7.5,
+          "n_g": 4.0
+        }
+      },
+      "PAT1": {
+        "type": "prbs",
+        "x": 480,
+        "y": 400,
+        "rot": 0,
+        "settings": {
+          "ui": 1e-10,
+          "order": 7,
+          "v0": -2.0,
+          "v1": 0.0,
+          "tr": 4e-11
+        }
+      },
+      "GR1": {
+        "type": "ground",
+        "x": 540,
+        "y": 360,
+        "rot": 0,
+        "settings": {}
+      },
+      "GP1": {
+        "type": "ground",
+        "x": 460,
+        "y": 500,
+        "rot": 0,
+        "settings": {}
+      },
+      "RM2": {
+        "type": "ring_mod",
+        "x": 640,
+        "y": 250,
+        "rot": 0,
+        "settings": {
+          "lambda_nm": 1310.0,
+          "lambda_res_nm": 1309.5278,
+          "kappa2": 0.03,
+          "loss_db_m": 5000.0,
+          "radius_um": 7.5,
+          "n_g": 4.0
+        }
+      },
+      "PAT2": {
+        "type": "prbs",
+        "x": 620,
+        "y": 400,
+        "rot": 0,
+        "settings": {
+          "ui": 1e-10,
+          "order": 9,
+          "v0": -2.0,
+          "v1": 0.0,
+          "tr": 4e-11
+        }
+      },
+      "GR2": {
+        "type": "ground",
+        "x": 680,
+        "y": 360,
+        "rot": 0,
+        "settings": {}
+      },
+      "GP2": {
+        "type": "ground",
+        "x": 600,
+        "y": 500,
+        "rot": 0,
+        "settings": {}
+      },
+      "RM3": {
+        "type": "ring_mod",
+        "x": 780,
+        "y": 250,
+        "rot": 0,
+        "settings": {
+          "lambda_nm": 1310.0,
+          "lambda_res_nm": 1310.6727,
+          "kappa2": 0.03,
+          "loss_db_m": 5000.0,
+          "radius_um": 7.5,
+          "n_g": 4.0
+        }
+      },
+      "PAT3": {
+        "type": "prbs",
+        "x": 760,
+        "y": 400,
+        "rot": 0,
+        "settings": {
+          "ui": 1e-10,
+          "order": 11,
+          "v0": -2.0,
+          "v1": 0.0,
+          "tr": 4e-11
+        }
+      },
+      "GR3": {
+        "type": "ground",
+        "x": 820,
+        "y": 360,
+        "rot": 0,
+        "settings": {}
+      },
+      "GP3": {
+        "type": "ground",
+        "x": 740,
+        "y": 500,
+        "rot": 0,
+        "settings": {}
+      },
+      "RM4": {
+        "type": "ring_mod",
+        "x": 920,
+        "y": 250,
+        "rot": 0,
+        "settings": {
+          "lambda_nm": 1310.0,
+          "lambda_res_nm": 1311.8195,
+          "kappa2": 0.03,
+          "loss_db_m": 5000.0,
+          "radius_um": 7.5,
+          "n_g": 4.0
+        }
+      },
+      "PAT4": {
+        "type": "prbs",
+        "x": 900,
+        "y": 400,
+        "rot": 0,
+        "settings": {
+          "ui": 1e-10,
+          "order": 15,
+          "v0": -2.0,
+          "v1": 0.0,
+          "tr": 4e-11
+        }
+      },
+      "GR4": {
+        "type": "ground",
+        "x": 960,
+        "y": 360,
+        "rot": 0,
+        "settings": {}
+      },
+      "GP4": {
+        "type": "ground",
+        "x": 880,
+        "y": 500,
+        "rot": 0,
+        "settings": {}
+      },
+      "FLT1": {
+        "type": "opt_filter",
+        "x": 1080,
+        "y": 210,
+        "rot": 0,
+        "settings": {
+          "center_nm": 1308.285,
+          "bandwidth_nm": 0.2,
+          "order": 3.0,
+          "lambda_nm": 1310.0
+        }
+      },
+      "PD1": {
+        "type": "photodiode",
+        "x": 1070,
+        "y": 360,
+        "rot": 0,
+        "settings": {
+          "R": 0.8,
+          "Cj": 4e-14
+        }
+      },
+      "GO1": {
+        "type": "ground",
+        "x": 1040,
+        "y": 460,
+        "rot": 0,
+        "settings": {}
+      },
+      "GA1": {
+        "type": "ground",
+        "x": 1110,
+        "y": 480,
+        "rot": 0,
+        "settings": {}
+      },
+      "RL1": {
+        "type": "resistor",
+        "x": 1150,
+        "y": 370,
+        "rot": 0,
+        "settings": {
+          "R": 300.0
+        }
+      },
+      "VB1": {
+        "type": "vdc",
+        "x": 1230,
+        "y": 380,
+        "rot": 0,
+        "settings": {
+          "V": 1.8
+        }
+      },
+      "GB1": {
+        "type": "ground",
+        "x": 1230,
+        "y": 480,
+        "rot": 0,
+        "settings": {}
+      },
+      "FLT2": {
+        "type": "opt_filter",
+        "x": 1300,
+        "y": 210,
+        "rot": 0,
+        "settings": {
+          "center_nm": 1309.4278,
+          "bandwidth_nm": 0.2,
+          "order": 3.0,
+          "lambda_nm": 1310.0
+        }
+      },
+      "PD2": {
+        "type": "photodiode",
+        "x": 1290,
+        "y": 360,
+        "rot": 0,
+        "settings": {
+          "R": 0.8,
+          "Cj": 4e-14
+        }
+      },
+      "GO2": {
+        "type": "ground",
+        "x": 1260,
+        "y": 460,
+        "rot": 0,
+        "settings": {}
+      },
+      "GA2": {
+        "type": "ground",
+        "x": 1330,
+        "y": 480,
+        "rot": 0,
+        "settings": {}
+      },
+      "RL2": {
+        "type": "resistor",
+        "x": 1370,
+        "y": 370,
+        "rot": 0,
+        "settings": {
+          "R": 300.0
+        }
+      },
+      "VB2": {
+        "type": "vdc",
+        "x": 1450,
+        "y": 380,
+        "rot": 0,
+        "settings": {
+          "V": 1.8
+        }
+      },
+      "GB2": {
+        "type": "ground",
+        "x": 1450,
+        "y": 480,
+        "rot": 0,
+        "settings": {}
+      },
+      "FLT3": {
+        "type": "opt_filter",
+        "x": 1520,
+        "y": 210,
+        "rot": 0,
+        "settings": {
+          "center_nm": 1310.5727,
+          "bandwidth_nm": 0.2,
+          "order": 3.0,
+          "lambda_nm": 1310.0
+        }
+      },
+      "PD3": {
+        "type": "photodiode",
+        "x": 1510,
+        "y": 360,
+        "rot": 0,
+        "settings": {
+          "R": 0.8,
+          "Cj": 4e-14
+        }
+      },
+      "GO3": {
+        "type": "ground",
+        "x": 1480,
+        "y": 460,
+        "rot": 0,
+        "settings": {}
+      },
+      "GA3": {
+        "type": "ground",
+        "x": 1550,
+        "y": 480,
+        "rot": 0,
+        "settings": {}
+      },
+      "RL3": {
+        "type": "resistor",
+        "x": 1590,
+        "y": 370,
+        "rot": 0,
+        "settings": {
+          "R": 300.0
+        }
+      },
+      "VB3": {
+        "type": "vdc",
+        "x": 1670,
+        "y": 380,
+        "rot": 0,
+        "settings": {
+          "V": 1.8
+        }
+      },
+      "GB3": {
+        "type": "ground",
+        "x": 1670,
+        "y": 480,
+        "rot": 0,
+        "settings": {}
+      },
+      "FLT4": {
+        "type": "opt_filter",
+        "x": 1740,
+        "y": 210,
+        "rot": 0,
+        "settings": {
+          "center_nm": 1311.7195,
+          "bandwidth_nm": 0.2,
+          "order": 3.0,
+          "lambda_nm": 1310.0
+        }
+      },
+      "PD4": {
+        "type": "photodiode",
+        "x": 1730,
+        "y": 360,
+        "rot": 0,
+        "settings": {
+          "R": 0.8,
+          "Cj": 4e-14
+        }
+      },
+      "GO4": {
+        "type": "ground",
+        "x": 1700,
+        "y": 460,
+        "rot": 0,
+        "settings": {}
+      },
+      "GA4": {
+        "type": "ground",
+        "x": 1770,
+        "y": 480,
+        "rot": 0,
+        "settings": {}
+      },
+      "RL4": {
+        "type": "resistor",
+        "x": 1810,
+        "y": 370,
+        "rot": 0,
+        "settings": {
+          "R": 300.0
+        }
+      },
+      "VB4": {
+        "type": "vdc",
+        "x": 1890,
+        "y": 380,
+        "rot": 0,
+        "settings": {
+          "V": 1.8
+        }
+      },
+      "GB4": {
+        "type": "ground",
+        "x": 1890,
+        "y": 480,
+        "rot": 0,
+        "settings": {}
+      },
+      "TT": {
+        "type": "opt_term",
+        "x": 1890,
+        "y": 210,
+        "rot": 0,
+        "settings": {}
+      }
+    },
+    "wires": [
+      {
+        "from": "LAS1,p2",
+        "to": "GL1,p1"
+      },
+      {
+        "from": "LAS2,p2",
+        "to": "GL2,p1"
+      },
+      {
+        "from": "LAS3,p2",
+        "to": "GL3,p1"
+      },
+      {
+        "from": "LAS4,p2",
+        "to": "GL4,p1"
+      },
+      {
+        "from": "LAS1,p1",
+        "to": "CMBA,p2"
+      },
+      {
+        "from": "LAS2,p1",
+        "to": "CMBA,p3"
+      },
+      {
+        "from": "LAS3,p1",
+        "to": "CMBB,p2"
+      },
+      {
+        "from": "LAS4,p1",
+        "to": "CMBB,p3"
+      },
+      {
+        "from": "CMBA,p1",
+        "to": "CMBC,p2"
+      },
+      {
+        "from": "CMBB,p1",
+        "to": "CMBC,p3"
+      },
+      {
+        "from": "CMBC,p1",
+        "to": "RM1,pin"
+      },
+      {
+        "from": "PAT1,p1",
+        "to": "RM1,vp"
+      },
+      {
+        "from": "PAT1,p2",
+        "to": "GP1,p1"
+      },
+      {
+        "from": "RM1,vn",
+        "to": "GR1,p1"
+      },
+      {
+        "from": "RM1,gnd",
+        "to": "GR1,p1"
+      },
+      {
+        "from": "RM1,pout",
+        "to": "RM2,pin"
+      },
+      {
+        "from": "PAT2,p1",
+        "to": "RM2,vp"
+      },
+      {
+        "from": "PAT2,p2",
+        "to": "GP2,p1"
+      },
+      {
+        "from": "RM2,vn",
+        "to": "GR2,p1"
+      },
+      {
+        "from": "RM2,gnd",
+        "to": "GR2,p1"
+      },
+      {
+        "from": "RM2,pout",
+        "to": "RM3,pin"
+      },
+      {
+        "from": "PAT3,p1",
+        "to": "RM3,vp"
+      },
+      {
+        "from": "PAT3,p2",
+        "to": "GP3,p1"
+      },
+      {
+        "from": "RM3,vn",
+        "to": "GR3,p1"
+      },
+      {
+        "from": "RM3,gnd",
+        "to": "GR3,p1"
+      },
+      {
+        "from": "RM3,pout",
+        "to": "RM4,pin"
+      },
+      {
+        "from": "PAT4,p1",
+        "to": "RM4,vp"
+      },
+      {
+        "from": "PAT4,p2",
+        "to": "GP4,p1"
+      },
+      {
+        "from": "RM4,vn",
+        "to": "GR4,p1"
+      },
+      {
+        "from": "RM4,gnd",
+        "to": "GR4,p1"
+      },
+      {
+        "from": "RM4,pout",
+        "to": "FLT1,pin"
+      },
+      {
+        "from": "FLT1,drop",
+        "to": "PD1,po_p"
+      },
+      {
+        "from": "PD1,po_n",
+        "to": "GO1,p1"
+      },
+      {
+        "from": "PD1,an",
+        "to": "GA1,p1"
+      },
+      {
+        "from": "PD1,cat",
+        "to": "RL1,p1"
+      },
+      {
+        "from": "RL1,p2",
+        "to": "VB1,p1"
+      },
+      {
+        "from": "VB1,p2",
+        "to": "GB1,p1"
+      },
+      {
+        "from": "FLT1,thru",
+        "to": "FLT2,pin"
+      },
+      {
+        "from": "FLT2,drop",
+        "to": "PD2,po_p"
+      },
+      {
+        "from": "PD2,po_n",
+        "to": "GO2,p1"
+      },
+      {
+        "from": "PD2,an",
+        "to": "GA2,p1"
+      },
+      {
+        "from": "PD2,cat",
+        "to": "RL2,p1"
+      },
+      {
+        "from": "RL2,p2",
+        "to": "VB2,p1"
+      },
+      {
+        "from": "VB2,p2",
+        "to": "GB2,p1"
+      },
+      {
+        "from": "FLT2,thru",
+        "to": "FLT3,pin"
+      },
+      {
+        "from": "FLT3,drop",
+        "to": "PD3,po_p"
+      },
+      {
+        "from": "PD3,po_n",
+        "to": "GO3,p1"
+      },
+      {
+        "from": "PD3,an",
+        "to": "GA3,p1"
+      },
+      {
+        "from": "PD3,cat",
+        "to": "RL3,p1"
+      },
+      {
+        "from": "RL3,p2",
+        "to": "VB3,p1"
+      },
+      {
+        "from": "VB3,p2",
+        "to": "GB3,p1"
+      },
+      {
+        "from": "FLT3,thru",
+        "to": "FLT4,pin"
+      },
+      {
+        "from": "FLT4,drop",
+        "to": "PD4,po_p"
+      },
+      {
+        "from": "PD4,po_n",
+        "to": "GO4,p1"
+      },
+      {
+        "from": "PD4,an",
+        "to": "GA4,p1"
+      },
+      {
+        "from": "PD4,cat",
+        "to": "RL4,p1"
+      },
+      {
+        "from": "RL4,p2",
+        "to": "VB4,p1"
+      },
+      {
+        "from": "VB4,p2",
+        "to": "GB4,p1"
+      },
+      {
+        "from": "FLT4,thru",
+        "to": "TT,p1"
+      }
+    ],
+    "probes": [
+      {
+        "name": "bus",
+        "at": "RM4,pout",
+        "color": "#e6862c",
+        "spectrum": true
+      },
+      {
+        "name": "ch1",
+        "at": "FLT1,drop",
+        "color": "#8fd18f",
+        "spectrum": true
+      },
+      {
+        "name": "vout1",
+        "at": "PD1,cat",
+        "color": "#5fae5f"
+      },
+      {
+        "name": "ch2",
+        "at": "FLT2,drop",
+        "color": "#6ecbf5",
+        "spectrum": true
+      },
+      {
+        "name": "vout2",
+        "at": "PD2,cat",
+        "color": "#3f9ec8"
+      },
+      {
+        "name": "ch3",
+        "at": "FLT3,drop",
+        "color": "#e6c86e",
+        "spectrum": true
+      },
+      {
+        "name": "vout3",
+        "at": "PD3,cat",
+        "color": "#c8a842"
+      },
+      {
+        "name": "ch4",
+        "at": "FLT4,drop",
+        "color": "#f08fb0",
+        "spectrum": true
+      },
+      {
+        "name": "vout4",
+        "at": "PD4,cat",
+        "color": "#d76f96"
+      }
+    ]
+  },
+  "analysis": {
+    "mode": "transient",
+    "t_stop": 6.4e-09,
+    "points": 16000,
+    "dtmax": 5e-14
+  }
+}

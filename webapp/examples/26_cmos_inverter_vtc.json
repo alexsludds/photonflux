@@ -1,0 +1,125 @@
+{
+ "title": "26 — CMOS inverter VTC: switching threshold vs PMOS width (Wp = 10/20/40 µm, balanced at 20 µm)",
+ "group": "Electronics — digital",
+ "schematic": {
+  "instances": {
+   "VDD": {
+    "type": "vdc",
+    "x": 300,
+    "y": 40,
+    "rot": 0,
+    "settings": {
+     "V": 3.3
+    }
+   },
+   "GDD": {
+    "type": "ground",
+    "x": 380,
+    "y": 40,
+    "rot": 0,
+    "settings": {}
+   },
+   "VIN": {
+    "type": "vdc",
+    "x": 60,
+    "y": 240,
+    "rot": 0,
+    "settings": {
+     "V": 0.0
+    }
+   },
+   "GIN": {
+    "type": "ground",
+    "x": 60,
+    "y": 340,
+    "rot": 0,
+    "settings": {}
+   },
+   "MP": {
+    "type": "pmos",
+    "x": 300,
+    "y": 140,
+    "rot": 0,
+    "settings": {
+     "Kp": 1e-05,
+     "W": 2e-05,
+     "L": 1e-06,
+     "Vth": -1.0,
+     "lam": 0.05
+    }
+   },
+   "MN": {
+    "type": "nmos",
+    "x": 300,
+    "y": 320,
+    "rot": 0,
+    "settings": {
+     "Kp": 2e-05,
+     "W": 1e-05,
+     "L": 1e-06,
+     "Vth": 1.0,
+     "lam": 0.05
+    }
+   },
+   "GS": {
+    "type": "ground",
+    "x": 300,
+    "y": 430,
+    "rot": 0,
+    "settings": {}
+   }
+  },
+  "wires": [
+   {
+    "from": "VDD,p1",
+    "to": "MP,s"
+   },
+   {
+    "from": "VDD,p2",
+    "to": "GDD,p1"
+   },
+   {
+    "from": "MP,d",
+    "to": "MN,d"
+   },
+   {
+    "from": "VIN,p1",
+    "to": "MP,g"
+   },
+   {
+    "from": "VIN,p1",
+    "to": "MN,g"
+   },
+   {
+    "from": "VIN,p2",
+    "to": "GIN,p1"
+   },
+   {
+    "from": "MN,s",
+    "to": "GS,p1"
+   }
+  ],
+  "probes": [
+   {
+    "name": "vout",
+    "at": "MN,d",
+    "color": "#6ecbf5"
+   }
+  ]
+ },
+ "analysis": {
+  "mode": "dcsweep",
+  "instance": "VIN",
+  "param": "V",
+  "start": 0.0,
+  "stop": 3.3,
+  "points": 133,
+  "step_instance": "MP",
+  "step_param": "W",
+  "step_values": [
+   1e-05,
+   2e-05,
+   4e-05
+  ]
+ }
+}

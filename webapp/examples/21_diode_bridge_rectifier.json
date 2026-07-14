@@ -1,0 +1,179 @@
+{
+ "title": "21 — full-wave diode bridge rectifier + RC smoothing: 5 V / 1 MHz AC in, ~3.8 V DC out with sawtooth ripple",
+ "group": "Electronics — analog",
+ "schematic": {
+  "instances": {
+   "VS": {
+    "type": "vsin",
+    "x": 40,
+    "y": 200,
+    "rot": 0,
+    "settings": {
+     "V": 5.0,
+     "freq": 1000000.0
+    }
+   },
+   "RS": {
+    "type": "resistor",
+    "x": 170,
+    "y": 120,
+    "rot": 0,
+    "settings": {
+     "R": 50.0
+    }
+   },
+   "RB": {
+    "type": "resistor",
+    "x": 120,
+    "y": 320,
+    "rot": 0,
+    "settings": {
+     "R": 1000000.0
+    }
+   },
+   "GB": {
+    "type": "ground",
+    "x": 120,
+    "y": 410,
+    "rot": 0,
+    "settings": {}
+   },
+   "D1": {
+    "type": "diode",
+    "x": 330,
+    "y": 100,
+    "rot": 0,
+    "settings": {}
+   },
+   "D2": {
+    "type": "diode",
+    "x": 330,
+    "y": 300,
+    "rot": 0,
+    "settings": {}
+   },
+   "D3": {
+    "type": "diode",
+    "x": 250,
+    "y": 180,
+    "rot": 0,
+    "settings": {}
+   },
+   "D4": {
+    "type": "diode",
+    "x": 250,
+    "y": 380,
+    "rot": 0,
+    "settings": {}
+   },
+   "GN": {
+    "type": "ground",
+    "x": 250,
+    "y": 470,
+    "rot": 0,
+    "settings": {}
+   },
+   "RL": {
+    "type": "resistor",
+    "x": 520,
+    "y": 160,
+    "rot": 0,
+    "settings": {
+     "R": 1000.0
+    }
+   },
+   "CL": {
+    "type": "capacitor",
+    "x": 620,
+    "y": 160,
+    "rot": 0,
+    "settings": {
+     "C": 5e-09
+    }
+   },
+   "GL": {
+    "type": "ground",
+    "x": 570,
+    "y": 300,
+    "rot": 0,
+    "settings": {}
+   }
+  },
+  "wires": [
+   {
+    "from": "VS,p1",
+    "to": "RS,p1"
+   },
+   {
+    "from": "RS,p2",
+    "to": "D1,p1"
+   },
+   {
+    "from": "D1,p2",
+    "to": "RL,p1"
+   },
+   {
+    "from": "VS,p2",
+    "to": "D2,p1"
+   },
+   {
+    "from": "D2,p2",
+    "to": "RL,p1"
+   },
+   {
+    "from": "D3,p2",
+    "to": "RS,p2"
+   },
+   {
+    "from": "D3,p1",
+    "to": "GN,p1"
+   },
+   {
+    "from": "D4,p2",
+    "to": "VS,p2"
+   },
+   {
+    "from": "D4,p1",
+    "to": "GN,p1"
+   },
+   {
+    "from": "VS,p2",
+    "to": "RB,p1"
+   },
+   {
+    "from": "RB,p2",
+    "to": "GB,p1"
+   },
+   {
+    "from": "RL,p1",
+    "to": "CL,p1"
+   },
+   {
+    "from": "RL,p2",
+    "to": "GL,p1"
+   },
+   {
+    "from": "CL,p2",
+    "to": "GL,p1"
+   }
+  ],
+  "probes": [
+   {
+    "name": "vout",
+    "at": "RL,p1",
+    "color": "#6ecbf5"
+   },
+   {
+    "name": "vac_a",
+    "at": "RS,p2",
+    "color": "#e6862c"
+   }
+  ]
+ },
+ "analysis": {
+  "mode": "transient",
+  "t_stop": 8e-06,
+  "points": 4000,
+  "solver": "bdf2"
+ }
+}

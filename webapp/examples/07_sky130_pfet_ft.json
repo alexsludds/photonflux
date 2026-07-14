@@ -1,0 +1,403 @@
+{
+  "title": "07 \u2014 SKY130 PFET flavors: bandwidth / f_T (fixture-free |h21|)",
+  "group": "SKY130 transistors",
+  "schematic": {
+    "instances": {
+      "MP1": {
+        "type": "sky130_pfet",
+        "x": 160,
+        "y": 170,
+        "rot": 0,
+        "settings": {
+          "w_um": 2.0,
+          "l_um": 0.15
+        }
+      },
+      "VG1": {
+        "type": "vdc",
+        "x": 110,
+        "y": 170,
+        "rot": 270,
+        "settings": {
+          "V": 0.6
+        }
+      },
+      "GNDG1": {
+        "type": "ground",
+        "x": 140,
+        "y": 244,
+        "rot": 0,
+        "settings": {}
+      },
+      "VD1": {
+        "type": "vdc",
+        "x": 180,
+        "y": 80,
+        "rot": 0,
+        "settings": {
+          "V": 0.0
+        }
+      },
+      "GNDD1": {
+        "type": "ground",
+        "x": 180,
+        "y": 184,
+        "rot": 0,
+        "settings": {}
+      },
+      "VDD1": {
+        "type": "vdc",
+        "x": 180,
+        "y": 320,
+        "rot": 0,
+        "settings": {
+          "V": 1.8
+        }
+      },
+      "GNDB1": {
+        "type": "ground",
+        "x": 180,
+        "y": 424,
+        "rot": 0,
+        "settings": {}
+      },
+      "MP2": {
+        "type": "sky130_pfet_lvt",
+        "x": 360,
+        "y": 170,
+        "rot": 0,
+        "settings": {
+          "w_um": 2.0,
+          "l_um": 0.35
+        }
+      },
+      "VG2": {
+        "type": "vdc",
+        "x": 310,
+        "y": 170,
+        "rot": 270,
+        "settings": {
+          "V": 0.6
+        }
+      },
+      "GNDG2": {
+        "type": "ground",
+        "x": 340,
+        "y": 244,
+        "rot": 0,
+        "settings": {}
+      },
+      "VD2": {
+        "type": "vdc",
+        "x": 380,
+        "y": 80,
+        "rot": 0,
+        "settings": {
+          "V": 0.0
+        }
+      },
+      "GNDD2": {
+        "type": "ground",
+        "x": 380,
+        "y": 184,
+        "rot": 0,
+        "settings": {}
+      },
+      "VDD2": {
+        "type": "vdc",
+        "x": 380,
+        "y": 320,
+        "rot": 0,
+        "settings": {
+          "V": 1.8
+        }
+      },
+      "GNDB2": {
+        "type": "ground",
+        "x": 380,
+        "y": 424,
+        "rot": 0,
+        "settings": {}
+      },
+      "MP3": {
+        "type": "sky130_pfet_hvt",
+        "x": 560,
+        "y": 170,
+        "rot": 0,
+        "settings": {
+          "w_um": 2.0,
+          "l_um": 0.15
+        }
+      },
+      "VG3": {
+        "type": "vdc",
+        "x": 510,
+        "y": 170,
+        "rot": 270,
+        "settings": {
+          "V": 0.6
+        }
+      },
+      "GNDG3": {
+        "type": "ground",
+        "x": 540,
+        "y": 244,
+        "rot": 0,
+        "settings": {}
+      },
+      "VD3": {
+        "type": "vdc",
+        "x": 580,
+        "y": 80,
+        "rot": 0,
+        "settings": {
+          "V": 0.0
+        }
+      },
+      "GNDD3": {
+        "type": "ground",
+        "x": 580,
+        "y": 184,
+        "rot": 0,
+        "settings": {}
+      },
+      "VDD3": {
+        "type": "vdc",
+        "x": 580,
+        "y": 320,
+        "rot": 0,
+        "settings": {
+          "V": 1.8
+        }
+      },
+      "GNDB3": {
+        "type": "ground",
+        "x": 580,
+        "y": 424,
+        "rot": 0,
+        "settings": {}
+      },
+      "MP4": {
+        "type": "sky130_pfet_5v",
+        "x": 760,
+        "y": 170,
+        "rot": 0,
+        "settings": {
+          "w_um": 2.0,
+          "l_um": 0.5
+        }
+      },
+      "VG4": {
+        "type": "vdc",
+        "x": 710,
+        "y": 170,
+        "rot": 270,
+        "settings": {
+          "V": 2.5
+        }
+      },
+      "GNDG4": {
+        "type": "ground",
+        "x": 740,
+        "y": 244,
+        "rot": 0,
+        "settings": {}
+      },
+      "VD4": {
+        "type": "vdc",
+        "x": 780,
+        "y": 80,
+        "rot": 0,
+        "settings": {
+          "V": 0.0
+        }
+      },
+      "GNDD4": {
+        "type": "ground",
+        "x": 780,
+        "y": 184,
+        "rot": 0,
+        "settings": {}
+      },
+      "VDD4": {
+        "type": "vdc",
+        "x": 780,
+        "y": 320,
+        "rot": 0,
+        "settings": {
+          "V": 5.0
+        }
+      },
+      "GNDB4": {
+        "type": "ground",
+        "x": 780,
+        "y": 424,
+        "rot": 0,
+        "settings": {}
+      }
+    },
+    "wires": [
+      {
+        "from": "VG1,p1",
+        "to": "MP1,g"
+      },
+      {
+        "from": "VG1,p2",
+        "to": "GNDG1,p1"
+      },
+      {
+        "from": "VD1,p1",
+        "to": "MP1,d"
+      },
+      {
+        "from": "VD1,p2",
+        "to": "GNDD1,p1"
+      },
+      {
+        "from": "VDD1,p1",
+        "to": "MP1,s"
+      },
+      {
+        "from": "VDD1,p1",
+        "to": "MP1,b"
+      },
+      {
+        "from": "VDD1,p2",
+        "to": "GNDB1,p1"
+      },
+      {
+        "from": "VG2,p1",
+        "to": "MP2,g"
+      },
+      {
+        "from": "VG2,p2",
+        "to": "GNDG2,p1"
+      },
+      {
+        "from": "VD2,p1",
+        "to": "MP2,d"
+      },
+      {
+        "from": "VD2,p2",
+        "to": "GNDD2,p1"
+      },
+      {
+        "from": "VDD2,p1",
+        "to": "MP2,s"
+      },
+      {
+        "from": "VDD2,p1",
+        "to": "MP2,b"
+      },
+      {
+        "from": "VDD2,p2",
+        "to": "GNDB2,p1"
+      },
+      {
+        "from": "VG3,p1",
+        "to": "MP3,g"
+      },
+      {
+        "from": "VG3,p2",
+        "to": "GNDG3,p1"
+      },
+      {
+        "from": "VD3,p1",
+        "to": "MP3,d"
+      },
+      {
+        "from": "VD3,p2",
+        "to": "GNDD3,p1"
+      },
+      {
+        "from": "VDD3,p1",
+        "to": "MP3,s"
+      },
+      {
+        "from": "VDD3,p1",
+        "to": "MP3,b"
+      },
+      {
+        "from": "VDD3,p2",
+        "to": "GNDB3,p1"
+      },
+      {
+        "from": "VG4,p1",
+        "to": "MP4,g"
+      },
+      {
+        "from": "VG4,p2",
+        "to": "GNDG4,p1"
+      },
+      {
+        "from": "VD4,p1",
+        "to": "MP4,d"
+      },
+      {
+        "from": "VD4,p2",
+        "to": "GNDD4,p1"
+      },
+      {
+        "from": "VDD4,p1",
+        "to": "MP4,s"
+      },
+      {
+        "from": "VDD4,p1",
+        "to": "MP4,b"
+      },
+      {
+        "from": "VDD4,p2",
+        "to": "GNDB4,p1"
+      }
+    ],
+    "probes": [
+      {
+        "name": "in_01v8",
+        "at": "VG1,p1",
+        "color": "#8a8aa3"
+      },
+      {
+        "name": "out_01v8",
+        "at": "VD1,p1",
+        "color": "#6ecbf5"
+      },
+      {
+        "name": "in_lvt",
+        "at": "VG2,p1",
+        "color": "#8a8aa3"
+      },
+      {
+        "name": "out_lvt",
+        "at": "VD2,p1",
+        "color": "#4ade80"
+      },
+      {
+        "name": "in_hvt",
+        "at": "VG3,p1",
+        "color": "#8a8aa3"
+      },
+      {
+        "name": "out_hvt",
+        "at": "VD3,p1",
+        "color": "#a78bfa"
+      },
+      {
+        "name": "in_5v",
+        "at": "VG4,p1",
+        "color": "#8a8aa3"
+      },
+      {
+        "name": "out_5v",
+        "at": "VD4,p1",
+        "color": "#fb923c"
+      }
+    ]
+  },
+  "analysis": {
+    "mode": "ac",
+    "f_start": 10000000.0,
+    "f_stop": 1000000000000.0,
+    "points": 121,
+    "z0": 50
+  }
+}

@@ -1,0 +1,129 @@
+{
+  "title": "15 \u2014 Imbalanced MZI from building blocks: wavelength sweep, FSR = lam^2/(n_g dL)",
+  "group": "Passive photonics",
+  "schematic": {
+    "instances": {
+      "LAS1": {
+        "type": "cw_laser",
+        "x": 40,
+        "y": 180,
+        "rot": 0,
+        "settings": {
+          "power": 0.001,
+          "wavelength_nm": 1310.0
+        }
+      },
+      "GNDL": {
+        "type": "ground",
+        "x": 60,
+        "y": 264,
+        "rot": 0,
+        "settings": {}
+      },
+      "SPL1": {
+        "type": "splitter",
+        "x": 260,
+        "y": 180,
+        "rot": 0,
+        "settings": {
+          "split_ratio": 0.5
+        }
+      },
+      "WG1": {
+        "type": "waveguide",
+        "x": 380,
+        "y": 130,
+        "rot": 0,
+        "settings": {
+          "length_m": 0.0001,
+          "loss_dB_cm": 1.0,
+          "neff": 2.4,
+          "n_group": 4.0,
+          "center_wavelength_nm": 1310.0,
+          "wavelength_nm": 1310.0
+        }
+      },
+      "WG2": {
+        "type": "waveguide",
+        "x": 380,
+        "y": 250,
+        "rot": 0,
+        "settings": {
+          "length_m": 0.0003146,
+          "loss_dB_cm": 1.0,
+          "neff": 2.4,
+          "n_group": 4.0,
+          "center_wavelength_nm": 1310.0,
+          "wavelength_nm": 1310.0
+        }
+      },
+      "CMB1": {
+        "type": "splitter",
+        "x": 500,
+        "y": 180,
+        "rot": 0,
+        "settings": {
+          "split_ratio": 0.5
+        },
+        "flip": true
+      },
+      "TERM1": {
+        "type": "opt_term",
+        "x": 680,
+        "y": 188,
+        "rot": 0,
+        "settings": {}
+      }
+    },
+    "wires": [
+      {
+        "from": "LAS1,p1",
+        "to": "SPL1,p1"
+      },
+      {
+        "from": "LAS1,p2",
+        "to": "GNDL,p1"
+      },
+      {
+        "from": "SPL1,p2",
+        "to": "WG1,p1"
+      },
+      {
+        "from": "SPL1,p3",
+        "to": "WG2,p1"
+      },
+      {
+        "from": "WG1,p2",
+        "to": "CMB1,p2"
+      },
+      {
+        "from": "WG2,p2",
+        "to": "CMB1,p3"
+      },
+      {
+        "from": "CMB1,p1",
+        "to": "TERM1,p1"
+      }
+    ],
+    "probes": [
+      {
+        "name": "arm2",
+        "at": "WG2,p2",
+        "color": "#8fd18f"
+      },
+      {
+        "name": "pout",
+        "at": "CMB1,p1",
+        "color": "#e6862c"
+      }
+    ]
+  },
+  "analysis": {
+    "mode": "dcsweep",
+    "instance": "*",
+    "param": "wavelength_nm",
+    "start": 1304.0,
+    "stop": 1316.0,
+    "points": 601
+  }
+}

@@ -1,0 +1,265 @@
+{
+  "title": "37 \u2014 Vernier laser from NOISE, with a live mode hop: SOA + ASE injector + two 5-mode ring combs (R = 400/425 \u00b5m \u2192 FSR 29.8/28.1 GHz, \u0394FSR = 1.76 GHz ~ 1.5 linewidths). The SOA's deterministic seed is OFF \u2014 broadband ASE (-135 dBm/Hz, the physical n_sp\u00b7h\u03bd\u00b7(G\u22121)) seeds EVERY comb line; three alignment candidates start above threshold at t = 0.3 ns, compete for the shared gain, and the aligned pair at 1310 nm wins and clamps it. At t = 6 ns the ring-B heater steps 0.50 V (0.50 mW = a 1.76 GHz comb shift) WHILE THE LASER RUNS: the running mode falls below threshold, p_out collapses while the reservoir refills, and the newly aligned pair one FSR (29.8 GHz, \u00d717 Vernier lever) to the red grows out of the ASE floor and takes over \u2014 watch the two lines at 1310.00 and 1310.17 nm on the OSA spectrum. Takes several minutes: 48k solver steps resolve the \u00b160 GHz beats of the losing modes",
+  "group": "Lasers & modulators",
+  "analysis": {
+    "mode": "transient",
+    "t_stop": 1.2e-08,
+    "points": 6000,
+    "dtmax": 2.5e-13,
+    "noise": {
+      "seeds": 1,
+      "bw": 500000000000.0
+    }
+  },
+  "schematic": {
+    "instances": {
+      "VP1": {
+        "type": "vpulse",
+        "x": 120,
+        "y": 40,
+        "rot": 0,
+        "settings": {
+          "v1": 1.215,
+          "v2": 1.44,
+          "td": 3e-10,
+          "tr": 5e-11,
+          "tf": 5e-11,
+          "pw": 2e-08,
+          "per": 4e-08
+        }
+      },
+      "GNDV": {
+        "type": "ground",
+        "x": 40,
+        "y": 96,
+        "rot": 0,
+        "settings": {}
+      },
+      "SOA1": {
+        "type": "soa",
+        "x": 80,
+        "y": 160,
+        "rot": 0,
+        "settings": {
+          "p_seed": 0.0,
+          "tau_bw": 5e-14
+        }
+      },
+      "ASE1": {
+        "type": "ase_src",
+        "x": 230,
+        "y": 150,
+        "rot": 0,
+        "settings": {
+          "s_ase_dbm_hz": -135.0
+        }
+      },
+      "TTB": {
+        "type": "opt_term",
+        "x": 20,
+        "y": 220,
+        "rot": 2,
+        "settings": {}
+      },
+      "TTC": {
+        "type": "opt_term",
+        "x": 20,
+        "y": 260,
+        "rot": 2,
+        "settings": {}
+      },
+      "RC1": {
+        "type": "ring_comb",
+        "x": 360,
+        "y": 160,
+        "rot": 0,
+        "settings": {
+          "radius_um": 400.0,
+          "kappa2_in": 0.1,
+          "kappa2_drop": 0.1,
+          "wavelength_nm": 1310.0
+        }
+      },
+      "RC2": {
+        "type": "ring_comb",
+        "x": 570,
+        "y": 160,
+        "rot": 0,
+        "settings": {
+          "radius_um": 425.0,
+          "kappa2_in": 0.1,
+          "kappa2_drop": 0.1,
+          "wavelength_nm": 1310.0
+        }
+      },
+      "VH": {
+        "type": "vdc",
+        "x": 590,
+        "y": 40,
+        "rot": 0,
+        "settings": {
+          "V": 0.502,
+          "delay": 6e-09
+        }
+      },
+      "GNDH": {
+        "type": "ground",
+        "x": 670,
+        "y": 96,
+        "rot": 0,
+        "settings": {}
+      },
+      "CP": {
+        "type": "wmirror",
+        "x": 780,
+        "y": 160,
+        "rot": 0,
+        "settings": {
+          "refl": 0.6
+        }
+      },
+      "TT1": {
+        "type": "opt_term",
+        "x": 370,
+        "y": 300,
+        "rot": 0,
+        "settings": {}
+      },
+      "TT2": {
+        "type": "opt_term",
+        "x": 580,
+        "y": 300,
+        "rot": 0,
+        "settings": {}
+      },
+      "TTD": {
+        "type": "opt_term",
+        "x": 950,
+        "y": 210,
+        "rot": 0,
+        "settings": {}
+      },
+      "TOUT": {
+        "type": "opt_term",
+        "x": 950,
+        "y": 150,
+        "rot": 0,
+        "settings": {}
+      },
+      "GND1": {
+        "type": "ground",
+        "x": 440,
+        "y": 380,
+        "rot": 0,
+        "settings": {}
+      }
+    },
+    "wires": [
+      {
+        "from": "VP1,p1",
+        "to": "SOA1,an"
+      },
+      {
+        "from": "VP1,p2",
+        "to": "GNDV,p1"
+      },
+      {
+        "from": "SOA1,cat",
+        "to": "GND1,p1"
+      },
+      {
+        "from": "SOA1,gnd",
+        "to": "GND1,p1"
+      },
+      {
+        "from": "SOA1,bin",
+        "to": "TTB,p1"
+      },
+      {
+        "from": "SOA1,bout",
+        "to": "TTC,p1"
+      },
+      {
+        "from": "SOA1,fout",
+        "to": "ASE1,pin"
+      },
+      {
+        "from": "ASE1,pout",
+        "to": "RC1,pin"
+      },
+      {
+        "from": "RC1,drop",
+        "to": "RC2,pin"
+      },
+      {
+        "from": "RC1,thru",
+        "to": "TT1,p1"
+      },
+      {
+        "from": "RC2,thru",
+        "to": "TT2,p1"
+      },
+      {
+        "from": "RC1,hp",
+        "to": "GND1,p1"
+      },
+      {
+        "from": "RC1,hn",
+        "to": "GND1,p1"
+      },
+      {
+        "from": "RC1,gnd",
+        "to": "GND1,p1"
+      },
+      {
+        "from": "VH,p1",
+        "to": "RC2,hp"
+      },
+      {
+        "from": "VH,p2",
+        "to": "GNDH,p1"
+      },
+      {
+        "from": "RC2,hn",
+        "to": "GND1,p1"
+      },
+      {
+        "from": "RC2,gnd",
+        "to": "GND1,p1"
+      },
+      {
+        "from": "RC2,drop",
+        "to": "CP,li"
+      },
+      {
+        "from": "CP,lo",
+        "to": "SOA1,fin"
+      },
+      {
+        "from": "CP,ro",
+        "to": "TOUT,p1"
+      },
+      {
+        "from": "CP,ri",
+        "to": "TTD,p1"
+      },
+      {
+        "from": "CP,gnd",
+        "to": "GND1,p1"
+      }
+    ],
+    "probes": [
+      {
+        "name": "p_out",
+        "at": "CP,ro",
+        "color": "#e6862c",
+        "spectrum": true
+      },
+      {
+        "name": "p_drop2",
+        "at": "RC2,drop",
+        "color": "#6ecbf5"
+      }
+    ]
+  }
+}

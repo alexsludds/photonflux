@@ -1,0 +1,54 @@
+`include "discipline.h"
+`include "constants.h"
+
+// Partially reflective mirror / lossless beamsplitter for coherent fields.
+//
+// Two sides, left (l) and right (r), each with an incoming and an outgoing
+// directed wave — the element that turns unidirectional field chains into
+// standing-wave cavities:
+//
+//   lo = s * ( r*e^{j*phi_r}*li + j*t*ri )
+//   ro = s * ( j*t*li + r*e^{j*phi_r}*ri )
+//
+// with r = sqrt(refl), t = sqrt(1 - refl) (the j on transmission keeps the
+// splitter unitary), s = 10^(-loss_db/20) an excess loss, and phi_r an
+// extra phase on reflection — the cavity round-trip phase trim.
+//
+// Coherent-field convention: Ereal/Eimag node pairs, |E|^2 = power [W].
+// Inputs are read at infinite impedance; outputs are driven — never tie two
+// driven outputs to the same node.
+module mirror(li_re, li_im, lo_re, lo_im, ri_re, ri_im, ro_re, ro_im, gnd);
+    inout li_re, li_im, lo_re, lo_im, ri_re, ri_im, ro_re, ro_im, gnd;
+    electrical li_re, li_im, lo_re, lo_im, ri_re, ri_im, ro_re, ro_im, gnd;
+
+    // reactive dummy: with NO ddt() anywhere in a module, bosdi's emitted
+    // custom-JVP returns a float64 reactive primal with a complex tangent
+    // and the circulax complex assembly rejects it. One always-zero RC state
+    // keeps the reactive side dtype-honest; it never couples to the optics.
+    electrical dmy;
+
+    parameter real refl      = 0.3 from [0:1];    // power reflectivity
+    parameter real loss_db   = 0.0 from [0:inf);  // excess loss [dB]
+    parameter real phi_r_deg = 0.0;               // reflection phase [deg]
+
+    real r, t, s, phr, rc, rs;
+
+    analog begin
+        I(dmy, gnd) <+ 1e-12 * ddt(V(dmy, gnd)) + V(dmy, gnd);
+        r   = sqrt(refl);
+        t   = sqrt(1.0 - refl);
+        s   = pow(10.0, -loss_db / 20.0);
+        phr = phi_r_deg * `M_PI / 180.0;
+        rc  = s * r * cos(phr);
+        rs  = s * r * sin(phr);
+
+        V(lo_re, gnd) <+ rc * V(li_re, gnd) - rs * V(li_im, gnd)
+                         - s * t * V(ri_im, gnd);
+        V(lo_im, gnd) <+ rs * V(li_re, gnd) + rc * V(li_im, gnd)
+                         + s * t * V(ri_re, gnd);
+        V(ro_re, gnd) <+ -s * t * V(li_im, gnd)
+                         + rc * V(ri_re, gnd) - rs * V(ri_im, gnd);
+        V(ro_im, gnd) <+ s * t * V(li_re, gnd)
+                         + rs * V(ri_re, gnd) + rc * V(ri_im, gnd);
+    end
+endmodule

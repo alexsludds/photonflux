@@ -1,0 +1,203 @@
+{
+  "title": "17 \u2014 The same 25 Gb/s / 20 km link at 1311 nm: O-band (zero dispersion) re-opens the eye",
+  "group": "Channels & equalization",
+  "schematic": {
+    "instances": {
+      "LAS1": {
+        "type": "cw_laser",
+        "x": 40,
+        "y": 180,
+        "rot": 0,
+        "settings": {
+          "power": 0.005,
+          "wavelength_nm": 1311.0
+        }
+      },
+      "GNDL": {
+        "type": "ground",
+        "x": 60,
+        "y": 264,
+        "rot": 0,
+        "settings": {}
+      },
+      "PAT1": {
+        "type": "prbs",
+        "x": 180,
+        "y": 290,
+        "rot": 0,
+        "settings": {
+          "ui": 4e-11,
+          "order": 9,
+          "v0": -0.75,
+          "v1": 0.75,
+          "tr": 1.2e-11
+        }
+      },
+      "GNDP": {
+        "type": "ground",
+        "x": 180,
+        "y": 394,
+        "rot": 0,
+        "settings": {}
+      },
+      "MZM1": {
+        "type": "mzm",
+        "x": 280,
+        "y": 170,
+        "rot": 0,
+        "settings": {
+          "vpi": 1.5,
+          "vbias": 0.75
+        }
+      },
+      "GNDM": {
+        "type": "ground",
+        "x": 310,
+        "y": 274,
+        "rot": 0,
+        "settings": {}
+      },
+      "FIB1": {
+        "type": "fiber_cd",
+        "x": 420,
+        "y": 187,
+        "rot": 0,
+        "settings": {
+          "length_km": 20.0,
+          "lambda_nm": 1311.0,
+          "lambda0_nm": 1310.0,
+          "S_ps": 0.092,
+          "atten_db_km": 0.35,
+          "fit_bw": 40000000000.0,
+          "n_poles": 24
+        }
+      },
+      "PD1": {
+        "type": "photodiode",
+        "x": 540,
+        "y": 180,
+        "rot": 0,
+        "settings": {
+          "R": 0.8,
+          "Cj": 4e-14
+        }
+      },
+      "GNDO": {
+        "type": "ground",
+        "x": 520,
+        "y": 280,
+        "rot": 0,
+        "settings": {}
+      },
+      "GNDA": {
+        "type": "ground",
+        "x": 580,
+        "y": 320,
+        "rot": 0,
+        "settings": {}
+      },
+      "RL1": {
+        "type": "resistor",
+        "x": 660,
+        "y": 190,
+        "rot": 0,
+        "settings": {
+          "R": 300.0
+        }
+      },
+      "VB1": {
+        "type": "vdc",
+        "x": 760,
+        "y": 200,
+        "rot": 0,
+        "settings": {
+          "V": 1.8
+        }
+      },
+      "GNDB": {
+        "type": "ground",
+        "x": 760,
+        "y": 304,
+        "rot": 0,
+        "settings": {}
+      }
+    },
+    "wires": [
+      {
+        "from": "LAS1,p1",
+        "to": "MZM1,pin"
+      },
+      {
+        "from": "LAS1,p2",
+        "to": "GNDL,p1"
+      },
+      {
+        "from": "PAT1,p1",
+        "to": "MZM1,vp"
+      },
+      {
+        "from": "PAT1,p2",
+        "to": "GNDP,p1"
+      },
+      {
+        "from": "MZM1,vn",
+        "to": "GNDM,p1"
+      },
+      {
+        "from": "MZM1,pout",
+        "to": "FIB1,p1"
+      },
+      {
+        "from": "FIB1,p2",
+        "to": "PD1,po_p"
+      },
+      {
+        "from": "PD1,po_n",
+        "to": "GNDO,p1"
+      },
+      {
+        "from": "PD1,an",
+        "to": "GNDA,p1"
+      },
+      {
+        "from": "PD1,cat",
+        "to": "RL1,p1"
+      },
+      {
+        "from": "RL1,p2",
+        "to": "VB1,p1"
+      },
+      {
+        "from": "VB1,p2",
+        "to": "GNDB,p1"
+      }
+    ],
+    "probes": [
+      {
+        "name": "ptx",
+        "at": "MZM1,pout",
+        "color": "#e6862c"
+      },
+      {
+        "name": "prx",
+        "at": "FIB1,p2",
+        "color": "#8fd18f"
+      },
+      {
+        "name": "vout",
+        "at": "PD1,cat",
+        "color": "#6ecbf5"
+      }
+    ]
+  },
+  "analysis": {
+    "mode": "transient",
+    "t_stop": 1.28e-08,
+    "points": 8000,
+    "link": {
+      "probe": "vout",
+      "ffe_taps": 5,
+      "dfe_taps": 1
+    }
+  }
+}

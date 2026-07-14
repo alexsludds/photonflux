@@ -1,0 +1,110 @@
+`include "discipline.h"
+`include "constants.h"
+
+`define P_C0 2.99792458e8      // speed of light [m/s]
+`define P_HPL 6.62607015e-34   // Planck constant [J*s]
+
+// High-Q all-pass silicon microring with INTRACAVITY NONLINEAR ABSORPTION:
+// two-photon absorption (TPA) of the resonantly-enhanced circulating field,
+// free-carrier absorption (FCA) from the TPA-generated carriers, plus the
+// associated dispersive shifts (Kerr red, free-carrier blue).
+//
+// This is the model behind "why can't I keep my high-Q ring high-Q at high
+// power": the intrinsic decay rate grows with stored energy U and carrier
+// density N, so the loaded Q collapses as the input power rises.
+//
+// Coherent-field convention: Ereal/Eimag node pairs, |E|^2 = power [W].
+//
+// Single-mode CMT with state A = kappa*a (|A|^2 in W, |a|^2 = U in J):
+//
+//   dA/dt = (j*delta_eff - 1/tau_tot) A + j*kappa^2 s_in,  s_out = s_in + j*A
+//
+//   U           = |A|^2 / kappa^2,     kappa^2 = 2/tau_e
+//   I_circ      = U*v_g/V_eff          (V_eff = A_eff * 2*pi*R)
+//   1/tau_tot   = 1/tau_i0 + 1/tau_e
+//                 + beta*v_g^2*U/(2*V_eff)          (TPA)
+//                 + sigma*N*v_g/2                   (FCA)
+//   tau_fc dN/dt= tau_fc * beta*I_circ^2/(2*h*f0) - N
+//   delta_eff   = delta0 + (w0/n_g)*(n2*I_circ + dn_dN*N)
+//
+// Silicon-wire defaults: 30 dB/m intrinsic loss -> Q_i ~ 2.8e6 at 1310 nm;
+// kappa2 = 6e-4 puts the loaded Q near 1.2e6, mildly overcoupled (critical
+// is 4.3e-4, dip floor ~0.03). Set beta_tpa = 0 to recover the linear ring
+// (ring_mod.va physics without the modulator electrode).
+//
+// Implementation notes: rows scaled by the CONSTANT low-power lifetime tau0
+// (state-dependent decay stays in the resistive terms — ring_mod_inj.va
+// rule); carrier node normalised to V(nc) = N/Nscl.
+module ring_nl(in_re, in_im, out_re, out_im, gnd);
+    inout in_re, in_im, out_re, out_im, gnd;
+    electrical in_re, in_im, out_re, out_im, gnd;
+
+    electrical are, aim;   // intracavity field A = kappa*a [sqrt(W)]
+    electrical nc;         // N/Nscl, TPA-generated carriers
+
+    parameter real lambda_nm     = 1310.0 from (0:inf);  // laser wavelength [nm]
+    parameter real lambda_res_nm = 1310.0 from (0:inf);  // cold resonance [nm]
+    parameter real radius_um     = 10.0   from (0:inf);  // ring radius [um]
+    parameter real n_g           = 4.0    from (0:inf);  // group index
+    parameter real loss_db_m     = 30.0   from (0:inf);  // linear intrinsic loss [dB/m]
+    parameter real kappa2        = 6e-4   from (0:1);    // bus power coupling
+    parameter real a_eff_um2     = 0.1    from (0:inf);  // effective mode area [um^2]
+    parameter real beta_tpa      = 8e-12  from [0:inf);  // TPA coefficient [m/W]
+    parameter real sigma_fca     = 1.45e-21 from [0:inf);// FCA cross-section [m^2]
+    parameter real tau_fc        = 1n     from (0:inf);  // carrier lifetime [s]
+    parameter real n2_kerr       = 4.5e-18;              // Kerr index [m^2/W]
+    parameter real dn_dn         = -4e-27;               // FCD dn/dN [m^3]
+
+    localparam real Nscl = 1e24;   // carrier normalisation [1/m^3]
+
+    real circ, v_g, t_rt, veff, eph, w0;
+    real inv_tau_i0, inv_tau_e, tau0, k2c, tk2;
+    real pa, ucav, icirc, nfc, inv_tau_tpa, inv_tau_fca, inv_tau_tot;
+    real delta0, delta_eff, gen;
+
+    analog begin
+        // device geometry -> linear CMT rates
+        circ       = 2.0 * `M_PI * radius_um * 1e-6;
+        v_g        = `P_C0 / n_g;
+        t_rt       = circ / v_g;
+        veff       = a_eff_um2 * 1e-12 * circ;           // mode volume [m^3]
+        eph        = `P_HPL * `P_C0 / (lambda_nm * 1e-9);  // photon energy [J]
+        w0         = 2.0 * `M_PI * `P_C0 / (lambda_nm * 1e-9);
+        inv_tau_i0 = loss_db_m * ln(10.0) / 10.0 * v_g / 2.0;
+        inv_tau_e  = kappa2 / (2.0 * t_rt);
+        tau0       = 1.0 / (inv_tau_i0 + inv_tau_e);     // constant row scale
+        k2c        = 2.0 * inv_tau_e;                    // kappa^2 [1/s]
+        tk2        = tau0 * k2c;
+
+        // stored energy and circulating intensity from the state
+        pa    = V(are, gnd)*V(are, gnd) + V(aim, gnd)*V(aim, gnd);
+        ucav  = pa / k2c;                                // U [J]
+        icirc = ucav * v_g / veff;                       // [W/m^2]
+        nfc   = V(nc, gnd) * Nscl;
+
+        // nonlinear decay: TPA of the stored field + FCA of its carriers
+        inv_tau_tpa = beta_tpa * v_g * v_g * ucav / (2.0 * veff);
+        inv_tau_fca = sigma_fca * nfc * v_g / 2.0;
+        inv_tau_tot = inv_tau_i0 + inv_tau_e + inv_tau_tpa + inv_tau_fca;
+
+        // carrier rate equation (row scaled by tau_fc)
+        gen = beta_tpa * icirc * icirc / (2.0 * eph);
+        I(nc, gnd) <+ tau_fc * ddt(V(nc, gnd)) + V(nc, gnd)
+                      - tau_fc * gen / Nscl;
+
+        // dispersive shifts: Kerr red-shift, free-carrier blue-shift
+        delta0 = 2.0 * `M_PI * `P_C0 * (1.0 / (lambda_nm * 1e-9)
+                                        - 1.0 / (lambda_res_nm * 1e-9));
+        delta_eff = delta0 + (w0 / n_g) * (n2_kerr * icirc + dn_dn * nfc);
+
+        // CMT rate equations, rows scaled by the constant tau0
+        I(are, gnd) <+ tau0 * ddt(V(are, gnd)) + tau0 * inv_tau_tot * V(are, gnd)
+                       + tau0 * delta_eff * V(aim, gnd) + tk2 * V(in_im, gnd);
+        I(aim, gnd) <+ tau0 * ddt(V(aim, gnd)) + tau0 * inv_tau_tot * V(aim, gnd)
+                       - tau0 * delta_eff * V(are, gnd) - tk2 * V(in_re, gnd);
+
+        // through port: s_out = s_in + j*A
+        V(out_re, gnd) <+ V(in_re, gnd) - V(aim, gnd);
+        V(out_im, gnd) <+ V(in_im, gnd) + V(are, gnd);
+    end
+endmodule

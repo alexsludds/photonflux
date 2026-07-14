@@ -1,0 +1,160 @@
+{
+ "title": "34 — what a probe station sees: on-chip MZI (FSR 3 nm) measured through two grating couplers — fringes under the coupler's spectral envelope",
+ "group": "Passive photonics",
+ "schematic": {
+  "instances": {
+   "LAS": {
+    "type": "cw_laser",
+    "x": 40,
+    "y": 160,
+    "rot": 0,
+    "settings": {
+     "power": 0.001,
+     "wavelength_nm": 1310.0
+    }
+   },
+   "GND": {
+    "type": "ground",
+    "x": 40,
+    "y": 250,
+    "rot": 0,
+    "settings": {}
+   },
+   "GIN": {
+    "type": "grating",
+    "x": 180,
+    "y": 160,
+    "rot": 0,
+    "settings": {
+     "center_wavelength_nm": 1310.0,
+     "peak_loss_dB": 1.5,
+     "bandwidth_1dB": 20.0,
+     "wavelength_nm": 1310.0
+    }
+   },
+   "SPL": {
+    "type": "splitter",
+    "x": 320,
+    "y": 160,
+    "rot": 0,
+    "settings": {
+     "split_ratio": 0.5
+    }
+   },
+   "WG1": {
+    "type": "waveguide",
+    "x": 460,
+    "y": 80,
+    "rot": 0,
+    "settings": {
+     "length_m": 0.0001,
+     "loss_dB_cm": 1.0,
+     "neff": 2.4,
+     "n_group": 4.0,
+     "center_wavelength_nm": 1310.0,
+     "wavelength_nm": 1310.0
+    }
+   },
+   "WG2": {
+    "type": "waveguide",
+    "x": 460,
+    "y": 240,
+    "rot": 0,
+    "settings": {
+     "length_m": 0.000243,
+     "loss_dB_cm": 1.0,
+     "neff": 2.4,
+     "n_group": 4.0,
+     "center_wavelength_nm": 1310.0,
+     "wavelength_nm": 1310.0
+    }
+   },
+   "CMB": {
+    "type": "splitter",
+    "x": 600,
+    "y": 160,
+    "rot": 0,
+    "settings": {
+     "split_ratio": 0.5
+    }
+   },
+   "GOUT": {
+    "type": "grating",
+    "x": 740,
+    "y": 160,
+    "rot": 0,
+    "settings": {
+     "center_wavelength_nm": 1310.0,
+     "peak_loss_dB": 1.5,
+     "bandwidth_1dB": 20.0,
+     "wavelength_nm": 1310.0
+    }
+   },
+   "TT": {
+    "type": "opt_term",
+    "x": 880,
+    "y": 200,
+    "rot": 0,
+    "settings": {}
+   }
+  },
+  "wires": [
+   {
+    "from": "LAS,p1",
+    "to": "GIN,grating"
+   },
+   {
+    "from": "LAS,p2",
+    "to": "GND,p1"
+   },
+   {
+    "from": "GIN,waveguide",
+    "to": "SPL,p1"
+   },
+   {
+    "from": "SPL,p2",
+    "to": "WG1,p1"
+   },
+   {
+    "from": "SPL,p3",
+    "to": "WG2,p1"
+   },
+   {
+    "from": "WG1,p2",
+    "to": "CMB,p2"
+   },
+   {
+    "from": "WG2,p2",
+    "to": "CMB,p3"
+   },
+   {
+    "from": "CMB,p1",
+    "to": "GOUT,waveguide"
+   },
+   {
+    "from": "GOUT,grating",
+    "to": "TT,p1"
+   }
+  ],
+  "probes": [
+   {
+    "name": "chip_in",
+    "at": "SPL,p1",
+    "color": "#6ecbf5"
+   },
+   {
+    "name": "fiber_out",
+    "at": "GOUT,grating",
+    "color": "#e6862c"
+   }
+  ]
+ },
+ "analysis": {
+  "mode": "dcsweep",
+  "instance": "*",
+  "param": "wavelength_nm",
+  "start": 1290.0,
+  "stop": 1330.0,
+  "points": 1601
+ }
+}

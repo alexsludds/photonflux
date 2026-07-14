@@ -1,0 +1,86 @@
+`include "discipline.h"
+`include "constants.h"
+
+// Traveling-wave Mach-Zehnder modulator, power-domain optics.
+//
+//   Optical input  `pin`  (node V = optical power [W]), output `pout`.
+//   Differential RF electrode (vp, vn), referenced to gnd.
+//
+// On top of the quasi-static transfer  T = IL*(0.5 + 0.5*eta*cos(pi*V/Vpi)),
+// this model adds the two effects that set a real traveling-wave electrode's
+// electro-optic bandwidth -- the things a lumped cos() modulator cannot show.
+// Both are imposed on the drive as cascaded single-pole roll-offs before it
+// acts on the optical wave (reduced-order EO response):
+//
+//   (1) Frequency-dependent electrode loss. The lossy microwave line
+//       attenuates more at higher frequency; modelled as a pole at f_el, a
+//       compact stand-in for the electrode's rising skin-effect / dielectric
+//       loss.
+//
+//   (2) Velocity mismatch / walk-off. Optical and microwave waves co-propagate
+//       at group indices n_opt and n_rf, so over the electrode the optical
+//       phase averages the drive across the walk-off window
+//           T_w = |n_rf - n_opt| * len / c.
+//       That boxcar averaging is the textbook sinc(f*T_w) response; here it is
+//       captured by its equivalent bandwidth, a pole at  f_w = 0.443/T_w
+//       (the -3 dB point of the sinc). When n_rf == n_opt the electrode is
+//       velocity-matched: T_w -> 0, the walk-off pole vanishes, and only the
+//       loss pole f_el limits the bandwidth.
+//
+// (A true sinc / running-average would need a delay line; absdelay is not
+// realised by the OSDI runtime, so the dominant velocity-mismatch bandwidth
+// limit is modelled as the pole above.)
+//
+// The 50-ohm source/termination of the electrode live in the netlist; cel is
+// just the residual pad capacitance the driver still sees.
+module mzm_tw(pin, vp, vn, pout, gnd);
+    inout pin, vp, vn, pout, gnd;
+    electrical pin, vp, vn, pout, gnd;
+    electrical eflt, eflt2, ewlk;               // internal loss / walk-off filter states
+
+    parameter real vpi   = 1.5  from (0:inf);   // half-wave voltage [V]
+    parameter real vbias = 0.0;                 // bias offset [V]
+    parameter real il_db = 3.0  from [0:inf);   // excess insertion loss [dB]
+    parameter real er_db = 20.0 from (0:inf);   // extinction ratio [dB]
+    parameter real cel   = 5f   from [0:inf);   // residual pad capacitance [F]
+
+    parameter real len   = 4m   from (0:inf);   // electrode length [m]
+    parameter real n_rf  = 2.4  from (0:inf);   // microwave group index
+    parameter real n_opt = 4.2  from (0:inf);   // optical group index
+    parameter real f_el  = 35e9 from (0:inf);   // electrode loss bandwidth [Hz]
+    parameter real f_el2 = 0.0  from [0:inf);   // 2nd loss pole [Hz], 0 = off
+                                                // (two staggered poles track
+                                                // the sqrt(f) skin-effect
+                                                // rolloff closer than one)
+
+    real il, er, eta;
+    real vdrv, tw, fw, tau_el, tau_el2, tau_w;
+    real phi, trans;
+
+    analog begin
+        il  = pow(10.0, -il_db/10.0);
+        er  = pow(10.0, er_db/10.0);
+        eta = (er - 1.0) / (er + 1.0);
+
+        vdrv = V(vp, vn) + vbias;
+
+        // (1) electrode frequency-dependent loss: pole at f_el, plus an
+        // optional stagger pole at f_el2 on a second cascaded node
+        // (tau_el2 = 0 makes eflt2 an algebraic copy of eflt)
+        tau_el  = 1.0 / (2.0 * `M_PI * f_el);
+        tau_el2 = (f_el2 > 0.0) ? 1.0 / (2.0 * `M_PI * f_el2) : 0.0;
+        V(eflt)  <+ vdrv - tau_el * ddt(V(eflt));
+        V(eflt2) <+ V(eflt) - tau_el2 * ddt(V(eflt2));
+
+        // (2) walk-off: single pole at f_w = 0.443/T_w from velocity mismatch
+        tw    = abs(n_rf - n_opt) * len / 2.99792458e8;
+        tau_w = tw / (2.0 * `M_PI * 0.443);     // 0 when velocity matched
+        V(ewlk) <+ V(eflt2) - tau_w * ddt(V(ewlk));
+
+        phi   = `M_PI * V(ewlk) / vpi;
+        trans = il * (0.5 + 0.5 * eta * cos(phi));
+
+        V(pout, gnd) <+ trans * V(pin, gnd);
+        I(vp, vn)    <+ cel * ddt(V(vp, vn));
+    end
+endmodule

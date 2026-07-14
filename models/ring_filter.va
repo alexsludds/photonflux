@@ -1,0 +1,122 @@
+`include "discipline.h"
+`include "constants.h"
+
+`define P_C0 2.99792458e8   // speed of light [m/s]
+
+// Add-drop microring FILTER with FIVE longitudinal modes (m = -2..+2) and a
+// resistive heater — the building block for Vernier-tuned external-cavity
+// lasers, where the mode COMB (not just one resonance) is the physics.
+//
+// Coherent-field convention: Ereal/Eimag node pairs, |E|^2 = power [W].
+// Unidirectional 3-port (in -> thru, in -> drop; the add input is dark).
+//
+// Each mode m is an independent CMT resonator sharing the bus couplings:
+//
+//   dA_m/dt = (j*delta_m - 1/tau) A_m + j*kappa1^2 * s_in
+//   s_thru  = s_in + j * sum_m A_m
+//   s_drop  = j * sqrt(kappa2_drop/kappa2_in) * sum_m A_m
+//
+//   1/tau     = 1/tau_i + 1/tau_e1 + 1/tau_e2
+//   1/tau_e12 = kappa2_{in,drop} / (2*T_rt)
+//   delta_m   = 2*pi*c*(1/lambda - 1/lambda_res_eff) - m*2*pi*FSR
+//   FSR       = c / (n_g * 2*pi*R)
+//
+// (A_m = kappa1*a_m in sqrt(W); with symmetric loss-free coupling the drop
+// transmission is 1 on every resonance of the comb. Comb dispersion and the
+// wavelength dependence of the couplers are neglected — valid for the few
+// FSRs around lambda_nm the five modes span.)
+//
+// Heater (hp, hn): plain resistor r_heater; the dissipated power thermally
+// red-shifts the WHOLE comb, lambda_res_eff = lambda_res_nm +
+// dl_dmw_pm * P_heater[mW] (instantaneous — the ~us thermal lag is not
+// modelled, bias the heater DC).
+//
+// Implementation notes: rows scaled by the constant tau; mode states on
+// explicit internal node pairs (no node arrays — openvaf/bosdi safe).
+module ring_filter(in_re, in_im, thru_re, thru_im, drop_re, drop_im,
+                   hp, hn, gnd);
+    inout in_re, in_im, thru_re, thru_im, drop_re, drop_im, hp, hn, gnd;
+    electrical in_re, in_im, thru_re, thru_im, drop_re, drop_im, hp, hn, gnd;
+
+    // internal: mode fields A_m = kappa1*a_m [sqrt(W)], m = -2..+2
+    electrical ar_m2, ai_m2, ar_m1, ai_m1, ar_0, ai_0,
+               ar_p1, ai_p1, ar_p2, ai_p2;
+
+    parameter real lambda_nm     = 1310.0 from (0:inf);  // reference wavelength [nm]
+    parameter real lambda_res_nm = 1310.0 from (0:inf);  // cold m=0 resonance [nm]
+    parameter real radius_um     = 100.0  from (0:inf);  // ring radius [um]
+    parameter real n_g           = 4.0    from (0:inf);  // group index
+    parameter real loss_db_m     = 100.0  from (0:inf);  // propagation loss [dB/m]
+    parameter real kappa2_in     = 0.05   from (0:1);    // bus power coupling
+    parameter real kappa2_drop   = 0.05   from (0:1);    // drop power coupling
+    parameter real dl_dmw_pm     = 20.0;                 // thermal shift [pm/mW]
+    parameter real r_heater      = 500.0  from (0:inf);  // heater resistance [ohm]
+
+    real circ, v_g, t_rt, fsr_w;
+    real inv_tau_i, inv_tau_e1, inv_tau_e2, tau, tk2, rat;
+    real ph_mw, lam_res_eff, d0;
+    real d_m2, d_m1, d_0, d_p1, d_p2, sum_re, sum_im;
+
+    analog begin
+        // device geometry -> CMT decay rates and the mode comb
+        circ       = 2.0 * `M_PI * radius_um * 1e-6;
+        v_g        = `P_C0 / n_g;
+        t_rt       = circ / v_g;
+        fsr_w      = 2.0 * `M_PI / t_rt;                  // FSR [rad/s]
+        inv_tau_i  = loss_db_m * ln(10.0) / 10.0 * v_g / 2.0;
+        inv_tau_e1 = kappa2_in / (2.0 * t_rt);
+        inv_tau_e2 = kappa2_drop / (2.0 * t_rt);
+        tau        = 1.0 / (inv_tau_i + inv_tau_e1 + inv_tau_e2);
+        tk2        = tau * 2.0 * inv_tau_e1;              // tau*kappa1^2
+        rat        = sqrt(kappa2_drop / kappa2_in);       // kappa2/kappa1
+
+        // heater power red-shifts the whole comb
+        ph_mw       = V(hp, hn) * V(hp, hn) / r_heater * 1e3;
+        I(hp, hn)  <+ V(hp, hn) / r_heater;
+        lam_res_eff = lambda_res_nm * 1e-9 + dl_dmw_pm * 1e-12 * ph_mw;
+        d0 = 2.0 * `M_PI * `P_C0 * (1.0 / (lambda_nm * 1e-9) - 1.0 / lam_res_eff);
+
+        d_m2 = d0 + 2.0 * fsr_w;
+        d_m1 = d0 + fsr_w;
+        d_0  = d0;
+        d_p1 = d0 - fsr_w;
+        d_p2 = d0 - 2.0 * fsr_w;
+
+        // five CMT mode pairs, rows scaled by the constant tau
+        I(ar_m2, gnd) <+ tau * ddt(V(ar_m2, gnd)) + V(ar_m2, gnd)
+                         + tau * d_m2 * V(ai_m2, gnd) + tk2 * V(in_im, gnd);
+        I(ai_m2, gnd) <+ tau * ddt(V(ai_m2, gnd)) + V(ai_m2, gnd)
+                         - tau * d_m2 * V(ar_m2, gnd) - tk2 * V(in_re, gnd);
+
+        I(ar_m1, gnd) <+ tau * ddt(V(ar_m1, gnd)) + V(ar_m1, gnd)
+                         + tau * d_m1 * V(ai_m1, gnd) + tk2 * V(in_im, gnd);
+        I(ai_m1, gnd) <+ tau * ddt(V(ai_m1, gnd)) + V(ai_m1, gnd)
+                         - tau * d_m1 * V(ar_m1, gnd) - tk2 * V(in_re, gnd);
+
+        I(ar_0, gnd)  <+ tau * ddt(V(ar_0, gnd)) + V(ar_0, gnd)
+                         + tau * d_0 * V(ai_0, gnd) + tk2 * V(in_im, gnd);
+        I(ai_0, gnd)  <+ tau * ddt(V(ai_0, gnd)) + V(ai_0, gnd)
+                         - tau * d_0 * V(ar_0, gnd) - tk2 * V(in_re, gnd);
+
+        I(ar_p1, gnd) <+ tau * ddt(V(ar_p1, gnd)) + V(ar_p1, gnd)
+                         + tau * d_p1 * V(ai_p1, gnd) + tk2 * V(in_im, gnd);
+        I(ai_p1, gnd) <+ tau * ddt(V(ai_p1, gnd)) + V(ai_p1, gnd)
+                         - tau * d_p1 * V(ar_p1, gnd) - tk2 * V(in_re, gnd);
+
+        I(ar_p2, gnd) <+ tau * ddt(V(ar_p2, gnd)) + V(ar_p2, gnd)
+                         + tau * d_p2 * V(ai_p2, gnd) + tk2 * V(in_im, gnd);
+        I(ai_p2, gnd) <+ tau * ddt(V(ai_p2, gnd)) + V(ai_p2, gnd)
+                         - tau * d_p2 * V(ar_p2, gnd) - tk2 * V(in_re, gnd);
+
+        sum_re = V(ar_m2, gnd) + V(ar_m1, gnd) + V(ar_0, gnd)
+               + V(ar_p1, gnd) + V(ar_p2, gnd);
+        sum_im = V(ai_m2, gnd) + V(ai_m1, gnd) + V(ai_0, gnd)
+               + V(ai_p1, gnd) + V(ai_p2, gnd);
+
+        // thru: s_in + j*sum(A);  drop: j*rat*sum(A)
+        V(thru_re, gnd) <+ V(in_re, gnd) - sum_im;
+        V(thru_im, gnd) <+ V(in_im, gnd) + sum_re;
+        V(drop_re, gnd) <+ -rat * sum_im;
+        V(drop_im, gnd) <+ rat * sum_re;
+    end
+endmodule

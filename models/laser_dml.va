@@ -1,0 +1,30 @@
+`include "discipline.h"
+`include "constants.h"
+
+// Directly-modulated laser (compact, static L-I).
+//   Electrical port (an, cat): linearised diode I-V, I = (V-Von)/Rs above turn-on.
+//   Optical output `popt` (referenced to gnd): voltage represents optical power [W].
+//   `tau` adds a first-order optical response: tau * dP/dt + P = Ptarget.
+module laser_dml(an, cat, popt, gnd);
+    inout an, cat, popt, gnd;
+    electrical an, cat, popt, gnd;
+
+    parameter real Ith   = 10m  from (0:inf);   // threshold current [A]
+    parameter real slope = 0.3  from (0:inf);   // slope efficiency [W/A]
+    parameter real Rs    = 5.0  from (0:inf);   // series resistance [ohm]
+    parameter real Von   = 1.2;                 // turn-on voltage [V]
+    parameter real tau   = 50p  from [0:inf);   // optical response time constant [s]
+
+    real Idrive, Ptarget;
+
+    analog begin
+        Idrive = (V(an, cat) - Von) / Rs;
+        if (Idrive < 0.0) Idrive = 0.0;
+        I(an, cat) <+ Idrive;
+
+        Ptarget = slope * (Idrive - Ith);
+        if (Ptarget < 0.0) Ptarget = 0.0;
+
+        V(popt, gnd) <+ Ptarget - tau * ddt(V(popt, gnd));
+    end
+endmodule

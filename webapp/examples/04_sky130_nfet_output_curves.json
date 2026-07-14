@@ -1,0 +1,299 @@
+{
+  "title": "04 \u2014 SKY130 NFET flavors: output curves (Id\u2013Vds, stepped Vgs)",
+  "group": "SKY130 transistors",
+  "schematic": {
+    "instances": {
+      "VD1": {
+        "type": "vdc",
+        "x": 100,
+        "y": 80,
+        "rot": 0,
+        "settings": {
+          "V": 1.8
+        }
+      },
+      "GND1": {
+        "type": "ground",
+        "x": 100,
+        "y": 184,
+        "rot": 0,
+        "settings": {}
+      },
+      "VG1": {
+        "type": "vdc",
+        "x": 100,
+        "y": 320,
+        "rot": 0,
+        "settings": {
+          "V": 1.2
+        }
+      },
+      "GND2": {
+        "type": "ground",
+        "x": 100,
+        "y": 424,
+        "rot": 0,
+        "settings": {}
+      },
+      "MN1": {
+        "type": "sky130_nfet",
+        "x": 260,
+        "y": 140,
+        "rot": 0,
+        "settings": {
+          "w_um": 1.0,
+          "l_um": 0.15
+        }
+      },
+      "RS1": {
+        "type": "resistor",
+        "x": 340,
+        "y": 250,
+        "rot": 0,
+        "settings": {
+          "R": 1.0
+        }
+      },
+      "GNDS1": {
+        "type": "ground",
+        "x": 380,
+        "y": 304,
+        "rot": 0,
+        "settings": {}
+      },
+      "GNDB1": {
+        "type": "ground",
+        "x": 340,
+        "y": 170,
+        "rot": 0,
+        "settings": {}
+      },
+      "MN2": {
+        "type": "sky130_nfet_lvt",
+        "x": 420,
+        "y": 140,
+        "rot": 0,
+        "settings": {
+          "w_um": 1.0,
+          "l_um": 0.35
+        }
+      },
+      "RS2": {
+        "type": "resistor",
+        "x": 500,
+        "y": 250,
+        "rot": 0,
+        "settings": {
+          "R": 1.0
+        }
+      },
+      "GNDS2": {
+        "type": "ground",
+        "x": 540,
+        "y": 304,
+        "rot": 0,
+        "settings": {}
+      },
+      "GNDB2": {
+        "type": "ground",
+        "x": 500,
+        "y": 170,
+        "rot": 0,
+        "settings": {}
+      },
+      "MN3": {
+        "type": "sky130_nfet_5v",
+        "x": 580,
+        "y": 140,
+        "rot": 0,
+        "settings": {
+          "w_um": 1.0,
+          "l_um": 0.5
+        }
+      },
+      "RS3": {
+        "type": "resistor",
+        "x": 660,
+        "y": 250,
+        "rot": 0,
+        "settings": {
+          "R": 1.0
+        }
+      },
+      "GNDS3": {
+        "type": "ground",
+        "x": 700,
+        "y": 304,
+        "rot": 0,
+        "settings": {}
+      },
+      "GNDB3": {
+        "type": "ground",
+        "x": 660,
+        "y": 170,
+        "rot": 0,
+        "settings": {}
+      },
+      "MN4": {
+        "type": "sky130_nfet_nvt",
+        "x": 740,
+        "y": 140,
+        "rot": 0,
+        "settings": {
+          "w_um": 1.0,
+          "l_um": 0.9
+        }
+      },
+      "RS4": {
+        "type": "resistor",
+        "x": 820,
+        "y": 250,
+        "rot": 0,
+        "settings": {
+          "R": 1.0
+        }
+      },
+      "GNDS4": {
+        "type": "ground",
+        "x": 860,
+        "y": 304,
+        "rot": 0,
+        "settings": {}
+      },
+      "GNDB4": {
+        "type": "ground",
+        "x": 820,
+        "y": 170,
+        "rot": 0,
+        "settings": {}
+      }
+    },
+    "wires": [
+      {
+        "from": "VD1,p2",
+        "to": "GND1,p1"
+      },
+      {
+        "from": "VG1,p2",
+        "to": "GND2,p1"
+      },
+      {
+        "from": "VD1,p1",
+        "to": "MN1,d"
+      },
+      {
+        "from": "VD1,p1",
+        "to": "MN2,d"
+      },
+      {
+        "from": "VD1,p1",
+        "to": "MN3,d"
+      },
+      {
+        "from": "VD1,p1",
+        "to": "MN4,d"
+      },
+      {
+        "from": "VG1,p1",
+        "to": "MN1,g"
+      },
+      {
+        "from": "VG1,p1",
+        "to": "MN2,g"
+      },
+      {
+        "from": "VG1,p1",
+        "to": "MN3,g"
+      },
+      {
+        "from": "VG1,p1",
+        "to": "MN4,g"
+      },
+      {
+        "from": "MN1,s",
+        "to": "RS1,p1"
+      },
+      {
+        "from": "RS1,p2",
+        "to": "GNDS1,p1"
+      },
+      {
+        "from": "MN1,b",
+        "to": "GNDB1,p1"
+      },
+      {
+        "from": "MN2,s",
+        "to": "RS2,p1"
+      },
+      {
+        "from": "RS2,p2",
+        "to": "GNDS2,p1"
+      },
+      {
+        "from": "MN2,b",
+        "to": "GNDB2,p1"
+      },
+      {
+        "from": "MN3,s",
+        "to": "RS3,p1"
+      },
+      {
+        "from": "RS3,p2",
+        "to": "GNDS3,p1"
+      },
+      {
+        "from": "MN3,b",
+        "to": "GNDB3,p1"
+      },
+      {
+        "from": "MN4,s",
+        "to": "RS4,p1"
+      },
+      {
+        "from": "RS4,p2",
+        "to": "GNDS4,p1"
+      },
+      {
+        "from": "MN4,b",
+        "to": "GNDB4,p1"
+      }
+    ],
+    "probes": [
+      {
+        "name": "id_01v8",
+        "at": "MN1,s",
+        "color": "#6ecbf5"
+      },
+      {
+        "name": "id_lvt",
+        "at": "MN2,s",
+        "color": "#4ade80"
+      },
+      {
+        "name": "id_5v",
+        "at": "MN3,s",
+        "color": "#fb923c"
+      },
+      {
+        "name": "id_nvt",
+        "at": "MN4,s",
+        "color": "#f472d0"
+      }
+    ]
+  },
+  "analysis": {
+    "mode": "dcsweep",
+    "instance": "VD1",
+    "param": "V",
+    "start": 0,
+    "stop": 1.8,
+    "points": 61,
+    "step_instance": "VG1",
+    "step_param": "V",
+    "step_values": [
+      0.9,
+      1.35,
+      1.8
+    ]
+  }
+}

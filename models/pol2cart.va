@@ -1,0 +1,16 @@
+`include "discipline.h"
+// no need for constants.h
+
+// Polar → Cartesian converter
+module pol2cart(gnd, Emag, Ephi, Ereal, Eimag);
+    inout  gnd;
+    input  Emag, Ephi;        // Polar inputs
+    output Ereal, Eimag;      // Cartesian outputs
+
+    electrical gnd, Emag, Ephi, Ereal, Eimag;
+
+    analog begin
+        V(Ereal, gnd) <+ V(Emag, gnd) * cos( V(Ephi, gnd) );
+        V(Eimag, gnd) <+ V(Emag, gnd) * sin( V(Ephi, gnd) );
+    end
+endmodule

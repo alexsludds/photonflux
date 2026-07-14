@@ -1,0 +1,22 @@
+`include "discipline.h"
+`include "constants.h"
+
+// PIN photodiode: linear responsivity model.
+//   Optical input `popt` (referenced to gnd): voltage represents optical power [W].
+//   Electrical port (an, cat): photocurrent flows cathode->anode.
+//   `Cj` adds junction capacitance for small-signal bandwidth.
+module photodiode(popt, gnd, an, cat);
+    inout popt, gnd, an, cat;
+    electrical popt, gnd, an, cat;
+
+    parameter real R    = 0.8   from (0:inf);   // responsivity [A/W]
+    parameter real Idk  = 1n    from [0:inf);   // dark current [A]
+    parameter real Cj   = 100f  from [0:inf);   // junction capacitance [F]
+
+    real Iph;
+
+    analog begin
+        Iph = R * V(popt, gnd) + Idk;
+        I(an, cat) <+ Iph + Cj * ddt(V(an, cat));
+    end
+endmodule

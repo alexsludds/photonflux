@@ -1,0 +1,404 @@
+{
+ "title": "28 — SR latch from two cross-coupled NOR gates: set pulse, hold, reset pulse, hold — bistability in 8 transistors",
+ "group": "Electronics — digital",
+ "schematic": {
+  "instances": {
+   "VDD": {
+    "type": "vdc",
+    "x": 460,
+    "y": 40,
+    "rot": 0,
+    "settings": {
+     "V": 3.3
+    }
+   },
+   "GDD": {
+    "type": "ground",
+    "x": 540,
+    "y": 40,
+    "rot": 0,
+    "settings": {}
+   },
+   "VS": {
+    "type": "vpulse",
+    "x": 40,
+    "y": 140,
+    "rot": 0,
+    "settings": {
+     "v1": 3.3,
+     "v2": 0.0,
+     "td": 1.5e-08,
+     "tr": 1e-09,
+     "tf": 1e-09,
+     "pw": 0.001,
+     "per": 0.002
+    }
+   },
+   "GS": {
+    "type": "ground",
+    "x": 40,
+    "y": 240,
+    "rot": 0,
+    "settings": {}
+   },
+   "VR": {
+    "type": "vpulse",
+    "x": 40,
+    "y": 380,
+    "rot": 0,
+    "settings": {
+     "v1": 0.0,
+     "v2": 3.3,
+     "td": 6e-08,
+     "tr": 1e-09,
+     "tf": 1e-09,
+     "pw": 1.5e-08,
+     "per": 0.001
+    }
+   },
+   "GR": {
+    "type": "ground",
+    "x": 40,
+    "y": 480,
+    "rot": 0,
+    "settings": {}
+   },
+   "CQ": {
+    "type": "capacitor",
+    "x": 760,
+    "y": 160,
+    "rot": 0,
+    "settings": {
+     "C": 2e-14
+    }
+   },
+   "GCQ": {
+    "type": "ground",
+    "x": 760,
+    "y": 260,
+    "rot": 0,
+    "settings": {}
+   },
+   "CQB": {
+    "type": "capacitor",
+    "x": 760,
+    "y": 420,
+    "rot": 0,
+    "settings": {
+     "C": 2e-14
+    }
+   },
+   "GCQB": {
+    "type": "ground",
+    "x": 760,
+    "y": 520,
+    "rot": 0,
+    "settings": {}
+   },
+   "N1PA": {
+    "type": "pmos",
+    "x": 300,
+    "y": 120,
+    "rot": 0,
+    "settings": {
+     "Kp": 1e-05,
+     "W": 2e-05,
+     "L": 1e-06,
+     "Vth": -1.0,
+     "lam": 0.0
+    }
+   },
+   "N1PB": {
+    "type": "pmos",
+    "x": 300,
+    "y": 230,
+    "rot": 0,
+    "settings": {
+     "Kp": 1e-05,
+     "W": 2e-05,
+     "L": 1e-06,
+     "Vth": -1.0,
+     "lam": 0.0
+    }
+   },
+   "N1NA": {
+    "type": "nmos",
+    "x": 240,
+    "y": 360,
+    "rot": 0,
+    "settings": {
+     "Kp": 2e-05,
+     "W": 1e-05,
+     "L": 1e-06,
+     "Vth": 1.0,
+     "lam": 0.0
+    }
+   },
+   "N1NB": {
+    "type": "nmos",
+    "x": 360,
+    "y": 360,
+    "rot": 0,
+    "settings": {
+     "Kp": 2e-05,
+     "W": 1e-05,
+     "L": 1e-06,
+     "Vth": 1.0,
+     "lam": 0.0
+    }
+   },
+   "N1G": {
+    "type": "ground",
+    "x": 300,
+    "y": 470,
+    "rot": 0,
+    "settings": {}
+   },
+   "N1CM": {
+    "type": "capacitor",
+    "x": 420,
+    "y": 180,
+    "rot": 0,
+    "settings": {
+     "C": 2e-15
+    }
+   },
+   "N1GM": {
+    "type": "ground",
+    "x": 420,
+    "y": 270,
+    "rot": 0,
+    "settings": {}
+   },
+   "N2PA": {
+    "type": "pmos",
+    "x": 560,
+    "y": 120,
+    "rot": 0,
+    "settings": {
+     "Kp": 1e-05,
+     "W": 2e-05,
+     "L": 1e-06,
+     "Vth": -1.0,
+     "lam": 0.0
+    }
+   },
+   "N2PB": {
+    "type": "pmos",
+    "x": 560,
+    "y": 230,
+    "rot": 0,
+    "settings": {
+     "Kp": 1e-05,
+     "W": 2e-05,
+     "L": 1e-06,
+     "Vth": -1.0,
+     "lam": 0.0
+    }
+   },
+   "N2NA": {
+    "type": "nmos",
+    "x": 500,
+    "y": 360,
+    "rot": 0,
+    "settings": {
+     "Kp": 2e-05,
+     "W": 1e-05,
+     "L": 1e-06,
+     "Vth": 1.0,
+     "lam": 0.0
+    }
+   },
+   "N2NB": {
+    "type": "nmos",
+    "x": 620,
+    "y": 360,
+    "rot": 0,
+    "settings": {
+     "Kp": 2e-05,
+     "W": 1e-05,
+     "L": 1e-06,
+     "Vth": 1.0,
+     "lam": 0.0
+    }
+   },
+   "N2G": {
+    "type": "ground",
+    "x": 560,
+    "y": 470,
+    "rot": 0,
+    "settings": {}
+   },
+   "N2CM": {
+    "type": "capacitor",
+    "x": 680,
+    "y": 180,
+    "rot": 0,
+    "settings": {
+     "C": 2e-15
+    }
+   },
+   "N2GM": {
+    "type": "ground",
+    "x": 680,
+    "y": 270,
+    "rot": 0,
+    "settings": {}
+   }
+  },
+  "wires": [
+   {
+    "from": "VDD,p2",
+    "to": "GDD,p1"
+   },
+   {
+    "from": "VS,p2",
+    "to": "GS,p1"
+   },
+   {
+    "from": "VR,p2",
+    "to": "GR,p1"
+   },
+   {
+    "from": "CQ,p2",
+    "to": "GCQ,p1"
+   },
+   {
+    "from": "CQB,p2",
+    "to": "GCQB,p1"
+   },
+   {
+    "from": "N1PA,d",
+    "to": "N1CM,p1"
+   },
+   {
+    "from": "N1CM,p2",
+    "to": "N1GM,p1"
+   },
+   {
+    "from": "VDD,p1",
+    "to": "N1PA,s"
+   },
+   {
+    "from": "N1PA,d",
+    "to": "N1PB,s"
+   },
+   {
+    "from": "VR,p1",
+    "to": "N1PA,g"
+   },
+   {
+    "from": "CQB,p1",
+    "to": "N1PB,g"
+   },
+   {
+    "from": "N1PB,d",
+    "to": "CQ,p1"
+   },
+   {
+    "from": "VR,p1",
+    "to": "N1NA,g"
+   },
+   {
+    "from": "CQB,p1",
+    "to": "N1NB,g"
+   },
+   {
+    "from": "N1NA,d",
+    "to": "CQ,p1"
+   },
+   {
+    "from": "N1NB,d",
+    "to": "CQ,p1"
+   },
+   {
+    "from": "N1NA,s",
+    "to": "N1G,p1"
+   },
+   {
+    "from": "N1NB,s",
+    "to": "N1G,p1"
+   },
+   {
+    "from": "N2PA,d",
+    "to": "N2CM,p1"
+   },
+   {
+    "from": "N2CM,p2",
+    "to": "N2GM,p1"
+   },
+   {
+    "from": "VDD,p1",
+    "to": "N2PA,s"
+   },
+   {
+    "from": "N2PA,d",
+    "to": "N2PB,s"
+   },
+   {
+    "from": "VS,p1",
+    "to": "N2PA,g"
+   },
+   {
+    "from": "CQ,p1",
+    "to": "N2PB,g"
+   },
+   {
+    "from": "N2PB,d",
+    "to": "CQB,p1"
+   },
+   {
+    "from": "VS,p1",
+    "to": "N2NA,g"
+   },
+   {
+    "from": "CQ,p1",
+    "to": "N2NB,g"
+   },
+   {
+    "from": "N2NA,d",
+    "to": "CQB,p1"
+   },
+   {
+    "from": "N2NB,d",
+    "to": "CQB,p1"
+   },
+   {
+    "from": "N2NA,s",
+    "to": "N2G,p1"
+   },
+   {
+    "from": "N2NB,s",
+    "to": "N2G,p1"
+   }
+  ],
+  "probes": [
+   {
+    "name": "vs",
+    "at": "VS,p1",
+    "color": "#6ecbf5"
+   },
+   {
+    "name": "vr",
+    "at": "VR,p1",
+    "color": "#e6862c"
+   },
+   {
+    "name": "q",
+    "at": "CQ,p1",
+    "color": "#8fd18f"
+   },
+   {
+    "name": "qb",
+    "at": "CQB,p1",
+    "color": "#f08fb0"
+   }
+  ]
+ },
+ "analysis": {
+  "mode": "transient",
+  "t_stop": 1.2e-07,
+  "points": 2400,
+  "solver": "bdf2"
+ }
+}

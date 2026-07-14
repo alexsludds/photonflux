@@ -1,0 +1,53 @@
+`include "discipline.h"
+`include "constants.h"
+
+// Segmented-electrode Mach-Zehnder modulator ("optical DAC"), power-domain
+// convention (node V = optical power [W]) like mzm.va.
+//
+// The phase electrode is split into three binary-weighted segments with
+// length fractions 4/7, 2/7 and 1/7 of the full electrode. Each segment k
+// is driven independently (vp<k>/vn<k>) and contributes
+//
+//     phi_k = pi * f_k * V_k / vpi        (f_k = segment length fraction)
+//
+// where vpi is the FULL-length half-wave voltage. Driving the segments with
+// plain digital rails therefore synthesises up to 8 equally-spaced phase
+// levels — the classic segmented-MZM PAM approach (use MSB+LSB segments,
+// weights 2:1 within the driven pair, for PAM4). Unused segments are left
+// shorted (vp = vn).
+//
+//     T(phi) = IL * (0.5 + 0.5*eta*cos(phi_tot + pi*vbias/vpi))
+//
+// Each segment presents its length-scaled electrode capacitance to the
+// driver, so a gate-level driver sees a realistic load per segment.
+module mzm_seg(pin, vp1, vn1, vp2, vn2, vp3, vn3, pout, gnd);
+    inout pin, vp1, vn1, vp2, vn2, vp3, vn3, pout, gnd;
+    electrical pin, vp1, vn1, vp2, vn2, vp3, vn3, pout, gnd;
+
+    parameter real vpi   = 3.0  from (0:inf);   // full-length V-pi [V]
+    parameter real vbias = 1.5;                 // bias offset [V]
+    parameter real il_db = 3.0  from [0:inf);   // excess insertion loss [dB]
+    parameter real er_db = 20.0 from (0:inf);   // extinction ratio [dB]
+    parameter real cel   = 60f  from [0:inf);   // full-length electrode cap [F]
+
+    real il, er, eta, phi, trans;
+
+    analog begin
+        il  = pow(10.0, -il_db / 10.0);
+        er  = pow(10.0, er_db / 10.0);
+        eta = (er - 1.0) / (er + 1.0);
+
+        phi = `M_PI / vpi * (
+                  (4.0 / 7.0) * V(vp1, vn1)
+                + (2.0 / 7.0) * V(vp2, vn2)
+                + (1.0 / 7.0) * V(vp3, vn3)
+                + vbias);
+        trans = il * (0.5 + 0.5 * eta * cos(phi));
+
+        V(pout, gnd) <+ trans * V(pin, gnd);
+
+        I(vp1, vn1) <+ (4.0 / 7.0) * cel * ddt(V(vp1, vn1));
+        I(vp2, vn2) <+ (2.0 / 7.0) * cel * ddt(V(vp2, vn2));
+        I(vp3, vn3) <+ (1.0 / 7.0) * cel * ddt(V(vp3, vn3));
+    end
+endmodule

@@ -1,0 +1,103 @@
+`include "discipline.h"
+`include "constants.h"
+
+`define P_C0 2.99792458e8   // speed of light [m/s]
+
+// Silicon photonic microring modulator (all-pass, depletion phase shifter),
+// parameterised by the physical device: ring radius, group/effective index,
+// PN-junction propagation loss, bus power coupling, junction capacitance per
+// unit length, and the electro-optic detuning rate.
+//
+// Coherent-field convention: optical ports are Ereal/Eimag node pairs with
+// |E|^2 = optical power [W] (same normalisation as the circulax field nodes).
+//
+// Optics: single-mode coupled-mode theory (Little/Manolatou). The intracavity
+// field a obeys
+//
+//     da/dt = (j*delta - 1/tau) a + j*kappa*s_in ,   s_out = s_in + j*kappa*a
+//
+// with the decay rates derived from the device:
+//
+//     L      = 2*pi*radius                    round-trip length
+//     T_rt   = L * n_g / c                    round-trip time
+//     alpha  = loss_db_m * ln(10)/10          power attenuation [1/m]
+//     1/tau_i = alpha * v_g / 2               intrinsic (junction loss)
+//     1/tau_e = kappa2 / (2*T_rt)             coupling (bus, power coupling kappa2)
+//     kappa^2 = 2/tau_e
+//
+// Steady state through-port transmission is the Lorentzian
+//
+//     |H|^2 = ((1 - tau*kappa^2)^2 + (tau*delta)^2) / (1 + (tau*delta)^2)
+//
+// critically coupled (perfect null) when kappa2 = alpha*L; over/under-coupled
+// dips bottom out at ((1 - tau*kappa^2))^2. Being an ODE, the model also
+// captures the photon-lifetime-limited modulation bandwidth f_opt/Q_loaded.
+//
+// Resonance alignment: real rings carry a thermal tuner, so the model assumes
+// the operating resonance is aligned to `lambda_res_nm` (the effective index
+// only fixes which cold mode m = n_eff*L/lambda gets pulled onto the grid —
+// it does not enter the aligned single-mode dynamics). The depletion phase
+// shifter then moves it linearly: lambda_res(V) = lambda_res_nm + dl_dv_pm*V.
+//
+// Electrical port: junction capacitance cj_ff_um * L plus leakage — the load
+// a driver actually sees.
+//
+// Implementation notes: the internal state A = kappa*a (units sqrt(W), same
+// scale as the port fields) keeps node values O(0.01); the two rate-equation
+// rows are multiplied through by tau so all row entries are O(1) — the same
+// scaling idiom as laser_rate.va.
+module ring_mod(in_re, in_im, out_re, out_im, vp, vn, gnd);
+    inout in_re, in_im, out_re, out_im, vp, vn, gnd;
+    electrical in_re, in_im, out_re, out_im, vp, vn, gnd;
+
+    // internal: intracavity field A = kappa*a (Are, Aim in sqrt(W))
+    electrical are, aim;
+
+    parameter real lambda_nm     = 1310.0 from (0:inf);  // laser wavelength [nm]
+    parameter real lambda_res_nm = 1310.0 from (0:inf);  // aligned resonance [nm]
+    parameter real radius_um     = 7.5    from (0:inf);  // ring radius [um]
+    parameter real n_g           = 4.0    from (0:inf);  // group index
+    parameter real n_eff         = 2.4    from (0:inf);  // effective index (mode order)
+    parameter real loss_db_m     = 7000.0 from (0:inf);  // junction propagation loss [dB/m]
+    parameter real kappa2        = 0.10   from (0:1);    // bus power coupling |kappa|^2
+    parameter real dl_dv_pm      = 45.0;                 // resonance shift [pm/V]
+    parameter real cj_ff_um      = 0.5    from [0:inf);  // junction cap [fF/um]
+    parameter real rleak         = 1e8    from (0:inf);  // junction leakage [ohm]
+
+    real circ, v_g, t_rt, alpha_m;
+    real inv_tau_i, inv_tau_e, inv_tau, tau, tk2, cj;
+    real lam_res_eff, delta;
+
+    analog begin
+        // device geometry -> CMT decay rates
+        circ      = 2.0 * `M_PI * radius_um * 1e-6;      // [m]
+        v_g       = `P_C0 / n_g;
+        t_rt      = circ / v_g;
+        alpha_m   = loss_db_m * ln(10.0) / 10.0;         // power attenuation [1/m]
+        inv_tau_i = alpha_m * v_g / 2.0;                 // amplitude decay, loss
+        inv_tau_e = kappa2 / (2.0 * t_rt);               // amplitude decay, coupling
+        inv_tau   = inv_tau_i + inv_tau_e;
+        tau       = 1.0 / inv_tau;
+        tk2       = tau * 2.0 * inv_tau_e;               // tau*kappa^2 (=1 at critical)
+        cj        = cj_ff_um * 1e-15 * radius_um * 2.0 * `M_PI;  // [F]
+
+        // voltage-tuned resonance and detuning delta = w_light - w_res(V)
+        lam_res_eff = lambda_res_nm * 1e-9 + dl_dv_pm * 1e-12 * V(vp, vn);
+        delta = 2.0 * `M_PI * `P_C0 * (1.0 / (lambda_nm * 1e-9) - 1.0 / lam_res_eff);
+
+        // CMT rate equations for A = kappa*a, rows scaled by tau:
+        //   dA_re/dt = -A_re/tau - delta*A_im - kappa^2 * s_im
+        //   dA_im/dt = -A_im/tau + delta*A_re + kappa^2 * s_re
+        I(are, gnd) <+ tau * ddt(V(are, gnd)) + V(are, gnd)
+                       + tau * delta * V(aim, gnd) + tk2 * V(in_im, gnd);
+        I(aim, gnd) <+ tau * ddt(V(aim, gnd)) + V(aim, gnd)
+                       - tau * delta * V(are, gnd) - tk2 * V(in_re, gnd);
+
+        // through port: s_out = s_in + j*A
+        V(out_re, gnd) <+ V(in_re, gnd) - V(aim, gnd);
+        V(out_im, gnd) <+ V(in_im, gnd) + V(are, gnd);
+
+        // electrical port: reverse-biased junction = capacitance + leakage
+        I(vp, vn) <+ cj * ddt(V(vp, vn)) + V(vp, vn) / rleak;
+    end
+endmodule

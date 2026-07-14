@@ -1,0 +1,258 @@
+`include "discipline.h"
+`include "constants.h"
+
+`define P_C0 2.99792458e8   // speed of light [m/s]
+
+// Add-drop microring with FIVE longitudinal modes (m = -2..+2) whose fields
+// interact through the intracavity chi(3) KERR nonlinearity — the modal
+// (Lugiato-Lefever) form of four-wave mixing in a resonator. Pump one mode
+// and seed its neighbour one FSR away: the idler grows in the mode one FSR
+// on the OTHER side (2*w_p = w_s + w_i, angular momentum matched), and at
+// stronger drive the mixing cascades into the +-2 modes — a comb seed.
+//
+// Coherent-field convention: Ereal/Eimag node pairs, |E|^2 = power [W].
+// Unidirectional 3-port (in -> thru, in -> drop; the add input is dark).
+//
+// Each mode m is a CMT resonator sharing the bus couplings, plus the full
+// chi(3) modal sum with the SPATIAL selection rule j + l - k = m (the
+// e^{j m phi} overlap of travelling ring modes):
+//
+//   dA_m/dt = (j*delta_m - 1/tau) A_m
+//             + j*g_eff * sum_{j+l-k=m} A_j A_l conj(A_k)
+//             + j*kappa1^2 * s_in
+//   s_thru  = s_in + j*sum_m A_m ,  s_drop = j*sqrt(k2_drop/k2_in)*sum_m A_m
+//
+//   delta_m = 2*pi*c*(1/lambda - 1/lambda_res) - m*2*pi*FSR - pi*d2_hz*m^2
+//             (resonance m sits at f_res0 + m*FSR + d2_hz*m^2/2 — d2_hz is
+//              the second-order comb dispersion, the ring's phase-matching
+//              knob: it detunes the idler mode off the FWM frequency)
+//   g_eff   = g_U / kappa1^2 ,   g_U = (w0/n_g)*n2*v_g/V_eff  [rad/s/J]
+//
+// The single sum generates ALL chi(3) effects with the right coefficients:
+// SPM (j=l=k=m, x1), XPM (x2, the classic factor of two), degenerate FWM
+// (A_p^2 conj(A_s) -> idler), and the cascade. g_U is the same Kerr shift
+// coefficient as ring_nl.va: one mode alone red-shifts by g_U*U.
+// No TPA/FCA here — this is the pure-Kerr (real chi(3)) ring; absorption
+// nonlinearities live in ring_nl.va.
+//
+// Implementation notes: rows scaled by the constant tau; all nonlinearity
+// in the resistive terms (ring_mod_inj.va rule); mode states on explicit
+// node pairs, and the 85 momentum-matched triple products are grouped over
+// 15 pair products (machine-generated — see examples/ring_fwm.py, which
+// pins every term against an independent ODE integration and the analytic
+// steady state).
+module ring_kerr(in_re, in_im, thru_re, thru_im, drop_re, drop_im, gnd);
+    inout in_re, in_im, thru_re, thru_im, drop_re, drop_im, gnd;
+    electrical in_re, in_im, thru_re, thru_im, drop_re, drop_im, gnd;
+
+    // internal: mode fields A_m = kappa1*a_m [sqrt(W)], m = -2..+2
+    electrical ar_m2, ai_m2, ar_m1, ai_m1, ar_z0, ai_z0,
+               ar_p1, ai_p1, ar_p2, ai_p2;
+
+    parameter real lambda_nm     = 1310.0 from (0:inf);  // reference wavelength [nm]
+    parameter real lambda_res_nm = 1310.0 from (0:inf);  // cold m=0 resonance [nm]
+    parameter real radius_um     = 2000.0 from (0:inf);  // ring radius [um]
+    parameter real n_g           = 4.0    from (0:inf);  // group index
+    parameter real loss_db_m     = 30.0   from (0:inf);  // propagation loss [dB/m]
+    parameter real kappa2_in     = 0.035  from (0:1);    // bus power coupling
+    parameter real kappa2_drop   = 0.035  from (0:1);    // drop power coupling
+    parameter real a_eff_um2     = 0.1    from (0:inf);  // effective mode area [um^2]
+    parameter real n2_kerr       = 4.5e-18;              // Kerr index [m^2/W]
+    parameter real d2_hz         = 0.0;                  // comb dispersion [Hz/mode^2]
+
+    real circ, v_g, t_rt, fsr_w, veff, w0;
+    real inv_tau_i, inv_tau_e1, inv_tau_e2, tau, k2c, tk2, rat, geff, tg;
+    real d0, d_m2, d_m1, d_z0, d_p1, d_p2, sum_re, sum_im;
+    real am2r, am2i, am1r, am1i, az0r, az0i, ap1r, ap1i, ap2r, ap2i;
+    real pr_m2m2, pi_m2m2, pr_m2m1, pi_m2m1, pr_m2z0, pi_m2z0, pr_m2p1, pi_m2p1, pr_m2p2, pi_m2p2,
+         pr_m1m1, pi_m1m1, pr_m1z0, pi_m1z0, pr_m1p1, pi_m1p1, pr_m1p2, pi_m1p2, pr_z0z0, pi_z0z0,
+         pr_z0p1, pi_z0p1, pr_z0p2, pi_z0p2, pr_p1p1, pi_p1p1, pr_p1p2, pi_p1p2, pr_p2p2, pi_p2p2;
+    real tre_m2, tim_m2, tre_m1, tim_m1, tre_z0, tim_z0, tre_p1, tim_p1, tre_p2, tim_p2;
+
+    analog begin
+        // device geometry -> CMT rates, mode comb, Kerr coupling
+        circ       = 2.0 * `M_PI * radius_um * 1e-6;
+        v_g        = `P_C0 / n_g;
+        t_rt       = circ / v_g;
+        fsr_w      = 2.0 * `M_PI / t_rt;                  // FSR [rad/s]
+        veff       = a_eff_um2 * 1e-12 * circ;            // mode volume [m^3]
+        w0         = 2.0 * `M_PI * `P_C0 / (lambda_nm * 1e-9);
+        inv_tau_i  = loss_db_m * ln(10.0) / 10.0 * v_g / 2.0;
+        inv_tau_e1 = kappa2_in / (2.0 * t_rt);
+        inv_tau_e2 = kappa2_drop / (2.0 * t_rt);
+        tau        = 1.0 / (inv_tau_i + inv_tau_e1 + inv_tau_e2);
+        k2c        = 2.0 * inv_tau_e1;                    // kappa1^2 [1/s]
+        tk2        = tau * k2c;
+        rat        = sqrt(kappa2_drop / kappa2_in);
+        geff       = (w0 / n_g) * n2_kerr * v_g / veff / k2c;  // [rad/s/W]
+        tg         = tau * geff;
+
+        d0 = 2.0 * `M_PI * `P_C0 * (1.0 / (lambda_nm * 1e-9)
+                                    - 1.0 / (lambda_res_nm * 1e-9));
+        d_m2 = d0 + 2.0 * fsr_w - 4.0 * `M_PI * d2_hz;
+        d_m1 = d0 + fsr_w - `M_PI * d2_hz;
+        d_z0 = d0;
+        d_p1 = d0 - fsr_w - `M_PI * d2_hz;
+        d_p2 = d0 - 2.0 * fsr_w - 4.0 * `M_PI * d2_hz;
+
+        // chi(3) modal sum T_m = sum_{j+l-k=m} A_j A_l conj(A_k):
+        // 85 momentum-matched triple products over 15 pair products
+        // (machine-generated; XPM factor 2 = the off-diagonal pair count)
+        am2r = V(ar_m2, gnd);  am2i = V(ai_m2, gnd);
+        am1r = V(ar_m1, gnd);  am1i = V(ai_m1, gnd);
+        az0r = V(ar_z0, gnd);  az0i = V(ai_z0, gnd);
+        ap1r = V(ar_p1, gnd);  ap1i = V(ai_p1, gnd);
+        ap2r = V(ar_p2, gnd);  ap2i = V(ai_p2, gnd);
+
+        pr_m2m2 = am2r*am2r - am2i*am2i;  pi_m2m2 = am2r*am2i + am2i*am2r;
+        pr_m2m1 = am2r*am1r - am2i*am1i;  pi_m2m1 = am2r*am1i + am2i*am1r;
+        pr_m2z0 = am2r*az0r - am2i*az0i;  pi_m2z0 = am2r*az0i + am2i*az0r;
+        pr_m2p1 = am2r*ap1r - am2i*ap1i;  pi_m2p1 = am2r*ap1i + am2i*ap1r;
+        pr_m2p2 = am2r*ap2r - am2i*ap2i;  pi_m2p2 = am2r*ap2i + am2i*ap2r;
+        pr_m1m1 = am1r*am1r - am1i*am1i;  pi_m1m1 = am1r*am1i + am1i*am1r;
+        pr_m1z0 = am1r*az0r - am1i*az0i;  pi_m1z0 = am1r*az0i + am1i*az0r;
+        pr_m1p1 = am1r*ap1r - am1i*ap1i;  pi_m1p1 = am1r*ap1i + am1i*ap1r;
+        pr_m1p2 = am1r*ap2r - am1i*ap2i;  pi_m1p2 = am1r*ap2i + am1i*ap2r;
+        pr_z0z0 = az0r*az0r - az0i*az0i;  pi_z0z0 = az0r*az0i + az0i*az0r;
+        pr_z0p1 = az0r*ap1r - az0i*ap1i;  pi_z0p1 = az0r*ap1i + az0i*ap1r;
+        pr_z0p2 = az0r*ap2r - az0i*ap2i;  pi_z0p2 = az0r*ap2i + az0i*ap2r;
+        pr_p1p1 = ap1r*ap1r - ap1i*ap1i;  pi_p1p1 = ap1r*ap1i + ap1i*ap1r;
+        pr_p1p2 = ap1r*ap2r - ap1i*ap2i;  pi_p1p2 = ap1r*ap2i + ap1i*ap2r;
+        pr_p2p2 = ap2r*ap2r - ap2i*ap2i;  pi_p2p2 = ap2r*ap2i + ap2i*ap2r;
+
+        tre_m2 = (pr_m2m2*am2r + pi_m2m2*am2i)
+                 + 2.0*(pr_m2m1*am1r + pi_m2m1*am1i)
+                 + 2.0*(pr_m2z0*az0r + pi_m2z0*az0i)
+                 + 2.0*(pr_m2p1*ap1r + pi_m2p1*ap1i)
+                 + 2.0*(pr_m2p2*ap2r + pi_m2p2*ap2i)
+                 + (pr_m1m1*az0r + pi_m1m1*az0i)
+                 + 2.0*(pr_m1z0*ap1r + pi_m1z0*ap1i)
+                 + 2.0*(pr_m1p1*ap2r + pi_m1p1*ap2i)
+                 + (pr_z0z0*ap2r + pi_z0z0*ap2i);
+        tim_m2 = (pi_m2m2*am2r - pr_m2m2*am2i)
+                 + 2.0*(pi_m2m1*am1r - pr_m2m1*am1i)
+                 + 2.0*(pi_m2z0*az0r - pr_m2z0*az0i)
+                 + 2.0*(pi_m2p1*ap1r - pr_m2p1*ap1i)
+                 + 2.0*(pi_m2p2*ap2r - pr_m2p2*ap2i)
+                 + (pi_m1m1*az0r - pr_m1m1*az0i)
+                 + 2.0*(pi_m1z0*ap1r - pr_m1z0*ap1i)
+                 + 2.0*(pi_m1p1*ap2r - pr_m1p1*ap2i)
+                 + (pi_z0z0*ap2r - pr_z0z0*ap2i);
+        tre_m1 = 2.0*(pr_m2m1*am2r + pi_m2m1*am2i)
+                 + 2.0*(pr_m2z0*am1r + pi_m2z0*am1i)
+                 + 2.0*(pr_m2p1*az0r + pi_m2p1*az0i)
+                 + 2.0*(pr_m2p2*ap1r + pi_m2p2*ap1i)
+                 + (pr_m1m1*am1r + pi_m1m1*am1i)
+                 + 2.0*(pr_m1z0*az0r + pi_m1z0*az0i)
+                 + 2.0*(pr_m1p1*ap1r + pi_m1p1*ap1i)
+                 + 2.0*(pr_m1p2*ap2r + pi_m1p2*ap2i)
+                 + (pr_z0z0*ap1r + pi_z0z0*ap1i)
+                 + 2.0*(pr_z0p1*ap2r + pi_z0p1*ap2i);
+        tim_m1 = 2.0*(pi_m2m1*am2r - pr_m2m1*am2i)
+                 + 2.0*(pi_m2z0*am1r - pr_m2z0*am1i)
+                 + 2.0*(pi_m2p1*az0r - pr_m2p1*az0i)
+                 + 2.0*(pi_m2p2*ap1r - pr_m2p2*ap1i)
+                 + (pi_m1m1*am1r - pr_m1m1*am1i)
+                 + 2.0*(pi_m1z0*az0r - pr_m1z0*az0i)
+                 + 2.0*(pi_m1p1*ap1r - pr_m1p1*ap1i)
+                 + 2.0*(pi_m1p2*ap2r - pr_m1p2*ap2i)
+                 + (pi_z0z0*ap1r - pr_z0z0*ap1i)
+                 + 2.0*(pi_z0p1*ap2r - pr_z0p1*ap2i);
+        tre_z0 = 2.0*(pr_m2z0*am2r + pi_m2z0*am2i)
+                 + 2.0*(pr_m2p1*am1r + pi_m2p1*am1i)
+                 + 2.0*(pr_m2p2*az0r + pi_m2p2*az0i)
+                 + (pr_m1m1*am2r + pi_m1m1*am2i)
+                 + 2.0*(pr_m1z0*am1r + pi_m1z0*am1i)
+                 + 2.0*(pr_m1p1*az0r + pi_m1p1*az0i)
+                 + 2.0*(pr_m1p2*ap1r + pi_m1p2*ap1i)
+                 + (pr_z0z0*az0r + pi_z0z0*az0i)
+                 + 2.0*(pr_z0p1*ap1r + pi_z0p1*ap1i)
+                 + 2.0*(pr_z0p2*ap2r + pi_z0p2*ap2i)
+                 + (pr_p1p1*ap2r + pi_p1p1*ap2i);
+        tim_z0 = 2.0*(pi_m2z0*am2r - pr_m2z0*am2i)
+                 + 2.0*(pi_m2p1*am1r - pr_m2p1*am1i)
+                 + 2.0*(pi_m2p2*az0r - pr_m2p2*az0i)
+                 + (pi_m1m1*am2r - pr_m1m1*am2i)
+                 + 2.0*(pi_m1z0*am1r - pr_m1z0*am1i)
+                 + 2.0*(pi_m1p1*az0r - pr_m1p1*az0i)
+                 + 2.0*(pi_m1p2*ap1r - pr_m1p2*ap1i)
+                 + (pi_z0z0*az0r - pr_z0z0*az0i)
+                 + 2.0*(pi_z0p1*ap1r - pr_z0p1*ap1i)
+                 + 2.0*(pi_z0p2*ap2r - pr_z0p2*ap2i)
+                 + (pi_p1p1*ap2r - pr_p1p1*ap2i);
+        tre_p1 = 2.0*(pr_m2p1*am2r + pi_m2p1*am2i)
+                 + 2.0*(pr_m2p2*am1r + pi_m2p2*am1i)
+                 + 2.0*(pr_m1z0*am2r + pi_m1z0*am2i)
+                 + 2.0*(pr_m1p1*am1r + pi_m1p1*am1i)
+                 + 2.0*(pr_m1p2*az0r + pi_m1p2*az0i)
+                 + (pr_z0z0*am1r + pi_z0z0*am1i)
+                 + 2.0*(pr_z0p1*az0r + pi_z0p1*az0i)
+                 + 2.0*(pr_z0p2*ap1r + pi_z0p2*ap1i)
+                 + (pr_p1p1*ap1r + pi_p1p1*ap1i)
+                 + 2.0*(pr_p1p2*ap2r + pi_p1p2*ap2i);
+        tim_p1 = 2.0*(pi_m2p1*am2r - pr_m2p1*am2i)
+                 + 2.0*(pi_m2p2*am1r - pr_m2p2*am1i)
+                 + 2.0*(pi_m1z0*am2r - pr_m1z0*am2i)
+                 + 2.0*(pi_m1p1*am1r - pr_m1p1*am1i)
+                 + 2.0*(pi_m1p2*az0r - pr_m1p2*az0i)
+                 + (pi_z0z0*am1r - pr_z0z0*am1i)
+                 + 2.0*(pi_z0p1*az0r - pr_z0p1*az0i)
+                 + 2.0*(pi_z0p2*ap1r - pr_z0p2*ap1i)
+                 + (pi_p1p1*ap1r - pr_p1p1*ap1i)
+                 + 2.0*(pi_p1p2*ap2r - pr_p1p2*ap2i);
+        tre_p2 = 2.0*(pr_m2p2*am2r + pi_m2p2*am2i)
+                 + 2.0*(pr_m1p1*am2r + pi_m1p1*am2i)
+                 + 2.0*(pr_m1p2*am1r + pi_m1p2*am1i)
+                 + (pr_z0z0*am2r + pi_z0z0*am2i)
+                 + 2.0*(pr_z0p1*am1r + pi_z0p1*am1i)
+                 + 2.0*(pr_z0p2*az0r + pi_z0p2*az0i)
+                 + (pr_p1p1*az0r + pi_p1p1*az0i)
+                 + 2.0*(pr_p1p2*ap1r + pi_p1p2*ap1i)
+                 + (pr_p2p2*ap2r + pi_p2p2*ap2i);
+        tim_p2 = 2.0*(pi_m2p2*am2r - pr_m2p2*am2i)
+                 + 2.0*(pi_m1p1*am2r - pr_m1p1*am2i)
+                 + 2.0*(pi_m1p2*am1r - pr_m1p2*am1i)
+                 + (pi_z0z0*am2r - pr_z0z0*am2i)
+                 + 2.0*(pi_z0p1*am1r - pr_z0p1*am1i)
+                 + 2.0*(pi_z0p2*az0r - pr_z0p2*az0i)
+                 + (pi_p1p1*az0r - pr_p1p1*az0i)
+                 + 2.0*(pi_p1p2*ap1r - pr_p1p2*ap1i)
+                 + (pi_p2p2*ap2r - pr_p2p2*ap2i);
+
+        // five CMT mode pairs, rows scaled by the constant tau; the Kerr
+        // term +j*geff*T_m enters like the detuning (resistive, no ddt)
+        I(ar_m2, gnd) <+ tau * ddt(V(ar_m2, gnd)) + V(ar_m2, gnd)
+                         + tau * d_m2 * am2i + tg * tim_m2 + tk2 * V(in_im, gnd);
+        I(ai_m2, gnd) <+ tau * ddt(V(ai_m2, gnd)) + V(ai_m2, gnd)
+                         - tau * d_m2 * am2r - tg * tre_m2 - tk2 * V(in_re, gnd);
+
+        I(ar_m1, gnd) <+ tau * ddt(V(ar_m1, gnd)) + V(ar_m1, gnd)
+                         + tau * d_m1 * am1i + tg * tim_m1 + tk2 * V(in_im, gnd);
+        I(ai_m1, gnd) <+ tau * ddt(V(ai_m1, gnd)) + V(ai_m1, gnd)
+                         - tau * d_m1 * am1r - tg * tre_m1 - tk2 * V(in_re, gnd);
+
+        I(ar_z0, gnd) <+ tau * ddt(V(ar_z0, gnd)) + V(ar_z0, gnd)
+                         + tau * d_z0 * az0i + tg * tim_z0 + tk2 * V(in_im, gnd);
+        I(ai_z0, gnd) <+ tau * ddt(V(ai_z0, gnd)) + V(ai_z0, gnd)
+                         - tau * d_z0 * az0r - tg * tre_z0 - tk2 * V(in_re, gnd);
+
+        I(ar_p1, gnd) <+ tau * ddt(V(ar_p1, gnd)) + V(ar_p1, gnd)
+                         + tau * d_p1 * ap1i + tg * tim_p1 + tk2 * V(in_im, gnd);
+        I(ai_p1, gnd) <+ tau * ddt(V(ai_p1, gnd)) + V(ai_p1, gnd)
+                         - tau * d_p1 * ap1r - tg * tre_p1 - tk2 * V(in_re, gnd);
+
+        I(ar_p2, gnd) <+ tau * ddt(V(ar_p2, gnd)) + V(ar_p2, gnd)
+                         + tau * d_p2 * ap2i + tg * tim_p2 + tk2 * V(in_im, gnd);
+        I(ai_p2, gnd) <+ tau * ddt(V(ai_p2, gnd)) + V(ai_p2, gnd)
+                         - tau * d_p2 * ap2r - tg * tre_p2 - tk2 * V(in_re, gnd);
+
+        sum_re = am2r + am1r + az0r + ap1r + ap2r;
+        sum_im = am2i + am1i + az0i + ap1i + ap2i;
+
+        // thru: s_in + j*sum(A);  drop: j*rat*sum(A)
+        V(thru_re, gnd) <+ V(in_re, gnd) - sum_im;
+        V(thru_im, gnd) <+ V(in_im, gnd) + sum_re;
+        V(drop_re, gnd) <+ -rat * sum_im;
+        V(drop_im, gnd) <+ rat * sum_re;
+    end
+endmodule

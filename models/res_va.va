@@ -1,0 +1,16 @@
+`include "discipline.h"
+`include "constants.h"
+
+module res_va(p, n);
+    inout p, n;
+    electrical p, n;
+    parameter real r = 1k from (0:inf);
+    parameter real tc1 = 0.001; // tempco
+    real rval;
+
+    analog begin
+        rval = r * (1 + tc1 * ($temperature - 300));
+        V(p, n) <+ rval * I(p, n);
+    end
+endmodule
+

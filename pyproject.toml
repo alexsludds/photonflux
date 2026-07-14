@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "lightspice"
+version = "0.1.0"
+description = "Analog + photonic co-simulation in Python: Verilog-A (OpenVAF/OSDI) photonics + SPICE electronics over native libngspice"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "numpy",
+    "matplotlib",
+]
+
+[project.optional-dependencies]
+dev = ["pytest"]
+
+[project.scripts]
+lightspice = "lightspice.cli:main"
+
+[tool.setuptools]
+packages = ["lightspice"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"

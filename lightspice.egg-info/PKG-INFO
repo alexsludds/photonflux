@@ -1,0 +1,190 @@
+Metadata-Version: 2.4
+Name: lightspice
+Version: 0.1.0
+Summary: Analog + photonic co-simulation in Python: Verilog-A (OpenVAF/OSDI) photonics + SPICE electronics over native libngspice
+Requires-Python: >=3.10
+Description-Content-Type: text/markdown
+Requires-Dist: numpy
+Requires-Dist: matplotlib
+Provides-Extra: dev
+Requires-Dist: pytest; extra == "dev"
+
+# lightspice — Verilog-A photonics + SKY130 electronics in circulax
+
+Simulate **Verilog-A photonic compact models** together with **real SKY130
+PDK transistors** inside [circulax](https://github.com/gdsfactory/circulax)
+(gdsfactory's differentiable JAX/Diffrax circuit simulator), fully native on
+Apple Silicon.
+
+```python
+from lightspice import cx
+
+LASER = cx.cw_laser()                                # CW: wavelength + power -> field E
+MOD   = cx.mzm()                                     # field-convention MZM (twin of models/mzm.va)
+RING  = cx.va("ring_mod")                            # any models/*.va -> differentiable JAX component
+NFET  = cx.sky130_fet("nfet_01v8", w=1.0, l=0.15)    # real SKY130 BSIM4 device (um, tt corner)
+```
+
+All four drop into circulax netlists as ordinary components; the whole
+circuit — optics and electronics — is one JAX system: Newton DC, Diffrax
+transient, AC, and `jax.grad` end-to-end through the photonics.
+
+**House conventions**
+
+* Optical nodes carry the **coherent field** (complex `E`, power = `|E|²`).
+* Lasers are **CW only** — parameterised by wavelength and power, emitting a
+  constant field. All modulation happens in modulators (`cx.mzm()`, or ideal
+  modulators like the `PulseModulator` in example 01). A laser is never
+  modulated directly.
+
+## Quick start
+
+```bash
+# one-time environment (Python >= 3.12)
+python3 -m venv .venv-circulax
+.venv-circulax/bin/pip install "circulax[verilog-a]" openvaf-py
+.venv-circulax/bin/pip install -e .
+
+# SKY130 PDK (used for model-card extraction)
+.venv-circulax/bin/pip install volare
+.venv-circulax/bin/python -m volare enable --pdk sky130 <commit>   # -> ~/.volare/sky130A
+
+# run the flow
+.venv-circulax/bin/python examples/link_sky130.py    # -> out/circulax_link_sky130.png
+.venv-circulax/bin/python -m pytest tests/           # VA physics + circulax bridge tests
+
+# or build circuits in the browser (drag-drop schematic editor + plotting)
+.venv-circulax/bin/python webapp/server.py           # -> http://localhost:8642
+```
+
+## Web UI ([webapp/README.md](webapp/README.md))
+
+`webapp/` is a browser frontend for the whole flow: drag photonic and
+electrical components onto a schematic canvas, wire them (amber = optical
+field, blue = electrical), edit parameters, attach probes, and run DC /
+DC-sweep / transient analyses — solved by circulax in-process and plotted
+live (optical probes as |E|² power, electrical as volts). Ships with example
+circuits mirroring `examples/*.py`. Pure-stdlib server, no extra
+dependencies.
+
+## Examples ([examples/README.md](examples/README.md))
+
+| script | what it shows | output |
+|---|---|---|
+| `examples/photodiode_tia.py` | CW laser → pulse modulator → PD → ideal TIA; exact `jax.grad` through the DC solve and the non-holomorphic `\|E\|²` detector | `out/circulax_photodiode_tia.png` |
+| `examples/link_cmos.py` | full CW-laser + MZM link, transistor electrode driver + CMOS-inverter TIA with square-law stand-ins (no PDK needed) | `out/circulax_link_cmos.png` |
+| `examples/link_sky130.py` | the same link with **real SKY130 BSIM4 FETs** solved natively inside circulax | `out/circulax_link_sky130.png` |
+| `examples/ring_mod_sky130.py` | self-checking testbench: Verilog-A **microring modulator** (`models/ring_mod.va`, coupled-mode theory) driven by a SKY130 inverter — DC tuning pinned to the analytic Lorentzian, physical device parameters (R = 7.5 µm, 7000 dB/m junction loss, κ² = 10 %, 45 pm/V → Q_loaded ≈ 5.1k, f_3dB ≈ 44 GHz), PRBS NRZ at a configurable baud rate (`--baud`, open eyes 5–50 Gbd), optical **eye diagram** with sampled eye-height/ER checks | `out/circulax_ring_mod.png` |
+
+## How the SKY130 flow works
+
+`cx.sky130_fet(device, w=..., l=..., corner="tt")`:
+
+1. **Card extraction** — ngspice itself resolves the volare model library
+   (`.lib` corner stitching, `{...}` card expressions, W/L bin selection);
+   the fully-resolved BSIM4 card is read back with `showmod`. No hand-parsing
+   of PDK files.
+2. **Compilation** — the BSIM4.8 Verilog-A (cogenda VA-BSIM48 port, vendored
+   in `vendor/BSIM4/`) is compiled to an OSDI binary by `bin/openvaf-ir`.
+3. **Evaluation** — the OSDI binary is evaluated natively inside circulax's
+   Newton/transient loop (bosdi's OSDI↔JAX shim), with the card baked in and
+   not-given parameters resolved by the VA's own `$param_given` ladder,
+   exactly like ngspice.
+
+Accuracy (pinned by `tests/test_cx.py`): off-state exact to gmin; on-state
+matches an ngspice run of the same card with `version=4.8` to ~1e-4. Against
+true sky130 (whose cards say `version=4.5`, solved by ngspice's BSIM4v5)
+there is a documented 3–10 % version-skew band; the CMOS inverter VTC agrees
+within ~32 mV.
+
+`cx.va(name)` compiles any `models/*.va` through bosdi's Verilog-A → JAX
+lowering into a fully differentiable component (validated exact: DC to 1e-9,
+`jax.grad` matches analytic sensitivities). Coherent Verilog-A models carry
+complex fields as Ereal/Eimag node pairs; `cx.field_to_ri()` /
+`cx.ri_to_field()` adapt them to circulax's single complex field nodes (see
+`examples/ring_mod_sky130.py`). An experimental
+`cx.sky130_fet(..., backend="jax")` exists for differentiable FETs but bosdi
+0.1.5 miscompiles BSIM4's nested conditionals — see the `cx.py` docstring.
+
+Everything is content-hash cached under `models/__jax__/` (cards as JSON,
+emitted Python, OSDI binaries).
+
+## Repo layout
+
+```
+lightspice/       Python package
+  cx.py           THE circulax bridge: cx.va / cx.sky130_fet / cx.cw_laser /
+                  cx.mzm (+ the emitted-code repairs and collapse filtering
+                  documented in its docstrings)
+  _ngspice.py     ctypes binding to libngspice — powers model-card extraction
+                  and the ngspice reference/validation flow
+  engine.py, circuit.py, compiler.py, toolchain.py, devices.py, ...
+                  the ngspice-side toolchain (reference simulations, VA->OSDI
+                  compile cache, PDK discovery, `python -m lightspice doctor`)
+models/           Verilog-A photonic model library (single source of truth)
+vendor/BSIM4/     cogenda BSIM4.8 Verilog-A (the SKY130 device physics)
+examples/         circulax examples (links + ring-modulator testbench)
+tests/            VA physics tests (ngspice reference) + circulax bridge tests
+bin/openvaf-r     OpenVAF-Reloaded 23.5.0 — compiles models/*.va for ngspice
+bin/openvaf-ir    ChipFlow openvaf fork — compiles BSIM4 for circulax
+                  (openvaf-r miscompiles BSIM4 to OSDI; the fork doesn't)
+include/          Verilog-A headers (discipline.h, constants.h)
+out/              generated plots
+```
+
+## Toolchain (all native arm64)
+
+| component | role | source |
+|---|---|---|
+| `bin/openvaf-r` 23.5.0 | Verilog-A → OSDI for the ngspice side | [OpenVAF-Reloaded](https://github.com/OpenVAF/OpenVAF-Reloaded), built locally |
+| `bin/openvaf-ir` | Verilog-A → OSDI for circulax (BSIM4-correct) | [robtaylor/OpenVAF](https://github.com/robtaylor/OpenVAF) branch `vajax` |
+| `ngspice` / `libngspice` 46 | reference engine + card extraction | Homebrew |
+| SKY130 PDK | CMOS transistors | volare (`~/.volare/sky130A`) |
+| `.venv-circulax` | circulax 0.2.1 + bosdi 0.1.5 + openvaf-py + JAX | pip |
+
+### Rebuilding the openvaf binaries
+
+Both build with Homebrew `llvm@18` and one macOS patch (skip the Windows-only
+UCRT import-lib step in `openvaf/target/build.rs`: force `check = true`):
+
+```bash
+brew install llvm@18 ngspice libngspice
+
+# bin/openvaf-r (OpenVAF-Reloaded)
+git clone https://github.com/OpenVAF/OpenVAF-Reloaded && cd OpenVAF-Reloaded
+# apply the UCRT patch, then:
+LLVM_CONFIG=/opt/homebrew/opt/llvm@18/bin/llvm-config \
+LLVM_SYS_181_PREFER_DYNAMIC=1 cargo build --release --bin openvaf-r
+
+# bin/openvaf-ir (ChipFlow fork; also needs the llvm18 feature flag)
+git clone -b vajax https://github.com/robtaylor/OpenVAF && cd OpenVAF
+# apply the UCRT patch, then:
+LLVM_SYS_181_PREFIX=/opt/homebrew/opt/llvm@18 LLVM_SYS_181_PREFER_DYNAMIC=1 \
+cargo build --release -p openvaf-driver --bin openvaf-r --features llvm18
+```
+
+(OpenVAF-Reloaded additionally needs `-syslibroot $(xcrun --show-sdk-path)
+-lSystem` in `openvaf/linker/src/lib.rs` so modern `ld` links the `.osdi`
+dylibs; the ChipFlow fork already carries that fix.)
+
+## Writing a new photonic model
+
+1. Create `models/<name>.va` — the module name is the `.model` type name, and
+   the compiler rejects names that collide with ngspice builtins (`res`,
+   `nmos`, ...; the deck parser resolves builtins before the OSDI registry).
+2. Use the coherent-field convention for circulax work, or the power-domain
+   convention (V = optical power in W) for the ngspice reference flow — see
+   `models/README.md`.
+3. `cx.va("<name>")` from Python — compilation and caching are automatic.
+4. Pin its physics with a test in `tests/` (an OP point and one transient
+   invariant are usually enough).
+
+## Known circulax/bosdi gotchas
+
+Documented in detail in the `lightspice/cx.py` docstrings and pinned by
+tests; the short list: bosdi's `$mfactor` defaults to 0 (cx passes 1.0 and
+NaN-fills not-given params), ngspice `showmod` reports `tnom` in Kelvin (cx
+converts), and with OSDI devices in a complex-valued system use fixed-step
+`BDF2VectorizedTransientSolver` (circulax 0.2.1's adaptive retry path reports
+a spurious divergence even though every individual step converges). Upstream
+issues were filed on github.com/gdsfactory/bosdi (#5–#8).

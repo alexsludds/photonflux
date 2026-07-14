@@ -1,0 +1,37 @@
+`include "discipline.h"
+`include "constants.h"
+
+// Mach-Zehnder modulator, power-domain convention (node V = optical power [W]).
+//   Optical input `pin`, optical output `pout`, both referenced to gnd.
+//   Differential drive electrodes (vp, vn).
+//
+//   T(V) = IL * ( 0.5 + 0.5*eta*cos( pi*(V + Vbias)/Vpi ) )
+//
+//   IL  = 10^(-il_db/10)        excess insertion loss
+//   eta = (ER-1)/(ER+1)         interference contrast set by extinction
+//                               ratio ER = 10^(er_db/10), so quadrature
+//                               sits at IL/2 and the nulls bottom out at
+//                               IL/(ER+1) * ... (finite ER models arm
+//                               imbalance).
+//   cel adds electrode capacitance so a driver sees a real load.
+module mzm(pin, vp, vn, pout, gnd);
+    inout pin, vp, vn, pout, gnd;
+    electrical pin, vp, vn, pout, gnd;
+
+    parameter real vpi   = 3.0  from (0:inf);   // half-wave voltage [V]
+    parameter real vbias = 0.0;                 // built-in bias offset [V]
+    parameter real il_db = 3.0  from [0:inf);   // excess insertion loss [dB]
+    parameter real er_db = 20.0 from (0:inf);   // extinction ratio [dB]
+    parameter real cel   = 50f  from [0:inf);   // electrode capacitance [F]
+
+    real il, er, eta, trans;
+
+    analog begin
+        il    = pow(10.0, -il_db/10.0);
+        er    = pow(10.0, er_db/10.0);
+        eta   = (er - 1.0) / (er + 1.0);
+        trans = il * (0.5 + 0.5 * eta * cos(`M_PI * (V(vp, vn) + vbias) / vpi));
+        V(pout, gnd) <+ trans * V(pin, gnd);
+        I(vp, vn)    <+ cel * ddt(V(vp, vn));
+    end
+endmodule

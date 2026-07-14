@@ -1,0 +1,23 @@
+`include "discipline.h"
+`include "constants.h"
+
+module cart2pol(gnd, Ereal, Eimag, Emag, Ephi);
+    inout gnd;
+    input Ereal, Eimag;      // Cartesian inputs
+    output Emag, Ephi;       // Polar outputs
+
+    electrical gnd, Ereal, Eimag, Emag, Ephi;
+
+    real phi;
+
+    analog begin
+        // Magnitude = sqrt(x^2 + y^2)
+        V(Emag, gnd) <+ sqrt( (V(Ereal, gnd)*V(Ereal, gnd)) + (V(Eimag, gnd)*V(Eimag, gnd)) );
+
+        // Phase = atan(y/x) with quadrant correction
+        
+        phi = atan( V(Eimag,gnd) / (V(Ereal,gnd) + 1e-18) );
+        if (V(Ereal,gnd) < 0) phi = phi + `M_PI;
+        V(Ephi, gnd) <+ phi;
+    end
+endmodule

@@ -1,0 +1,111 @@
+{
+  "title": "40 — Four-wave mixing INSIDE a Kerr ring resonator (models/ring_kerr.va): two WDM lasers exactly one FSR apart (5.964 GHz for this R = 2 mm, Q = 1.5e6 ring) pump adjacent resonances — 1 mW on mode 0 at 1310 nm, 1 mW on mode +1 at 1309.9659 nm. The five ring modes share the intracavity chi(3) Kerr nonlinearity (the modal Lugiato-Lefever equations, momentum matched), so the idler EMERGES in mode -1 at 1310.0341 nm where 2f_p - f_s lands exactly on a resonance, and the mixing cascades into modes +-2 — the first teeth of a Kerr comb growing on the OSA. All three waves are resonantly enhanced: the same chi(3) in the same 12.6 mm of straight waveguide converts ~1000x less (compare example 39). The drop-port time trace shows the 6 GHz beat of the circulating comb building up over the ~2 ns photon lifetime. examples/ring_fwm.py pins the physics: P_i ~ P_p^2*P_s, the Lorentzian-to-the-4th detuning collapse, dispersion (d2_hz) killing the conversion = ring phase matching, and every line against an independent ODE integration",
+  "group": "Passive photonics",
+  "analysis": {
+    "mode": "transient",
+    "t_stop": 8e-09,
+    "points": 16000,
+    "dtmax": 5e-13
+  },
+  "schematic": {
+    "instances": {
+      "LP": {
+        "type": "cw_laser",
+        "x": 80,
+        "y": 120,
+        "rot": 0,
+        "settings": {
+          "wavelength_nm": 1310.0,
+          "power": 0.001,
+          "ref_wavelength_nm": 1310.0
+        }
+      },
+      "LS": {
+        "type": "cw_laser",
+        "x": 80,
+        "y": 220,
+        "rot": 0,
+        "settings": {
+          "wavelength_nm": 1309.9658596,
+          "power": 0.001,
+          "ref_wavelength_nm": 1310.0
+        }
+      },
+      "RG1": {
+        "type": "ring_kerr",
+        "x": 320,
+        "y": 120,
+        "rot": 0,
+        "settings": {
+          "wavelength_nm": 1310.0,
+          "lambda_res_nm": 1310.0,
+          "radius_um": 2000.0,
+          "loss_db_m": 30.0,
+          "kappa2_in": 0.035,
+          "kappa2_drop": 0.035,
+          "n2_kerr": 4.5e-18
+        }
+      },
+      "TT": {
+        "type": "opt_term",
+        "x": 560,
+        "y": 120,
+        "rot": 0,
+        "settings": {}
+      },
+      "TD": {
+        "type": "opt_term",
+        "x": 560,
+        "y": 220,
+        "rot": 0,
+        "settings": {}
+      },
+      "GND1": {
+        "type": "ground",
+        "x": 80,
+        "y": 320,
+        "rot": 0,
+        "settings": {}
+      }
+    },
+    "wires": [
+      {
+        "from": "LP,p1",
+        "to": "RG1,pin"
+      },
+      {
+        "from": "LP,p2",
+        "to": "LS,p1"
+      },
+      {
+        "from": "LS,p2",
+        "to": "GND1,p1"
+      },
+      {
+        "from": "RG1,gnd",
+        "to": "GND1,p1"
+      },
+      {
+        "from": "RG1,thru",
+        "to": "TT,p1"
+      },
+      {
+        "from": "RG1,drop",
+        "to": "TD,p1"
+      }
+    ],
+    "probes": [
+      {
+        "name": "p_thru",
+        "at": "RG1,thru",
+        "color": "#e6862c",
+        "spectrum": true
+      },
+      {
+        "name": "p_drop",
+        "at": "RG1,drop",
+        "color": "#6ecbf5"
+      }
+    ]
+  }
+}

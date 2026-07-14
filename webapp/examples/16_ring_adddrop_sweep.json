@@ -1,0 +1,150 @@
+{
+  "title": "16 \u2014 Passive ring add-drop filter from two couplers + two waveguides",
+  "group": "Passive photonics",
+  "schematic": {
+    "instances": {
+      "LAS1": {
+        "type": "cw_laser",
+        "x": 120,
+        "y": 140,
+        "rot": 0,
+        "settings": {
+          "power": 0.001,
+          "wavelength_nm": 1310.0
+        }
+      },
+      "GNDL": {
+        "type": "ground",
+        "x": 140,
+        "y": 224,
+        "rot": 0,
+        "settings": {}
+      },
+      "CPL1": {
+        "type": "dir_coupler",
+        "x": 280,
+        "y": 160,
+        "rot": 0,
+        "settings": {
+          "coupling": 0.2
+        }
+      },
+      "TERMT": {
+        "type": "opt_term",
+        "x": 440,
+        "y": 148,
+        "rot": 0,
+        "settings": {}
+      },
+      "WGA": {
+        "type": "waveguide",
+        "x": 320,
+        "y": 230,
+        "rot": 90,
+        "settings": {
+          "length_m": 0.0001,
+          "loss_dB_cm": 1.0,
+          "neff": 2.4,
+          "n_group": 4.0,
+          "center_wavelength_nm": 1310.0,
+          "wavelength_nm": 1310.0
+        }
+      },
+      "WGB": {
+        "type": "waveguide",
+        "x": 240,
+        "y": 210,
+        "rot": 270,
+        "settings": {
+          "length_m": 0.0001,
+          "loss_dB_cm": 1.0,
+          "neff": 2.4,
+          "n_group": 4.0,
+          "center_wavelength_nm": 1310.0,
+          "wavelength_nm": 1310.0
+        }
+      },
+      "CPL2": {
+        "type": "dir_coupler",
+        "x": 280,
+        "y": 320,
+        "rot": 0,
+        "settings": {
+          "coupling": 0.2
+        }
+      },
+      "TERMD": {
+        "type": "opt_term",
+        "x": 200,
+        "y": 348,
+        "rot": 0,
+        "settings": {}
+      },
+      "TERMX": {
+        "type": "opt_term",
+        "x": 440,
+        "y": 348,
+        "rot": 0,
+        "settings": {}
+      }
+    },
+    "wires": [
+      {
+        "from": "LAS1,p1",
+        "to": "CPL1,p1"
+      },
+      {
+        "from": "LAS1,p2",
+        "to": "GNDL,p1"
+      },
+      {
+        "from": "CPL1,p3",
+        "to": "TERMT,p1"
+      },
+      {
+        "from": "CPL1,p4",
+        "to": "WGA,p1"
+      },
+      {
+        "from": "WGA,p2",
+        "to": "CPL2,p3"
+      },
+      {
+        "from": "CPL2,p1",
+        "to": "WGB,p1"
+      },
+      {
+        "from": "WGB,p2",
+        "to": "CPL1,p2"
+      },
+      {
+        "from": "CPL2,p2",
+        "to": "TERMD,p1"
+      },
+      {
+        "from": "CPL2,p4",
+        "to": "TERMX,p1"
+      }
+    ],
+    "probes": [
+      {
+        "name": "thru",
+        "at": "CPL1,p3",
+        "color": "#e6862c"
+      },
+      {
+        "name": "drop",
+        "at": "CPL2,p2",
+        "color": "#6ecbf5"
+      }
+    ]
+  },
+  "analysis": {
+    "mode": "dcsweep",
+    "instance": "*",
+    "param": "wavelength_nm",
+    "start": 1308.0,
+    "stop": 1313.0,
+    "points": 2001
+  }
+}

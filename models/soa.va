@@ -1,0 +1,107 @@
+`include "discipline.h"
+`include "constants.h"
+
+// Semiconductor optical amplifier — lumped gain-reservoir (Agrawal-Olsson)
+// model, BIDIRECTIONAL: forward (fi -> fo) and backward (bi -> bo) waves
+// share one carrier reservoir, so it drops into Fabry-Perot cavities and
+// external-cavity lasers as-is. For unidirectional use ground bi_re/bi_im
+// and leave bo_re/bo_im open.
+//
+// Coherent-field convention: optical ports are Ereal/Eimag node pairs with
+// |E|^2 = optical power [W].
+//
+// Gain state h = integral of the modal gain over the length (G = e^h):
+//
+//   tau_c*dh/dt = h0(I) - h - (G - 1)*(P_fi + P_bi)/p_sat
+//
+//   * h0(I) = ln(G0) * (I - i_tr)/(i_op - i_tr): unsaturated log-gain,
+//     linear in bias current (transparent at i_tr, g0_db of gain at i_op,
+//     an absorber below transparency).
+//   * p_sat is the saturation power (E_sat = p_sat*tau_c); the -3 dB output
+//     saturation power is p_sat*G*ln(2)/(G-2) for large G.
+//
+// Field transfer, per direction, through a single-pole output filter:
+//
+//   tau_bw*dE_out/dt = -E_out + sqrt(G)*e^{-j*alpha_h*h/2}*E_in + sqrt(p_seed)
+//
+//   * tau_bw models the finite gain bandwidth. It also gives an optical
+//     cavity built from this SOA its memory (an effective photon lifetime),
+//     so closed-loop laser transients are well-posed: set it to roughly the
+//     cavity round-trip time when building lasers.
+//   * alpha_h is the linewidth-enhancement factor (0 by default; 4-6 for
+//     gain-saturation chirp studies).
+//   * p_seed is a deterministic stand-in for the ASE that seeds lasing and
+//     pins the lasing phase (a constant field, not a stochastic source).
+//
+// Electrical port (an, cat): linearised diode Idrv = (V - Von)/Rs, clamped
+// at 0 — the same convention as laser_dml/laser_rate.
+//
+// Implementation notes: exp() is guarded by clamping h at h_clamp before
+// exponentiating (Newton excursions above ~e^12 would otherwise overflow);
+// all ddt() coefficients are constants (bosdi-lowering rule). The output
+// filter ODEs live DIRECTLY on the output ports as current contributions
+// (soft nodes): downstream models read them at infinite impedance, so the
+// KCL row at each output IS the filter equation. Consequences: never load
+// an output with a finite impedance, and ground unused INPUTS (an open
+// input has no equation).
+module soa(fi_re, fi_im, fo_re, fo_im, bi_re, bi_im, bo_re, bo_im,
+           an, cat, gnd);
+    inout fi_re, fi_im, fo_re, fo_im, bi_re, bi_im, bo_re, bo_im,
+          an, cat, gnd;
+    electrical fi_re, fi_im, fo_re, fo_im, bi_re, bi_im, bo_re, bo_im,
+               an, cat, gnd;
+
+    electrical nh;                    // internal: log gain h
+
+    parameter real g0_db   = 20.0  from (0:inf);   // small-signal gain at i_op [dB]
+    parameter real i_op_ma = 80.0  from (0:inf);   // operating current [mA]
+    parameter real i_tr_ma = 8.0   from [0:inf);   // transparency current [mA]
+    parameter real p_sat   = 10m   from (0:inf);   // saturation power [W]
+    parameter real tau_c   = 0.3n  from (0:inf);   // carrier lifetime [s]
+    parameter real tau_bw  = 1p    from (0:inf);   // output-filter time const [s]
+    parameter real alpha_h = 0.0;                  // linewidth-enhancement factor
+    parameter real p_seed  = 1e-9  from [0:inf);   // ASE seed power [W]
+    parameter real Von     = 1.2;                  // diode turn-on [V]
+    parameter real Rs      = 3.0   from (0:inf);   // series resistance [ohm]
+    parameter real h_clamp = 12.0  from (0:inf);   // exp() overflow guard
+
+    real idrv, hop, h0, h, hc, g, sg, phi, gr, gi, ptot, eseed;
+
+    analog begin
+        // ---- electrical port: linearised diode -------------------------
+        idrv = (V(an, cat) - Von) / Rs;
+        if (idrv < 0.0) idrv = 0.0;
+        I(an, cat) <+ idrv;
+
+        // ---- carrier reservoir -> log gain h ---------------------------
+        hop = g0_db * ln(10.0) / 10.0;
+        h0  = hop * (idrv * 1e3 - i_tr_ma) / (i_op_ma - i_tr_ma);
+
+        h  = V(nh, gnd);
+        hc = (h > h_clamp) ? h_clamp : h;
+        g  = exp(hc);
+
+        ptot = V(fi_re, gnd)*V(fi_re, gnd) + V(fi_im, gnd)*V(fi_im, gnd)
+             + V(bi_re, gnd)*V(bi_re, gnd) + V(bi_im, gnd)*V(bi_im, gnd);
+
+        // tau_c*dh/dt = h0 - h - (G-1)*P_in/p_sat (row scaled by tau_c)
+        I(nh, gnd) <+ tau_c * ddt(V(nh, gnd)) + V(nh, gnd) - h0
+                      + (g - 1.0) * ptot / p_sat;
+
+        // ---- field transfer: sqrt(G)*e^{-j*alpha_h*h/2}, one-pole output
+        sg  = sqrt(g);
+        phi = -0.5 * alpha_h * hc;
+        gr  = sg * cos(phi);
+        gi  = sg * sin(phi);
+        eseed = sqrt(p_seed);
+
+        I(fo_re, gnd) <+ tau_bw * ddt(V(fo_re, gnd)) + V(fo_re, gnd)
+                         - (gr * V(fi_re, gnd) - gi * V(fi_im, gnd)) - eseed;
+        I(fo_im, gnd) <+ tau_bw * ddt(V(fo_im, gnd)) + V(fo_im, gnd)
+                         - (gi * V(fi_re, gnd) + gr * V(fi_im, gnd));
+        I(bo_re, gnd) <+ tau_bw * ddt(V(bo_re, gnd)) + V(bo_re, gnd)
+                         - (gr * V(bi_re, gnd) - gi * V(bi_im, gnd)) - eseed;
+        I(bo_im, gnd) <+ tau_bw * ddt(V(bo_im, gnd)) + V(bo_im, gnd)
+                         - (gi * V(bi_re, gnd) + gr * V(bi_im, gnd));
+    end
+endmodule

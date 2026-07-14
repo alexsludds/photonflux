@@ -1,0 +1,15 @@
+`include "discipline.h"
+`include "constants.h"
+
+module cap(p, n);
+    inout p, n;
+    electrical p, n;
+    parameter real c = 1n from (0:inf);
+    parameter real tc1 = 0.001; // tempco
+    real cval;
+
+    analog begin
+        cval = c * (1 + tc1 * ($temperature - 300));
+        I(p, n) <+ cval * ddt(V(p, n));
+    end
+endmodule

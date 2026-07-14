@@ -1,0 +1,110 @@
+{
+  "title": "13 \u2014 10 Gb/s over a lossy copper channel, equalized by a CTLE",
+  "group": "Channels & equalization",
+  "schematic": {
+    "instances": {
+      "PAT1": {
+        "type": "prbs",
+        "x": 100,
+        "y": 290,
+        "rot": 0,
+        "settings": {
+          "ui": 1e-10,
+          "order": 9,
+          "v0": -0.5,
+          "v1": 0.5,
+          "tr": 2.5e-11
+        }
+      },
+      "GNDP": {
+        "type": "ground",
+        "x": 100,
+        "y": 394,
+        "rot": 0,
+        "settings": {}
+      },
+      "CH1": {
+        "type": "channel",
+        "x": 240,
+        "y": 180,
+        "rot": 0,
+        "settings": {
+          "loss_db": 12.0,
+          "f_nyq": 5000000000.0,
+          "n_poles": 10
+        }
+      },
+      "EQ1": {
+        "type": "ctle",
+        "x": 420,
+        "y": 175,
+        "rot": 0,
+        "settings": {
+          "peaking_db": 9.0,
+          "f_p1": 5000000000.0,
+          "fp2_mult": 2.0
+        }
+      },
+      "GNDE": {
+        "type": "ground",
+        "x": 640,
+        "y": 244,
+        "rot": 0,
+        "settings": {}
+      },
+      "RT1": {
+        "type": "resistor",
+        "x": 600,
+        "y": 190,
+        "rot": 0,
+        "settings": {
+          "R": 1000000.0
+        }
+      }
+    },
+    "wires": [
+      {
+        "from": "PAT1,p1",
+        "to": "CH1,inp"
+      },
+      {
+        "from": "PAT1,p2",
+        "to": "GNDP,p1"
+      },
+      {
+        "from": "CH1,out",
+        "to": "EQ1,inp"
+      },
+      {
+        "from": "EQ1,out",
+        "to": "RT1,p1"
+      },
+      {
+        "from": "RT1,p2",
+        "to": "GNDE,p1"
+      }
+    ],
+    "probes": [
+      {
+        "name": "vch",
+        "at": "CH1,out",
+        "color": "#e6862c"
+      },
+      {
+        "name": "vout",
+        "at": "EQ1,out",
+        "color": "#6ecbf5"
+      }
+    ]
+  },
+  "analysis": {
+    "mode": "transient",
+    "t_stop": 5.12e-08,
+    "points": 8000,
+    "link": {
+      "probe": "vout",
+      "ffe_taps": 0,
+      "dfe_taps": 0
+    }
+  }
+}

@@ -1,0 +1,48 @@
+{
+  "title": "36 — SOA Fabry-Perot laser: the bidirectional SOA gain reservoir (models/soa.va) between two wave mirrors (R1 = 0.9 back, R2 = 0.3 output coupler). The bias pulse steps 5 → 40 mA through the I_th = 18.2 mA threshold (G_th = 1/√(R1·R2) = 2.8 dB/pass): turn-on with relaxation overshoot, then the round-trip gain clamps to R1·R2·G² = 1 and P_out settles at ≈ 12.8 mW on the clamped-gain reservoir line. Lasing is emergent — no component here 'is' a laser",
+  "group": "Lasers & modulators",
+  "analysis": {
+    "mode": "transient",
+    "t_stop": 6e-9,
+    "points": 1600
+  },
+  "schematic": {
+    "instances": {
+      "VP1": {"type": "vpulse", "x": 380, "y": 40, "rot": 0,
+              "settings": {"v1": 1.215, "v2": 1.32, "td": 0.5e-9,
+                            "tr": 0.1e-9, "tf": 0.1e-9,
+                            "pw": 2e-8, "per": 4e-8}},
+      "GNDV": {"type": "ground", "x": 300, "y": 96, "rot": 0, "settings": {}},
+      "TT1": {"type": "opt_term", "x": 60, "y": 150, "rot": 2, "settings": {}},
+      "TT2": {"type": "opt_term", "x": 60, "y": 210, "rot": 2, "settings": {}},
+      "M1": {"type": "wmirror", "x": 180, "y": 160, "rot": 0,
+             "settings": {"refl": 0.9}},
+      "SOA1": {"type": "soa", "x": 400, "y": 160, "rot": 0, "settings": {}},
+      "M2": {"type": "wmirror", "x": 640, "y": 160, "rot": 0,
+             "settings": {"refl": 0.3}},
+      "TOUT": {"type": "opt_term", "x": 820, "y": 150, "rot": 0, "settings": {}},
+      "TT3": {"type": "opt_term", "x": 820, "y": 210, "rot": 0, "settings": {}},
+      "GND1": {"type": "ground", "x": 420, "y": 330, "rot": 0, "settings": {}}
+    },
+    "wires": [
+      {"from": "VP1,p1", "to": "SOA1,an"},
+      {"from": "VP1,p2", "to": "GNDV,p1"},
+      {"from": "SOA1,cat", "to": "GND1,p1"},
+      {"from": "SOA1,gnd", "to": "GND1,p1"},
+      {"from": "M1,gnd", "to": "GND1,p1"},
+      {"from": "M2,gnd", "to": "GND1,p1"},
+      {"from": "TT1,p1", "to": "M1,li"},
+      {"from": "M1,lo", "to": "TT2,p1"},
+      {"from": "M1,ro", "to": "SOA1,fin"},
+      {"from": "SOA1,fout", "to": "M2,li"},
+      {"from": "M2,lo", "to": "SOA1,bin"},
+      {"from": "SOA1,bout", "to": "M1,ri"},
+      {"from": "M2,ro", "to": "TOUT,p1"},
+      {"from": "M2,ri", "to": "TT3,p1"}
+    ],
+    "probes": [
+      {"name": "p_out", "at": "M2,ro", "color": "#e6862c"},
+      {"name": "p_cavity", "at": "SOA1,fout", "color": "#6ecbf5"}
+    ]
+  }
+}

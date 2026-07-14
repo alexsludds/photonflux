@@ -1,0 +1,238 @@
+{
+ "title": "33 — Vernier dual-ring filter: FSR 2.15 nm x 2.38 nm rings cascade drop-to-input — only the coincident line at 1310 nm survives, neighbours suppressed by the Vernier effect",
+ "group": "Passive photonics",
+ "schematic": {
+  "instances": {
+   "LAS": {
+    "type": "cw_laser",
+    "x": 40,
+    "y": 120,
+    "rot": 0,
+    "settings": {
+     "power": 0.001,
+     "wavelength_nm": 1310.0
+    }
+   },
+   "GND": {
+    "type": "ground",
+    "x": 40,
+    "y": 210,
+    "rot": 0,
+    "settings": {}
+   },
+   "TT1": {
+    "type": "opt_term",
+    "x": 420,
+    "y": 100,
+    "rot": 0,
+    "settings": {}
+   },
+   "TX1": {
+    "type": "opt_term",
+    "x": 180,
+    "y": 340,
+    "rot": 0,
+    "settings": {}
+   },
+   "TT2": {
+    "type": "opt_term",
+    "x": 780,
+    "y": 260,
+    "rot": 0,
+    "settings": {}
+   },
+   "TX2": {
+    "type": "opt_term",
+    "x": 540,
+    "y": 500,
+    "rot": 0,
+    "settings": {}
+   },
+   "TD": {
+    "type": "opt_term",
+    "x": 900,
+    "y": 420,
+    "rot": 0,
+    "settings": {}
+   },
+   "R1C1": {
+    "type": "dir_coupler",
+    "x": 280,
+    "y": 120,
+    "rot": 0,
+    "settings": {
+     "coupling": 0.1
+    }
+   },
+   "R1C2": {
+    "type": "dir_coupler",
+    "x": 280,
+    "y": 280,
+    "rot": 0,
+    "settings": {
+     "coupling": 0.1
+    }
+   },
+   "R1WA": {
+    "type": "waveguide",
+    "x": 370,
+    "y": 200,
+    "rot": 0,
+    "settings": {
+     "length_m": 9.98875e-05,
+     "loss_dB_cm": 5.0,
+     "neff": 2.4,
+     "n_group": 4.0,
+     "center_wavelength_nm": 1310.0,
+     "wavelength_nm": 1310.0
+    }
+   },
+   "R1WB": {
+    "type": "waveguide",
+    "x": 190,
+    "y": 200,
+    "rot": 0,
+    "settings": {
+     "length_m": 9.98875e-05,
+     "loss_dB_cm": 5.0,
+     "neff": 2.4,
+     "n_group": 4.0,
+     "center_wavelength_nm": 1310.0,
+     "wavelength_nm": 1310.0
+    }
+   },
+   "R2C1": {
+    "type": "dir_coupler",
+    "x": 640,
+    "y": 280,
+    "rot": 0,
+    "settings": {
+     "coupling": 0.1
+    }
+   },
+   "R2C2": {
+    "type": "dir_coupler",
+    "x": 640,
+    "y": 440,
+    "rot": 0,
+    "settings": {
+     "coupling": 0.1
+    }
+   },
+   "R2WA": {
+    "type": "waveguide",
+    "x": 730,
+    "y": 360,
+    "rot": 0,
+    "settings": {
+     "length_m": 9.00625e-05,
+     "loss_dB_cm": 5.0,
+     "neff": 2.4,
+     "n_group": 4.0,
+     "center_wavelength_nm": 1310.0,
+     "wavelength_nm": 1310.0
+    }
+   },
+   "R2WB": {
+    "type": "waveguide",
+    "x": 550,
+    "y": 360,
+    "rot": 0,
+    "settings": {
+     "length_m": 9.00625e-05,
+     "loss_dB_cm": 5.0,
+     "neff": 2.4,
+     "n_group": 4.0,
+     "center_wavelength_nm": 1310.0,
+     "wavelength_nm": 1310.0
+    }
+   }
+  },
+  "wires": [
+   {
+    "from": "LAS,p2",
+    "to": "GND,p1"
+   },
+   {
+    "from": "LAS,p1",
+    "to": "R1C1,p1"
+   },
+   {
+    "from": "R1C1,p3",
+    "to": "TT1,p1"
+   },
+   {
+    "from": "R1C1,p4",
+    "to": "R1WA,p1"
+   },
+   {
+    "from": "R1WA,p2",
+    "to": "R1C2,p3"
+   },
+   {
+    "from": "R1C2,p1",
+    "to": "R1WB,p1"
+   },
+   {
+    "from": "R1WB,p2",
+    "to": "R1C1,p2"
+   },
+   {
+    "from": "R1C2,p2",
+    "to": "R2C1,p1"
+   },
+   {
+    "from": "R2C1,p3",
+    "to": "TT2,p1"
+   },
+   {
+    "from": "R2C1,p4",
+    "to": "R2WA,p1"
+   },
+   {
+    "from": "R2WA,p2",
+    "to": "R2C2,p3"
+   },
+   {
+    "from": "R2C2,p1",
+    "to": "R2WB,p1"
+   },
+   {
+    "from": "R2WB,p2",
+    "to": "R2C1,p2"
+   },
+   {
+    "from": "R2C2,p2",
+    "to": "TD,p1"
+   },
+   {
+    "from": "R1C2,p4",
+    "to": "TX1,p1"
+   },
+   {
+    "from": "R2C2,p4",
+    "to": "TX2,p1"
+   }
+  ],
+  "probes": [
+   {
+    "name": "drop1",
+    "at": "R1C2,p2",
+    "color": "#6ecbf5"
+   },
+   {
+    "name": "drop2",
+    "at": "R2C2,p2",
+    "color": "#e6862c"
+   }
+  ]
+ },
+ "analysis": {
+  "mode": "dcsweep",
+  "instance": "*",
+  "param": "wavelength_nm",
+  "start": 1300.0,
+  "stop": 1320.5,
+  "points": 4001
+ }
+}

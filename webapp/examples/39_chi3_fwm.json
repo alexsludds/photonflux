@@ -1,0 +1,100 @@
+{
+  "title": "39 — Four-wave mixing in a chi(3) waveguide (models/waveguide_nl.va with only the Kerr term on): a 50 mW pump at 1310.1145 nm and a 1 mW signal at 1310.1718 nm (two series-stacked CW lasers sharing the 1310 nm WDM reference, 10 GHz apart) co-propagate through 20 mm of n2 = 4.5e-18 m^2/W wire. Nothing about FWM is coded anywhere — the Kerr phase exp(-j*gamma*L*|E(t)|^2) acts on the instantaneous envelope, the pump-signal beat phase-modulates both tones, and two idlers EMERGE on the OSA at exactly 2f_p - f_s (1310.0572 nm, -32 dB below the pump = the textbook phase-matched T*(k*P_p)^2*P_s with k = gamma*L_nl = 3.52 rad/W) and 2f_s - f_p (1310.2290 nm, weaker by exactly P_s/P_p = -17 dB). The time trace shows the 10 GHz envelope beat that drives it all. examples/wg_fwm.py pins the same model to slope-2 pump / slope-1 signal / slope-2 length scaling, XPM/SPM = 2, and the strong-drive Bessel comb, line by line",
+  "group": "Passive photonics",
+  "analysis": {
+    "mode": "transient",
+    "t_stop": 4e-09,
+    "points": 8000,
+    "dtmax": 5e-13
+  },
+  "schematic": {
+    "instances": {
+      "LP": {
+        "type": "cw_laser",
+        "x": 80,
+        "y": 120,
+        "rot": 0,
+        "settings": {
+          "wavelength_nm": 1310.114497,
+          "power": 0.05,
+          "ref_wavelength_nm": 1310.0
+        }
+      },
+      "LS": {
+        "type": "cw_laser",
+        "x": 80,
+        "y": 220,
+        "rot": 0,
+        "settings": {
+          "wavelength_nm": 1310.171752,
+          "power": 0.001,
+          "ref_wavelength_nm": 1310.0
+        }
+      },
+      "WG1": {
+        "type": "wg_nl",
+        "x": 320,
+        "y": 120,
+        "rot": 0,
+        "settings": {
+          "wavelength_nm": 1310.0,
+          "length_m": 0.02,
+          "loss_db_m": 100.0,
+          "beta_tpa": 0.0,
+          "sigma_fca": 0.0,
+          "n2_kerr": 4.5e-18,
+          "dn_dn": 0.0
+        }
+      },
+      "TOUT": {
+        "type": "opt_term",
+        "x": 540,
+        "y": 120,
+        "rot": 0,
+        "settings": {}
+      },
+      "GND1": {
+        "type": "ground",
+        "x": 80,
+        "y": 320,
+        "rot": 0,
+        "settings": {}
+      }
+    },
+    "wires": [
+      {
+        "from": "LP,p1",
+        "to": "WG1,pin"
+      },
+      {
+        "from": "LP,p2",
+        "to": "LS,p1"
+      },
+      {
+        "from": "LS,p2",
+        "to": "GND1,p1"
+      },
+      {
+        "from": "WG1,gnd",
+        "to": "GND1,p1"
+      },
+      {
+        "from": "WG1,pout",
+        "to": "TOUT,p1"
+      }
+    ],
+    "probes": [
+      {
+        "name": "p_out",
+        "at": "WG1,pout",
+        "color": "#e6862c",
+        "spectrum": true
+      },
+      {
+        "name": "p_in",
+        "at": "WG1,pin",
+        "color": "#6ecbf5"
+      }
+    ]
+  }
+}

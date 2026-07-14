@@ -1,0 +1,158 @@
+{
+ "title": "20 — series RLC step response: ringing (Q≈5) vs critical damping — f0 = 1/2π√LC ≈ 50 MHz",
+ "group": "Electronics — analog",
+ "schematic": {
+  "instances": {
+   "VP": {
+    "type": "vpulse",
+    "x": 40,
+    "y": 180,
+    "rot": 0,
+    "settings": {
+     "v1": 0.0,
+     "v2": 1.0,
+     "td": 1e-08,
+     "tr": 2e-10,
+     "tf": 2e-10,
+     "pw": 0.001,
+     "per": 0.002
+    }
+   },
+   "GV": {
+    "type": "ground",
+    "x": 40,
+    "y": 270,
+    "rot": 0,
+    "settings": {}
+   },
+   "R1": {
+    "type": "resistor",
+    "x": 200,
+    "y": 100,
+    "rot": 0,
+    "settings": {
+     "R": 6.0
+    }
+   },
+   "L1": {
+    "type": "inductor",
+    "x": 340,
+    "y": 100,
+    "rot": 0,
+    "settings": {
+     "L": 1e-07
+    }
+   },
+   "C1": {
+    "type": "capacitor",
+    "x": 480,
+    "y": 160,
+    "rot": 0,
+    "settings": {
+     "C": 1e-10
+    }
+   },
+   "G1": {
+    "type": "ground",
+    "x": 480,
+    "y": 250,
+    "rot": 0,
+    "settings": {}
+   },
+   "R2": {
+    "type": "resistor",
+    "x": 200,
+    "y": 320,
+    "rot": 0,
+    "settings": {
+     "R": 63.2
+    }
+   },
+   "L2": {
+    "type": "inductor",
+    "x": 340,
+    "y": 320,
+    "rot": 0,
+    "settings": {
+     "L": 1e-07
+    }
+   },
+   "C2": {
+    "type": "capacitor",
+    "x": 480,
+    "y": 380,
+    "rot": 0,
+    "settings": {
+     "C": 1e-10
+    }
+   },
+   "G2": {
+    "type": "ground",
+    "x": 480,
+    "y": 470,
+    "rot": 0,
+    "settings": {}
+   }
+  },
+  "wires": [
+   {
+    "from": "VP,p1",
+    "to": "R1,p1"
+   },
+   {
+    "from": "R1,p2",
+    "to": "L1,p1"
+   },
+   {
+    "from": "L1,p2",
+    "to": "C1,p1"
+   },
+   {
+    "from": "C1,p2",
+    "to": "G1,p1"
+   },
+   {
+    "from": "VP,p1",
+    "to": "R2,p1"
+   },
+   {
+    "from": "R2,p2",
+    "to": "L2,p1"
+   },
+   {
+    "from": "L2,p2",
+    "to": "C2,p1"
+   },
+   {
+    "from": "C2,p2",
+    "to": "G2,p1"
+   },
+   {
+    "from": "VP,p2",
+    "to": "GV,p1"
+   }
+  ],
+  "probes": [
+   {
+    "name": "vin",
+    "at": "VP,p1",
+    "color": "#6ecbf5"
+   },
+   {
+    "name": "ringing",
+    "at": "C1,p1",
+    "color": "#e6862c"
+   },
+   {
+    "name": "critical",
+    "at": "C2,p1",
+    "color": "#8fd18f"
+   }
+  ]
+ },
+ "analysis": {
+  "mode": "transient",
+  "t_stop": 2.5e-07,
+  "points": 2500
+ }
+}

@@ -1,0 +1,146 @@
+{
+  "title": "03 \u2014 Microring modulator DC tuning curve",
+  "group": "Lasers & modulators",
+  "schematic": {
+    "instances": {
+      "LAS1": {
+        "type": "cw_laser",
+        "x": 40,
+        "y": 180,
+        "rot": 0,
+        "settings": {
+          "wavelength_nm": 1309.9772,
+          "power": 0.001
+        }
+      },
+      "RING1": {
+        "type": "ring_mod",
+        "x": 260,
+        "y": 130,
+        "rot": 0,
+        "settings": {
+          "lambda_nm": 1309.9772
+        }
+      },
+      "PD1": {
+        "type": "photodiode",
+        "x": 460,
+        "y": 180,
+        "rot": 0,
+        "settings": {}
+      },
+      "RL1": {
+        "type": "resistor",
+        "x": 580,
+        "y": 190,
+        "rot": 0,
+        "settings": {
+          "R": 1000.0
+        }
+      },
+      "VT1": {
+        "type": "vdc",
+        "x": 280,
+        "y": 10,
+        "rot": 180,
+        "settings": {
+          "V": 0.0
+        }
+      },
+      "GND1": {
+        "type": "ground",
+        "x": 60,
+        "y": 264,
+        "rot": 0,
+        "settings": {}
+      },
+      "GND2": {
+        "type": "ground",
+        "x": 290,
+        "y": 86,
+        "rot": 0,
+        "settings": {}
+      },
+      "GND3": {
+        "type": "ground",
+        "x": 440,
+        "y": 280,
+        "rot": 0,
+        "settings": {}
+      },
+      "GND4": {
+        "type": "ground",
+        "x": 620,
+        "y": 244,
+        "rot": 0,
+        "settings": {}
+      }
+    },
+    "wires": [
+      {
+        "from": "LAS1,p1",
+        "to": "RING1,pin"
+      },
+      {
+        "from": "RING1,pout",
+        "to": "PD1,po_p"
+      },
+      {
+        "from": "LAS1,p2",
+        "to": "GND1,p1"
+      },
+      {
+        "from": "VT1,p1",
+        "to": "RING1,vp"
+      },
+      {
+        "from": "VT1,p2",
+        "to": "GND2,p1"
+      },
+      {
+        "from": "RING1,vn",
+        "to": "GND2,p1"
+      },
+      {
+        "from": "RING1,gnd",
+        "to": "GND2,p1"
+      },
+      {
+        "from": "PD1,po_n",
+        "to": "GND3,p1"
+      },
+      {
+        "from": "PD1,an",
+        "to": "GND3,p1"
+      },
+      {
+        "from": "PD1,cat",
+        "to": "RL1,p1"
+      },
+      {
+        "from": "RL1,p2",
+        "to": "GND4,p1"
+      }
+    ],
+    "probes": [
+      {
+        "name": "prx",
+        "at": "RING1,pout",
+        "color": "#fbbf24"
+      },
+      {
+        "name": "vpd",
+        "at": "PD1,cat",
+        "color": "#6ecbf5"
+      }
+    ]
+  },
+  "analysis": {
+    "mode": "dcsweep",
+    "instance": "VT1",
+    "param": "V",
+    "start": -3,
+    "stop": 3,
+    "points": 121
+  }
+}

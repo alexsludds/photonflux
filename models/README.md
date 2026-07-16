@@ -36,6 +36,7 @@ first use) are automatic.
 | `ring_filter.va` | add-drop ring **filter with a five-mode comb** (m = −2…+2 at the device FSR) and a resistive heater that shifts the whole comb — the Vernier-laser building block |
 | `ring_nl.va` | high-Q all-pass ring with **intracavity nonlinear absorption**: TPA of the stored energy, FCA of its carriers, Kerr red / FCD blue shifts — the model of power-limited Q |
 | `ring_kerr.va` | add-drop ring whose **five FSR-spaced modes mix through the intracavity χ(3)** — the modal Lugiato-Lefever equations (machine-generated triple sum), so SPM, XPM and **four-wave mixing between resonances** emerge from one Kerr coefficient (`examples/ring_fwm.py` pins everything) |
+| `ring_selfheat.va` | self-heating twin of `ring_mod.va`: the CMT all-pass ring plus a one-pole thermal reservoir (`tau_th·dΔT/dt + ΔT = R_th·P_absorbed`) — the absorbed circulating power heats the ring and thermo-optically (dn/dT>0) red-shifts the resonance, a nonlinear feedback loop that is **bistable**. The laser wavelength is an input node (`lam_nm`) so a testbench can ramp it; a slow forward+backward sweep traces a hysteresis loop (`examples/ring_selfheat.py`) |
 
 The laser examples (`examples/soa_fp_laser.py`, `examples/soa_vernier_laser.py`)
 compose `soa.va` + `mirror.va` (+ `ring_filter.va`) into cavities: lasing —

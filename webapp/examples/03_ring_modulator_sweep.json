@@ -1,7 +1,7 @@
 {
   "title": "Microring modulator tuning",
   "group": "Lasers & modulators",
-  "description": "Microring modulator DC tuning curve",
+  "description": "Microring through-port transmission vs wavelength, overlaid at several tuning voltages",
   "schematic": {
     "notes": [
       {
@@ -9,15 +9,20 @@
         "y": -188,
         "title": "Microring modulator tuning — what this testbench does",
         "lines": [
-          "Laser LAS1 sits at a fixed 1309.9772 nm and feeds the",
-          "microring RING1; the through port (prx) ends at TERM1.",
-          "Tuning voltage VT1 sweeps -3 to 3 V, shifting the ring's",
-          "resonance (electro-optic / carrier effect). As resonance",
-          "crosses the laser line, prx drops into a deep notch, then",
-          "recovers -- the classic ring tuning transmission curve.",
+          "Laser LAS1 feeds the microring RING1; the through port",
+          "(prx) ends at TERM1. The analysis sweeps the ring's",
+          "operating wavelength across its resonance, so prx traces",
+          "the classic Lorentzian notch (deep on resonance, unity",
+          "off it).",
           "",
-          "Set LAS1.wavelength_nm = 1310.5 and re-run to see the",
-          "notch shift to a different tuning voltage."
+          "The sweep is overlaid at five tuning voltages VT1.V =",
+          "-3/-1.5/0/1.5/3 V. Each volt shifts the resonance by",
+          "dl_dv_pm = 45 pm/V (electro-optic / carrier effect), so",
+          "the notch marches +/-135 pm about 1310 nm (~270 pm end",
+          "to end) -- the DC tuning map, read off directly in nm.",
+          "",
+          "Set RING1.kappa2 = 0.076 (~ critical coupling) and re-run",
+          "to see each notch bottom out at a near-perfect null."
         ]
       }
     ],
@@ -28,7 +33,7 @@
         "y": 180,
         "rot": 0,
         "settings": {
-          "wavelength_nm": 1309.9772,
+          "wavelength_nm": 1310.0,
           "power": 0.001
         }
       },
@@ -38,7 +43,10 @@
         "y": 130,
         "rot": 0,
         "settings": {
-          "lambda_nm": 1309.9772
+          "lambda_nm": 1310.0,
+          "lambda_res_nm": 1310.0,
+          "kappa2": 0.1,
+          "dl_dv_pm": 45.0
         }
       },
       "TERM1": {
@@ -112,10 +120,22 @@
   },
   "analysis": {
     "mode": "dcsweep",
-    "instance": "VT1",
-    "param": "V",
-    "start": -3,
-    "stop": 3,
-    "points": 121
+    "instance": "RING1",
+    "param": "lambda_nm",
+    "start": 1309.5,
+    "stop": 1310.5,
+    "points": 801,
+    "step_instance": "VT1",
+    "step_param": "V",
+    "step_values": [
+      -3,
+      -1.5,
+      0,
+      1.5,
+      3
+    ],
+    "overlay": {
+      "color_mode": "distinct"
+    }
   }
 }

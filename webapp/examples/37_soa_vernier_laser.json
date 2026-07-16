@@ -13,6 +13,25 @@
     }
   },
   "schematic": {
+    "notes": [
+      {
+        "x": 20,
+        "y": -173,
+        "title": "Vernier laser mode hop — what this testbench does",
+        "lines": [
+          "Pulse VP1 biases SOA1; injector ASE1 (-135 dBm/Hz) seeds",
+          "every comb line with broadband noise (SOA seed off).",
+          "Two Vernier ring combs RC1 (400 um) and RC2 (425 um) have",
+          "slightly different FSR; only aligned pairs reach threshold,",
+          "and the pair at 1310 nm wins and clamps the shared gain.",
+          "At t = 6 ns heater VH steps 0.50 V, shifting RC2's comb:",
+          "the running mode drops out and a new aligned pair takes",
+          "over. p_out (spectrum) shows the mode hop on the OSA.",
+          "",
+          "Set VH.V = 0 and re-run: no comb shift, so no mode hop."
+        ]
+      }
+    ],
     "instances": {
       "VP1": {
         "type": "vpulse",

@@ -3,6 +3,25 @@
   "group": "Electronics — analog",
   "description": "Sallen-Key 2nd-order Butterworth low-pass (fc = 10 MHz, Q = 0.71) vs a passive RC-RC: sharper knee, -40 dB/dec",
   "schematic": {
+    "notes": [
+      {
+        "x": 40,
+        "y": -113,
+        "title": "Sallen-Key low-pass — what this testbench does",
+        "lines": [
+          "AC sweep of two low-pass filters side by side.",
+          "Top: Sallen-Key 2nd-order Butterworth (opamp OA,",
+          "R1 = R2 = 1590 ohm, C1 = 2*C2), fc = 10 MHz, Q = 0.71.",
+          "Bottom: two cascaded RC sections (R3/C3, R4/C4)",
+          "buffered by OA2. Probes out_sk vs out_rc show the",
+          "Sallen-Key's sharp -40 dB/dec knee against the",
+          "gentle RC-RC roll-off; in_sk/in_rc are the inputs.",
+          "",
+          "Set C1.C = 2.83e-11 and re-run to raise Q and watch",
+          "gain peak up near fc before it rolls off."
+        ]
+      }
+    ],
     "instances": {
       "VSK": {
         "type": "vdc",

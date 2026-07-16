@@ -2,6 +2,24 @@
   "title": "MZM link with NMOS driver",
   "group": "Links & receivers",
   "schematic": {
+    "notes": [
+      {
+        "x": 60,
+        "y": -88,
+        "title": "MZM link with NMOS driver — what this testbench does",
+        "lines": [
+          "Pulse source VIN1 (0->3.3 V) drives NMOS MN1 as an",
+          "inverting modulator driver. Pull-up RB1 from supply V1",
+          "sets MN1's drain (probe vdrv), which swings the MZM MZM1",
+          "arm around Vpi = 3.3 V. CD1 is the drain load cap.",
+          "MZM1 modulates laser LAS1; light goes down FIB1 to",
+          "photodiode PD1, then TIA OA1 + RF1 gives vout.",
+          "",
+          "Set CD1.C = 5e-13 and re-run to see the vdrv edges slow",
+          "and the received eye (vout) close from limited bandwidth."
+        ]
+      }
+    ],
     "instances": {
       "LAS1": {
         "type": "cw_laser",

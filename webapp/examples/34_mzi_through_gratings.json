@@ -3,6 +3,25 @@
   "group": "Passive photonics",
   "description": "what a probe station sees: on-chip MZI (FSR 3 nm) measured through two grating couplers — fringes under the coupler's spectral envelope",
   "schematic": {
+    "notes": [
+      {
+        "x": 40,
+        "y": -133,
+        "title": "MZI through gratings — what this testbench does",
+        "lines": [
+          "CW laser LAS enters the chip through grating GIN, splits",
+          "at SPL down two arms WG1 (100 um) and WG2 (243 um), then",
+          "recombines at CMB and exits through grating GOUT to TT.",
+          "The 143 um path difference sets the MZI FSR ~ 3 nm; the",
+          "gratings (bandwidth_1dB 20 nm) impose a spectral envelope.",
+          "Sweeping wavelength_nm, fiber_out shows MZI fringes riding",
+          "under the grating pass-band; chip_in is the on-chip input.",
+          "",
+          "Set WG2.length_m = 0.0001 and re-run to match the arms,",
+          "erase the path difference, and flatten the fringes."
+        ]
+      }
+    ],
     "instances": {
       "LAS": {
         "type": "cw_laser",

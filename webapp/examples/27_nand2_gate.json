@@ -3,6 +3,23 @@
   "group": "Electronics — digital",
   "description": "CMOS NAND2: A at 25 MHz, B at 12.5 MHz walk the truth table — out is low only when both inputs are high",
   "schematic": {
+    "notes": [
+      {
+        "x": 40,
+        "y": -143,
+        "title": "NAND2 gate — what this testbench does",
+        "lines": [
+          "CMOS NAND2: inputs VA (25 MHz) and VB (12.5 MHz) are",
+          "vpulse sources walking the truth table. PMOS MPA and",
+          "MPB sit in parallel to VDD; NMOS MNA and MNB stack in",
+          "series to ground, so vout (at MNA drain, load CL)",
+          "pulls low ONLY when both A and B are high.",
+          "Probes va, vb, vout show the AND-then-invert timing.",
+          "",
+          "Set CL.C = 5e-13 and re-run to see slower edges."
+        ]
+      }
+    ],
     "instances": {
       "VDD": {
         "type": "vdc",

@@ -2,6 +2,24 @@
   "title": "Photodiode + TIA receiver",
   "group": "Links & receivers",
   "schematic": {
+    "notes": [
+      {
+        "x": 40,
+        "y": -78,
+        "title": "Photodiode + TIA receiver — what this testbench does",
+        "lines": [
+          "CW laser LAS1 (1310 nm) is on/off-keyed by pulse mod MOD1,",
+          "sent down waveguide FIB1, and caught by photodiode PD1.",
+          "PD1 turns optical power into a current; opamp OA1 with",
+          "feedback resistor RF1 forms a transimpedance amp (TIA):",
+          "vout ~= -Iph * RF1.R. Probe popt_rx shows the received",
+          "optical pulse; probe vout shows the recovered voltage.",
+          "",
+          "Set RF1.R = 1000 and re-run to see the vout swing grow ~5x",
+          "(gain scales with the feedback resistor)."
+        ]
+      }
+    ],
     "instances": {
       "LAS1": {
         "type": "cw_laser",

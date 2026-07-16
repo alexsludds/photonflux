@@ -3,6 +3,24 @@
   "group": "SKY130 transistors",
   "description": "SKY130 NFET flavors: output curves (Id–Vds, stepped Vgs)",
   "schematic": {
+    "notes": [
+      {
+        "x": 100,
+        "y": -118,
+        "title": "SKY130 NFET output curves — what this testbench does",
+        "lines": [
+          "Four NFET flavors (MN1 nfet, MN2 lvt, MN3 5v, MN4 nvt)",
+          "share one drain supply VD1 and one gate supply VG1.",
+          "VD1 sweeps Vds 0 -> 1.8 V while VG1 steps Vgs through",
+          "0.9 / 1.35 / 1.8 V, tracing a family of Id-Vds curves.",
+          "Each 1-ohm sense resistor RS turns source current into",
+          "the probes id_01v8, id_lvt, id_5v, id_nvt (= drain Id).",
+          "",
+          "Set MN1.w_um = 2.0 and re-run to see id_01v8 roughly",
+          "double -- drain current scales with device width."
+        ]
+      }
+    ],
     "instances": {
       "VD1": {
         "type": "vdc",

@@ -3,6 +3,25 @@
   "group": "Electronics — digital",
   "description": "CMOS Schmitt trigger (6T): triangle in, square out — rising and falling thresholds split by the feedback pair",
   "schematic": {
+    "notes": [
+      {
+        "x": 40,
+        "y": -173,
+        "title": "Schmitt trigger — what this testbench does",
+        "lines": [
+          "A 6-transistor CMOS Schmitt trigger. VIN is a slow",
+          "triangle (vpulse with long 200 ns edges). The core is",
+          "stacked PMOS MP1/MP2 and NMOS MN1/MN2, an inverter",
+          "with feedback devices MPF and MNF that pull the",
+          "internal nodes toward the current output.",
+          "That feedback splits the switching point: the rising",
+          "and falling thresholds differ, so vout is a clean",
+          "square with hysteresis. Probes vin, vout.",
+          "",
+          "Set MNF.W = 4e-05 and re-run to widen hysteresis."
+        ]
+      }
+    ],
     "instances": {
       "VDD": {
         "type": "vdc",

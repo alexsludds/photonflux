@@ -3,6 +3,25 @@
   "group": "Passive photonics",
   "description": "Imbalanced MZI from building blocks: wavelength sweep, FSR = lam^2/(n_g dL)",
   "schematic": {
+    "notes": [
+      {
+        "x": 40,
+        "y": -83,
+        "title": "Imbalanced MZI sweep — what this testbench does",
+        "lines": [
+          "LAS1 feeds SPL1, which splits into two waveguide arms:",
+          "WG1 (100 um) and WG2 (314.6 um). CMB1 recombines them",
+          "into TERM1; the sweep steps wavelength 1304-1316 nm.",
+          "",
+          "The 214.6 um length imbalance gives a wavelength-",
+          "dependent phase, so pout shows MZI fringes with",
+          "FSR = lam^2/(n_g*dL) ~ 2 nm (n_g=4). Probe arm2 is",
+          "the longer arm alone.",
+          "Set WG2.length_m = 0.0001 and re-run to balance the",
+          "arms -> the fringes flatten out."
+        ]
+      }
+    ],
     "instances": {
       "LAS1": {
         "type": "cw_laser",

@@ -3,6 +3,25 @@
   "group": "Lasers & modulators",
   "description": "Carrier-injection ring at 1 Gb/s: lifetime limit vs TX pre-emphasis",
   "schematic": {
+    "notes": [
+      {
+        "x": 40,
+        "y": -83,
+        "title": "Injection ring OOK — what this testbench does",
+        "lines": [
+          "LAS1 (1 mW at 1309.9 nm) feeds RM1, a carrier-injection",
+          "ring modulator (resonance 1309.95 nm). PAT1 sends a",
+          "1 Gb/s OOK PRBS; PD1 detects across RL1 (2 kohm).",
+          "",
+          "The ring's carrier lifetime tau_c=1ns is comparable to",
+          "the 1ns bit, so injection edges lag and the eye slurs.",
+          "PAT1.ffe_post_db=5 pre-emphasizes edges to compensate;",
+          "popt/vout show optical and received eyes.",
+          "Set PAT1.ffe_post_db = 0 and re-run to drop pre-emphasis",
+          "and watch the eye close."
+        ]
+      }
+    ],
     "instances": {
       "LAS1": {
         "type": "cw_laser",

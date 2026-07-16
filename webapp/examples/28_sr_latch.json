@@ -3,6 +3,24 @@
   "group": "Electronics — digital",
   "description": "SR latch from two cross-coupled NOR gates: set pulse, hold, reset pulse, hold — bistability in 8 transistors",
   "schematic": {
+    "notes": [
+      {
+        "x": 40,
+        "y": -158,
+        "title": "SR latch — what this testbench does",
+        "lines": [
+          "An SR latch: two cross-coupled NOR gates (N1*, N2*),",
+          "8 transistors total. VS delivers a Set pulse and VR a",
+          "Reset pulse; each NOR's output feeds back to the",
+          "other's input, so the pair latches one of two states.",
+          "Probes q (CQ) and qb (CQB) are always complementary",
+          "and HOLD their value in the gaps between pulses --",
+          "that memory is the bistability.",
+          "",
+          "Set VR.td = 3e-08 and re-run to reset earlier."
+        ]
+      }
+    ],
     "instances": {
       "VDD": {
         "type": "vdc",

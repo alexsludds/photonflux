@@ -3,6 +3,25 @@
   "group": "Electronics — analog",
   "description": "full-wave diode bridge rectifier + RC smoothing: 5 V / 1 MHz AC in, ~3.8 V DC out with sawtooth ripple",
   "schematic": {
+    "notes": [
+      {
+        "x": 40,
+        "y": -113,
+        "title": "Diode bridge rectifier — what this testbench does",
+        "lines": [
+          "A 5 V, 1 MHz sine (VS) feeds a four-diode bridge",
+          "(D1-D4) through source resistance RS. On each half",
+          "cycle a different diode pair conducts, so the load",
+          "always sees one polarity: full-wave rectification.",
+          "RL = 1 kohm is the load and CL = 5 nF smooths it to",
+          "~3.8 V DC (5 V peak minus two diode drops).",
+          "Probe vout is the smoothed rail; vac_a is one AC node.",
+          "",
+          "Set CL.C = 1e-11 and re-run to see the smoothing",
+          "vanish and the full-wave ripple humps appear."
+        ]
+      }
+    ],
     "instances": {
       "VS": {
         "type": "vsin",

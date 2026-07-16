@@ -3,6 +3,24 @@
   "group": "Channels & equalization",
   "description": "10 Gb/s over a lossy copper channel, equalized by a CTLE",
   "schematic": {
+    "notes": [
+      {
+        "x": 100,
+        "y": -23,
+        "title": "CTLE copper channel — what this testbench does",
+        "lines": [
+          "PAT1 drives a 10 Gb/s NRZ PRBS (ui=100ps) into CH1,",
+          "a lossy copper channel (12 dB loss at 5 GHz Nyquist).",
+          "EQ1 (a CTLE) then feeds RT1 (1 Mohm termination).",
+          "",
+          "The channel's high-frequency roll-off smears bits",
+          "together (ISI), closing the eye at vch. EQ1 boosts",
+          "9 dB of peaking near Nyquist to reopen it at vout.",
+          "Set EQ1.peaking_db = 0 and re-run to switch off the",
+          "CTLE and watch the eye collapse."
+        ]
+      }
+    ],
     "instances": {
       "PAT1": {
         "type": "prbs",

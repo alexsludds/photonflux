@@ -3,6 +3,25 @@
   "group": "Lasers & modulators",
   "description": "DML vs rate-equation laser: turn-on delay + relaxation oscillations",
   "schematic": {
+    "notes": [
+      {
+        "x": 100,
+        "y": -93,
+        "title": "DML vs rate-equation laser — what this testbench does",
+        "lines": [
+          "VP1 fires a 0->2.7 V step (td=1ns) into two lasers",
+          "through 25-ohm R1/R2. LD1 is a static DML (L-I above",
+          "Ith=0.019 A, slope 0.3); LR1 is a rate-equation laser",
+          "solving coupled carrier/photon ODEs.",
+          "",
+          "Probes p_dml vs p_rate: the DML tracks current instantly,",
+          "while LR1 shows a turn-on delay then relaxation-oscillation",
+          "ringing as carriers and photons settle.",
+          "Set VP1.v2 = 2.0 and re-run: less overdrive ->",
+          "longer delay and slower ringing."
+        ]
+      }
+    ],
     "instances": {
       "VP1": {
         "type": "vpulse",

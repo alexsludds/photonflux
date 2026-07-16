@@ -3,6 +3,25 @@
   "group": "Electronics — analog",
   "description": "series RLC step response: ringing (Q≈5) vs critical damping — f0 = 1/2π√LC ≈ 50 MHz",
   "schematic": {
+    "notes": [
+      {
+        "x": 40,
+        "y": -113,
+        "title": "RLC step ringing — what this testbench does",
+        "lines": [
+          "A 1 V step (VP) drives two series RLC branches that",
+          "share L = 100 nH and C = 100 pF (f0 ~ 50 MHz).",
+          "Branch 1 uses R1 = 6 ohm: under-damped, Q ~ 5, so",
+          "probe ringing (across C1) overshoots and oscillates.",
+          "Branch 2 uses R2 = 63.2 ohm = 2*sqrt(L/C): critically",
+          "damped, so probe critical (across C2) rises with no",
+          "overshoot. Probe vin is the shared step input.",
+          "",
+          "Set R1.R = 63.2 and re-run to watch the ringing branch",
+          "settle cleanly like the critical one."
+        ]
+      }
+    ],
     "instances": {
       "VP": {
         "type": "vpulse",

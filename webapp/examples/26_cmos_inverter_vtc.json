@@ -3,6 +3,24 @@
   "group": "Electronics — digital",
   "description": "CMOS inverter VTC: switching threshold vs PMOS width (Wp = 10/20/40 µm, balanced at 20 µm)",
   "schematic": {
+    "notes": [
+      {
+        "x": 60,
+        "y": -158,
+        "title": "CMOS inverter VTC — what this testbench does",
+        "lines": [
+          "A CMOS inverter: VIN (dcsweep 0 -> 3.3 V) drives the",
+          "shared gate of PMOS MP and NMOS MN; output is vout at",
+          "the MP/MN drain. The sweep walks input through the",
+          "switching region where both devices conduct.",
+          "MP.W is stepped 10/20/40 um: widening the PMOS raises",
+          "its drive, pushing the trip point Vm higher; the 20 um",
+          "case balances MN and centers Vm near VDD/2.",
+          "",
+          "Set MP.W = 4e-05 and re-run to see Vm shift high."
+        ]
+      }
+    ],
     "instances": {
       "VDD": {
         "type": "vdc",

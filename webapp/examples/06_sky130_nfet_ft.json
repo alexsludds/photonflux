@@ -3,6 +3,24 @@
   "group": "SKY130 transistors",
   "description": "SKY130 NFET flavors: bandwidth / f_T (fixture-free |h21|)",
   "schematic": {
+    "notes": [
+      {
+        "x": 110,
+        "y": -118,
+        "title": "SKY130 NFET f_T — what this testbench does",
+        "lines": [
+          "Four NFET flavors (MN1 nfet, MN2 lvt, MN3 nvt, MN4 5v)",
+          "each sit at a fixed bias: gate VG, drain VD, source",
+          "grounded. The AC sweep (10 MHz -> 1 THz) extracts the",
+          "small-signal current gain h21; f_T is where |h21| = 1.",
+          "Probes in_* / out_* mark each device's ports.",
+          "Short channels (MN1, l = 0.15 um) reach the highest f_T.",
+          "",
+          "Set MN1.l_um = 0.5 and re-run to see that device's f_T",
+          "drop -- f_T falls as channel length grows."
+        ]
+      }
+    ],
     "instances": {
       "MN1": {
         "type": "sky130_nfet",

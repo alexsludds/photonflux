@@ -3,6 +3,25 @@
   "group": "Passive photonics",
   "description": "Fabry-Perot cavity: two partial mirrors (R = 0.9) around a 100 µm waveguide, driven through a 20 dB pad (an ideal field source is a perfect back-reflector — pad it like a real bench). Airy comb: FSR = λ²/(2·n_g·L) ≈ 2.15 nm, finesse ≈ 29, ~35x intracavity build-up",
   "schematic": {
+    "notes": [
+      {
+        "x": 40,
+        "y": -53,
+        "title": "Fabry-Perot cavity — what this testbench does",
+        "lines": [
+          "CW laser LAS (0.1 W) feeds a 20 dB pad PAD, then a",
+          "Fabry-Perot cavity: mirror M1 (R=0.9), a 100 um waveguide",
+          "WG, and mirror M2 (R=0.9), ending at term TT.",
+          "The two mirrors form an Airy resonator: FSR ~ 2.15 nm,",
+          "finesse ~ 29, and ~35x intracavity power build-up.",
+          "Sweeping wavelength_nm, trans shows sharp transmission",
+          "peaks and cavity shows the resonant field enhancement.",
+          "",
+          "Set M2.R = 0.3 and re-run to lower the finesse: broader",
+          "peaks and far weaker cavity build-up."
+        ]
+      }
+    ],
     "instances": {
       "LAS": {
         "type": "cw_laser",

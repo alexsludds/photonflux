@@ -3,6 +3,25 @@
   "group": "Electronics — digital",
   "description": "transmission-gate 2:1 analog mux: SEL toggles the output between a 50 MHz sine and a 25 MHz square",
   "schematic": {
+    "notes": [
+      {
+        "x": 40,
+        "y": -173,
+        "title": "Transmission-gate mux — what this testbench does",
+        "lines": [
+          "A 2:1 analog mux from two CMOS transmission gates.",
+          "SEL (vpulse) and its inverse from inverter MPS/MNS",
+          "steer the gates: MNA/MPA pass input VA, a 50 MHz sine",
+          "(VA on offset VAO); MNB/MPB pass VB, a 25 MHz square.",
+          "Only one gate conducts at a time, so vout (at load CL)",
+          "follows VA or VB depending on SEL.",
+          "Probes sel, va, vb, vout show the hand-off.",
+          "",
+          "Set SEL.pw = 5e-08 and re-run: the shorter high",
+          "time makes the mux favor one input over the other."
+        ]
+      }
+    ],
     "instances": {
       "VDD": {
         "type": "vdc",

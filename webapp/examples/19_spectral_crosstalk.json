@@ -3,6 +3,25 @@
   "group": "WDM & crosstalk",
   "description": "spectral crosstalk: signal + 3 dB-hot aggressor 100 GHz away, selective vs weak RX demux filter side by side (single coherent solve)",
   "schematic": {
+    "notes": [
+      {
+        "x": 40,
+        "y": -173,
+        "title": "Spectral crosstalk — what this testbench does",
+        "lines": [
+          "Signal laser LS (1310 nm) and a 3 dB-hotter aggressor",
+          "LA (1310.57 nm, ~100 GHz off) share one bus; rings RMS",
+          "and RMA modulate them with PRBS PATS and PATA.",
+          "SPL feeds two demux filters in parallel: FLTS is",
+          "selective (0.2 nm, order 3), FLTW is weak (2 nm).",
+          "Probes clean/leaky compare the dropped spectra;",
+          "vout_clean/vout_leaky compare the recovered eyes.",
+          "",
+          "Set FLTW.bandwidth_nm = 0.2 and re-run to see the",
+          "leaky RX finally reject the aggressor tone."
+        ]
+      }
+    ],
     "instances": {
       "LS": {
         "type": "cw_laser",

@@ -3,6 +3,24 @@
   "group": "Links & receivers",
   "description": "PRBS NRZ over an MZM link: optical + received eye",
   "schematic": {
+    "notes": [
+      {
+        "x": 40,
+        "y": -28,
+        "title": "PRBS NRZ MZM eye — what this testbench does",
+        "lines": [
+          "LAS1 (5 mW CW) feeds MZM1; PAT1 drives it with a",
+          "10 Gb/s NRZ PRBS (order 9, ui=100ps). PD1 detects",
+          "across RL1 (500 ohm) into VB1 bias.",
+          "",
+          "MZM1 sits near quadrature (vpi=1.5, vbias=0.75) so",
+          "the drive maps roughly linearly to optical power;",
+          "probes popt (optical eye) and vout (received eye).",
+          "Set MZM1.er_db = 6 and re-run: poor extinction",
+          "lifts the '0' level and squeezes the eye."
+        ]
+      }
+    ],
     "instances": {
       "LAS1": {
         "type": "cw_laser",

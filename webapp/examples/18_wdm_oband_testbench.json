@@ -3,6 +3,25 @@
   "group": "WDM & crosstalk",
   "description": "DWDM CPO link: 4-lambda microring TX bank + add-drop demux, one photodiode per channel (single coherent solve)",
   "schematic": {
+    "notes": [
+      {
+        "x": 20,
+        "y": -133,
+        "title": "WDM O-band testbench — what this testbench does",
+        "lines": [
+          "Four CW lasers (LAS1-4) at O-band grid points are",
+          "combined onto one bus, then each microring RM1-4 sits",
+          "on its own resonance (lambda_res_nm) and is driven by",
+          "its own PRBS (PAT1-4) - one data lane per wavelength.",
+          "Add-drop filters FLT1-4 demux each lane to PD1-4.",
+          "Probe bus shows the 4-line comb; ch1-4 are the dropped",
+          "channels; vout1-4 are the recovered eyes.",
+          "",
+          "Set FLT1.bandwidth_nm = 2.0 and re-run to watch the",
+          "neighbor leak into vout1 as crosstalk."
+        ]
+      }
+    ],
     "instances": {
       "LAS1": {
         "type": "cw_laser",

@@ -805,7 +805,7 @@ function buildPalette() {
       const scale = Math.min(28 / sym.w, 24 / sym.h, 0.6);
       item.innerHTML = `
         <svg width="34" height="26" viewBox="0 0 34 26">
-          <g transform="translate(${17 - sym.w * scale / 2},${13 - sym.h * scale / 2}) scale(${scale})">
+          <g class="comp" transform="translate(${17 - sym.w * scale / 2},${13 - sym.h * scale / 2}) scale(${scale})">
             ${sym.draw()}</g></svg>
         <span class="pal-label">${entry.label}</span>`;
       item.addEventListener("click", () => {

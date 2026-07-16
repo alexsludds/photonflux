@@ -73,6 +73,7 @@ body { display: flex; flex-direction: column; }
 .pal-item:hover { background: var(--panel2); }
 .pal-item.armed { background: var(--accent); color: #fff; }
 .pal-item svg { flex: 0 0 auto; }
+.pal-item .comp { cursor: inherit; }
 .pal-item .pal-label { font-size: 12px; line-height: 1.15; }
 .palette-hint {
   padding: 10px; color: var(--text-dim); font-size: 11px; line-height: 1.6;

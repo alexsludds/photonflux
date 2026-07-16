@@ -105,11 +105,16 @@ RUN python -m volare enable --pdk sky130 ${SKY130_PDK_COMMIT}
 RUN python /app/webapp/warmup.py
 
 # --- server config ---------------------------------------------------------
+# PHOTONFLUX_RELOAD=0 keeps this a single plain process: the dev auto-reloader
+# (a supervisor that re-spawns the server on .py edits) is ON by default for
+# local `server.py`, but a container image ships fixed source and must not run
+# the extra supervisor/watcher.
 ENV HOST=0.0.0.0 \
     PORT=7860 \
     PHOTONFLUX_OPENVAF_IR=/app/bin/openvaf-ir \
     PHOTONFLUX_ALLOW_VA_UPLOAD=0 \
     PHOTONFLUX_RUN_TIMEOUT_S=600 \
+    PHOTONFLUX_RELOAD=0 \
     JAX_ENABLE_X64=1
 EXPOSE 7860
 CMD ["python", "/app/webapp/server.py"]

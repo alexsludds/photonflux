@@ -11,7 +11,9 @@
         "lines": [
           "Same 25 Gb/s / 20 km link as the C-band case, but LAS1",
           "runs at 1311 nm. PAT1 -> MZM1 -> FIB1 (fiber) -> PD1",
-          "across RL1 (300 ohm).",
+          "-> TIA1. The receiver is a proper transimpedance amp:",
+          "PD1's photocurrent flows into TIA1's virtual-ground",
+          "input and vout ~= -gain_ohm * Iph (300 ohm here).",
           "",
           "FIB1 sits near its zero-dispersion wavelength",
           "(lambda0=1310 nm, slope S=0.092), so 1311 nm sees",
@@ -111,35 +113,22 @@
       },
       "GNDA": {
         "type": "ground",
-        "x": 580,
+        "x": 520,
         "y": 320,
         "rot": 0,
         "settings": {}
       },
-      "RL1": {
-        "type": "resistor",
+      "TIA1": {
+        "type": "tia",
         "x": 660,
-        "y": 190,
+        "y": 155,
         "rot": 0,
         "settings": {
-          "R": 300.0
+          "gain_ohm": 300.0,
+          "f3db": 20000000000.0,
+          "vmax": 0.0,
+          "in_noise": 0.0
         }
-      },
-      "VB1": {
-        "type": "vdc",
-        "x": 760,
-        "y": 200,
-        "rot": 0,
-        "settings": {
-          "V": 1.8
-        }
-      },
-      "GNDB": {
-        "type": "ground",
-        "x": 760,
-        "y": 304,
-        "rot": 0,
-        "settings": {}
       }
     },
     "wires": [
@@ -181,15 +170,7 @@
       },
       {
         "from": "PD1,cat",
-        "to": "RL1,p1"
-      },
-      {
-        "from": "RL1,p2",
-        "to": "VB1,p1"
-      },
-      {
-        "from": "VB1,p2",
-        "to": "GNDB,p1"
+        "to": "TIA1,inp"
       }
     ],
     "probes": [
@@ -205,7 +186,7 @@
       },
       {
         "name": "vout",
-        "at": "PD1,cat",
+        "at": "TIA1,out",
         "color": "#6ecbf5"
       }
     ]

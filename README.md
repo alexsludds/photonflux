@@ -119,6 +119,7 @@ as named examples 36–40 in the web app. One-line index:
 | `ring_tpa_q.py` | TPA + free-carrier absorption capping a high-Q ring | `out/ring_tpa_q.png` |
 | `wg_fwm.py` | χ(3) four-wave mixing in a waveguide, pinned to every textbook scaling | `out/wg_fwm.png` |
 | `ring_fwm.py` | four-wave mixing **inside** a Kerr ring resonator | `out/ring_fwm.png` |
+| `ring_selfheat.py` | **thermo-optic bistability** of a self-heating microring (`models/optical_field/ring_selfheat.va`) — absorbed circulating power heats a high-Q ring and red-shifts its resonance (dn/dT>0); one transient ramps the laser wavelength up then down and the through-port traces a **hysteresis loop** (thermal-locking triangle to the red, sharp cold dip to the blue), pinned to the analytic three-root self-consistency | `out/ring_selfheat.png` |
 
 ## How the SKY130 flow works
 

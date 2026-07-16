@@ -1,0 +1,141 @@
+`include "discipline.h"
+`include "constants.h"
+
+`define P_C0 2.99792458e8   // speed of light [m/s]
+
+// Silicon photonic microring with OPTICAL SELF-HEATING (thermo-optic
+// bistability). The all-pass coupled-mode-theory ring of `ring_mod.va` plus a
+// one-pole thermal reservoir: the fraction of the intracavity power that is
+// *absorbed* heats the ring, the temperature rise thermo-optically red-shifts
+// the resonance, and that shift changes how much power the ring stores — a
+// nonlinear feedback loop. Sweep the laser across the cold resonance slowly and
+// the through-port traces a HYSTERESIS loop: the heated resonance is dragged
+// along with the laser on the way in (locked, high circulating power) and lets
+// go abruptly, so the forward and backward sweeps switch at different
+// wavelengths. `examples/ring_selfheat.py` drives exactly that waveform.
+//
+// Coherent-field convention: optical ports are Ereal/Eimag node pairs with
+// |E|^2 = optical power [W] (same normalisation as the circulax field nodes).
+//
+// Optics: single-mode CMT (Little/Manolatou), identical to `ring_mod.va`. The
+// intracavity field a obeys
+//
+//     da/dt = (j*delta - 1/tau) a + j*kappa*s_in ,   s_out = s_in + j*kappa*a
+//
+// with the decay rates derived from the device:
+//
+//     L      = 2*pi*radius                    round-trip length
+//     T_rt   = L * n_g / c                    round-trip time
+//     alpha  = loss_db_m * ln(10)/10          power attenuation [1/m]
+//     1/tau_i = alpha * v_g / 2               intrinsic (absorption + scatter)
+//     1/tau_e = kappa2 / (2*T_rt)             coupling (bus, power coupling kappa2)
+//     kappa^2 = 2/tau_e
+//
+// The internal state A = kappa*a (units sqrt(W)) is kept, exactly as in
+// `ring_mod.va`, so |A|^2 is in watts and the rate rows scale to O(1).
+//
+// Stored energy and absorbed (heating) power. With A = kappa*a and
+// kappa^2 = 2/tau_e, the intracavity energy is U = |A|^2 / kappa^2 =
+// |A|^2 / (2/tau_e) [J]. Intrinsic loss removes energy at the power rate
+// 2/tau_i, of which a fraction `heat_frac` becomes heat (the rest radiates or
+// scatters out cold), so
+//
+//     P_heat = heat_frac * (2/tau_i) * U = heat_frac * (tau_e_inv... )
+//            = heat_frac * (inv_tau_i / inv_tau_e) * |A|^2 .
+//
+// On resonance |A|^2 = (tau*kappa^2)^2 * P_in, which is why a high-Q ring
+// (large tau) reaches thermal bistability at microwatts of input.
+//
+// Thermal reservoir (one lumped pole): the temperature rise DT above ambient
+// obeys the RC law C_th dDT/dt = P_heat - DT/R_th, i.e.
+//
+//     tau_th * dDT/dt + DT = R_th * P_heat ,   tau_th = R_th * C_th ,
+//
+// so in steady state DT = R_th * P_heat. DT lives on the internal node `temp`
+// (node voltage = DT in kelvin); the row is written directly, like the CMT
+// rows, so nothing else loads the node and KCL forces the ODE.
+//
+// Thermo-optic tuning: silicon has dn/dT > 0, so heating RED-shifts the
+// resonance linearly, lambda_res += dl_dt_pm * DT [pm]. Combined with the cold
+// resonance this gives the temperature-dependent detuning that closes the loop.
+//
+// Wavelength sweep input: the laser wavelength is the node `lam_nm`
+// (V(lam_nm) = laser wavelength in nm), so a testbench can ramp it as a
+// waveform. Physically this is a swept tunable laser reading a fixed cold ring;
+// sweeping the laser to the red is equivalent to sweeping the resonance to the
+// blue, and the hysteresis is the same either way. Held constant it reduces to
+// the `ring_mod.va` all-pass Lorentzian at that wavelength.
+//
+// Steady-state self-consistency (what the tests pin): the through-port power
+// and DT solve, together,
+//
+//     delta(DT) = 2*pi*c*(1/lam_L - 1/(lam_res0 + dl_dt*DT))
+//     |A|^2     = (tau*kappa^2)^2 * P_in / (1 + (tau*delta)^2)
+//     DT        = R_th * heat_frac * (inv_tau_i/inv_tau_e) * |A|^2
+//
+// which is cubic in the stored energy and has three roots (two stable, one
+// unstable) inside the bistable window.
+module ring_selfheat(in_re, in_im, out_re, out_im, lam_nm, gnd);
+    inout in_re, in_im, out_re, out_im, lam_nm, gnd;
+    electrical in_re, in_im, out_re, out_im, lam_nm, gnd;
+
+    // internal: intracavity field A = kappa*a (Are, Aim in sqrt(W)) and the
+    // ring temperature rise DT [K] on node `temp`.
+    electrical are, aim, temp;
+
+    parameter real lambda_res_nm = 1310.0 from (0:inf);  // cold resonance [nm]
+    parameter real radius_um     = 8.0    from (0:inf);  // ring radius [um]
+    parameter real n_g           = 4.0    from (0:inf);  // group index
+    parameter real n_eff         = 2.4    from (0:inf);  // effective index (mode order)
+    parameter real loss_db_m     = 300.0  from (0:inf);  // intrinsic propagation loss [dB/m]
+    parameter real kappa2        = 0.004  from (0:1);    // bus power coupling |kappa|^2
+    parameter real heat_frac     = 1.0    from [0:1];    // fraction of intrinsic loss that is absorption
+    parameter real rth_k_w       = 3.0e4  from [0:inf);  // thermal resistance [K/W]
+    parameter real tau_th_s      = 1.0e-6 from (0:inf);  // thermal time constant R_th*C_th [s]
+    parameter real dl_dt_pm      = 80.0;                 // thermo-optic resonance shift [pm/K]
+
+    real circ, v_g, t_rt, alpha_m;
+    real inv_tau_i, inv_tau_e, inv_tau, tau, tk2;
+    real lam_res_eff, lam_l, delta, p_heat;
+
+    analog begin
+        // device geometry -> CMT decay rates
+        circ      = 2.0 * `M_PI * radius_um * 1e-6;      // [m]
+        v_g       = `P_C0 / n_g;
+        t_rt      = circ / v_g;
+        alpha_m   = loss_db_m * ln(10.0) / 10.0;         // power attenuation [1/m]
+        inv_tau_i = alpha_m * v_g / 2.0;                 // amplitude decay, intrinsic
+        inv_tau_e = kappa2 / (2.0 * t_rt);               // amplitude decay, coupling
+        inv_tau   = inv_tau_i + inv_tau_e;
+        tau       = 1.0 / inv_tau;
+        tk2       = tau * 2.0 * inv_tau_e;               // tau*kappa^2 (=1 at critical)
+
+        // absorbed (heating) power from the stored field:
+        //   P_heat = heat_frac * (2/tau_i) * U ,  U = |A|^2/(2/tau_e)
+        //          = heat_frac * (inv_tau_i/inv_tau_e) * |A|^2
+        p_heat = heat_frac * (inv_tau_i / inv_tau_e)
+                 * (V(are, gnd) * V(are, gnd) + V(aim, gnd) * V(aim, gnd));
+
+        // one-pole thermal reservoir: tau_th*dDT/dt + DT = R_th*P_heat
+        I(temp, gnd) <+ tau_th_s * ddt(V(temp, gnd)) + V(temp, gnd)
+                       - rth_k_w * p_heat;
+
+        // thermo-optically shifted resonance (silicon: heating red-shifts) and
+        // detuning delta = w_light - w_res(DT), laser wavelength read from node.
+        lam_res_eff = lambda_res_nm * 1e-9 + dl_dt_pm * 1e-12 * V(temp, gnd);
+        lam_l       = V(lam_nm, gnd) * 1e-9;
+        delta = 2.0 * `M_PI * `P_C0 * (1.0 / lam_l - 1.0 / lam_res_eff);
+
+        // CMT rate equations for A = kappa*a, rows scaled by tau:
+        //   dA_re/dt = -A_re/tau - delta*A_im - kappa^2 * s_im
+        //   dA_im/dt = -A_im/tau + delta*A_re + kappa^2 * s_re
+        I(are, gnd) <+ tau * ddt(V(are, gnd)) + V(are, gnd)
+                       + tau * delta * V(aim, gnd) + tk2 * V(in_im, gnd);
+        I(aim, gnd) <+ tau * ddt(V(aim, gnd)) + V(aim, gnd)
+                       - tau * delta * V(are, gnd) - tk2 * V(in_re, gnd);
+
+        // through port: s_out = s_in + j*A
+        V(out_re, gnd) <+ V(in_re, gnd) - V(aim, gnd);
+        V(out_im, gnd) <+ V(in_im, gnd) + V(are, gnd);
+    end
+endmodule

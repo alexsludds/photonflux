@@ -1,8 +1,9 @@
 /* photonflux web schematic editor + simulation frontend.
  *
- * Vanilla JS + SVG. State is a plain JSON document (instances/wires/probes)
- * that maps 1:1 onto the backend's /api/run schematic payload; rendering is
- * a full redraw of three SVG layers (plenty fast at schematic scale).
+ * Vanilla JS + SVG. State is a plain JSON document (instances/wires/probes,
+ * plus optional render-only `notes` text annotations) that maps 1:1 onto the
+ * backend's /api/run schematic payload; the backend ignores `notes`. Rendering
+ * is a full redraw of a handful of SVG layers (plenty fast at schematic scale).
  */
 "use strict";
 
@@ -27,7 +28,7 @@ const ID_PREFIX = {
 // global state
 // ---------------------------------------------------------------------------
 let CAT = {};                    // backend catalog: type -> {ports, params, ...}
-let state = { instances: {}, wires: [], probes: [] };
+let state = { instances: {}, wires: [], probes: [], notes: [] };
 let undoStack = [], redoStack = [];
 let view = { x: 60, y: 40, k: 1 };
 
@@ -39,7 +40,7 @@ let plots = [];
 const $ = (id) => document.getElementById(id);
 const svg = $("canvas");
 const layers = {
-  wires: $("layer-wires"), comps: $("layer-comps"),
+  notes: $("layer-notes"), wires: $("layer-wires"), comps: $("layer-comps"),
   probes: $("layer-probes"), tool: $("layer-tool"),
 };
 
@@ -157,11 +158,15 @@ function deleteSelection() {
 // rendering
 // ---------------------------------------------------------------------------
 function render() {
+  layers.notes.innerHTML = "";
   layers.comps.innerHTML = "";
   layers.wires.innerHTML = "";
   layers.probes.innerHTML = "";
   $("viewport").setAttribute(
     "transform", `translate(${view.x},${view.y}) scale(${view.k})`);
+
+  // --- notes (render-only text annotations, painted behind the circuit) -----
+  for (const note of state.notes || []) renderNote(note);
 
   // wired-port + junction bookkeeping
   const useCount = {};
@@ -314,6 +319,31 @@ function render() {
 
   updateSweepSelectors();
   updateRunCount();
+}
+
+// A note is a plain annotation box: {x, y, title?, text|lines, w?}. Text is
+// NOT auto-wrapped — author it as `lines` (array) or `text` with "\n" breaks.
+// Render-only: pointer-events are off so notes never intercept schematic edits.
+function renderNote(note) {
+  const body = note.lines || String(note.text || "").split("\n");
+  const rows = note.title ? [note.title, ...body] : body;
+  const PAD = 9, LH = 15, FS = 11, CHAR_W = 6.1;
+  const longest = rows.reduce((m, s) => Math.max(m, s.length), 0);
+  const w = note.w || Math.ceil(longest * CHAR_W) + PAD * 2;
+  const h = PAD * 2 + rows.length * LH;
+  const x = note.x || 0, y = note.y || 0;
+  const tspans = rows.map((s, i) => {
+    const cls = note.title && i === 0 ? "note-title" : "note-line";
+    const dy = i === 0 ? FS : LH;
+    return `<tspan class="${cls}" x="${x + PAD}" dy="${dy}">${escapeHtml(s)}</tspan>`;
+  }).join("");
+  const g = document.createElementNS(svg.namespaceURI, "g");
+  g.setAttribute("class", "note");
+  g.style.pointerEvents = "none";
+  g.innerHTML = `
+    <rect class="note-box" x="${x}" y="${y}" width="${w}" height="${h}" rx="6"/>
+    <text class="note-text" y="${y + PAD}">${tspans}</text>`;
+  layers.notes.appendChild(g);
 }
 
 function wirePath(x1, y1, x2, y2, dom) {
@@ -2027,7 +2057,7 @@ $("file-load").addEventListener("change", async () => {
 });
 
 $("btn-new").addEventListener("click", () => {
-  commit(() => { state = { instances: {}, wires: [], probes: [] }; });
+  commit(() => { state = { instances: {}, wires: [], probes: [], notes: [] }; });
   selection = null;
   renderInspector();
 });
@@ -2043,6 +2073,7 @@ function loadDocument(doc) {
       wires: (sch.wires || []).map((w) =>
         Array.isArray(w) ? { from: w[0], to: w[1] } : w),
       probes: sch.probes || [],
+      notes: sch.notes || [],
     };
   });
   selection = null;
@@ -2059,6 +2090,16 @@ function zoomToFit() {
     const sym = S[i.type];
     x0 = Math.min(x0, i.x - 20); y0 = Math.min(y0, i.y - 30);
     x1 = Math.max(x1, i.x + sym.w + 20); y1 = Math.max(y1, i.y + sym.h + 30);
+  }
+  for (const note of state.notes || []) {
+    const rows = (note.title ? 1 : 0) +
+      (note.lines || String(note.text || "").split("\n")).length;
+    const longest = (note.lines || String(note.text || "").split("\n"))
+      .concat(note.title || []).reduce((m, s) => Math.max(m, s.length), 0);
+    const nx = note.x || 0, ny = note.y || 0;
+    x0 = Math.min(x0, nx); y0 = Math.min(y0, ny);
+    x1 = Math.max(x1, nx + (note.w || longest * 6.1 + 18));
+    y1 = Math.max(y1, ny + 18 + rows * 15);
   }
   const r = svg.getBoundingClientRect();
   if (r.width < 60 || r.height < 60) {  // pane hidden/not laid out yet

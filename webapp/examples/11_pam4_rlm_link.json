@@ -3,6 +3,24 @@
   "group": "Links & receivers",
   "description": "PAM4 with RLM predistortion over an MZM link (eye + BER)",
   "schematic": {
+    "notes": [
+      {
+        "x": 40,
+        "y": -20,
+        "title": "PAM4 RLM link — what this testbench does",
+        "lines": [
+          "PRBS PAM4 source (PAT1) drives an MZM; the photodiode (PD1)",
+          "recovers it across a load. The MZM's transfer is a sine,",
+          "T = 0.5 + 0.5*sin(pi*V/Vpi), so evenly-spaced DRIVE levels",
+          "become UNEVEN optical levels — the two inner PAM4 eyes squash.",
+          "",
+          "RLM adjust:  PAT1.rlm_vpi (= 1.5, matched to MZM Vpi) pre-warps",
+          "the 4 drive levels so the OPTICAL eye (probe popt) comes out",
+          "evenly spaced  ->  low RLM (ratio of level mismatch).",
+          "Set PAT1.rlm_vpi = 0 and re-run to watch the inner levels collapse."
+        ]
+      }
+    ],
     "instances": {
       "LAS1": {
         "type": "cw_laser",

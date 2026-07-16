@@ -73,7 +73,7 @@
       "WGB": {
         "type": "waveguide",
         "x": 240,
-        "y": 210,
+        "y": 230,
         "rot": 270,
         "settings": {
           "length_m": 0.0001,
@@ -87,7 +87,7 @@
       "CPL2": {
         "type": "dir_coupler",
         "x": 280,
-        "y": 320,
+        "y": 280,
         "rot": 0,
         "settings": {
           "coupling": 0.2
@@ -96,14 +96,14 @@
       "TERMD": {
         "type": "opt_term",
         "x": 200,
-        "y": 348,
+        "y": 308,
         "rot": 0,
         "settings": {}
       },
       "TERMX": {
         "type": "opt_term",
         "x": 440,
-        "y": 348,
+        "y": 308,
         "rot": 0,
         "settings": {}
       }

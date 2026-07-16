@@ -1,20 +1,31 @@
 #!/usr/bin/env python3
 """Local web frontend for photonflux/circulax: schematic editor + simulator.
 
-    .venv-circulax/bin/python webapp/server.py [--port 8642]
+    .venv-circulax/bin/python webapp/server.py [--port 8642] [--reload]
 
 Then open http://localhost:8642 — drag photonic/electrical components onto
 the canvas, wire them, attach probes, hit Run. Pure stdlib server (no extra
 dependencies); simulations run through circulax in-process, serialized by a
 lock (JAX solves are single-flight).
+
+Static assets (index.html/app.js/style.css) and example JSON are read from
+disk on every request, so editing those is already live — just refresh the
+page. The Python engine (simulate.py, catalog.py, the photonflux package) is
+imported once at startup, so editing *code* normally needs a restart. Pass
+--reload (or set PHOTONFLUX_RELOAD=1) during development to auto-restart the
+server whenever a .py source file changes — then a browser refresh always
+shows the latest code. Reload is off by default, so production/container runs
+(`python webapp/server.py` with no flags) are unaffected.
 """
 from __future__ import annotations
 
 import argparse
 import json
 import os
+import subprocess
 import sys
 import threading
+import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
@@ -22,16 +33,34 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 sys.path.insert(0, str(HERE.parent))  # repo root -> photonflux importable
 
-import jax  # noqa: E402
+# The heavy imports (jax/circulax + the model catalog) live in _load_engine()
+# rather than at module scope so the --reload supervisor process — which only
+# re-spawns children and never serves a request — stays light and starts
+# instantly. They are bound as module globals the Handler looks up at call time.
+simulate = None      # type: ignore[assignment]  # set by _load_engine()
+CATALOG: dict = {}   # set by _load_engine()
 
-jax.config.update("jax_enable_x64", True)  # circuit solves need float64
 
-import simulate  # noqa: E402
-from catalog import CATALOG, load_user_va  # noqa: E402
+def _load_engine() -> None:
+    """Import the simulation stack (jax/circulax) and register user VA models.
 
-_loaded_va = load_user_va()
-if _loaded_va:
-    print(f"user VA models: {', '.join(_loaded_va)}")
+    Called once in the process that actually serves requests. On --reload this
+    is the freshly re-spawned child, so every restart re-imports the edited
+    code."""
+    global simulate, CATALOG
+    import jax
+
+    jax.config.update("jax_enable_x64", True)  # circuit solves need float64
+
+    import simulate as _simulate
+    from catalog import CATALOG as _CATALOG, load_user_va
+
+    simulate = _simulate
+    CATALOG = _CATALOG
+    loaded_va = load_user_va()
+    if loaded_va:
+        print(f"user VA models: {', '.join(loaded_va)}")
+
 
 STATIC = HERE / "static"
 EXAMPLES = HERE / "examples"
@@ -220,6 +249,72 @@ class Handler(BaseHTTPRequestHandler):
             super().log_message(fmt, *args)
 
 
+# --- dev auto-reload ---------------------------------------------------------
+# A tiny Werkzeug/uvicorn-style reloader: the process the user launches becomes
+# a *supervisor* that re-spawns itself (PHOTONFLUX_RELOAD_CHILD=1) and restarts
+# the child whenever it exits with code 3. The child runs the real server plus a
+# background thread that watches .py source mtimes and calls os._exit(3) on any
+# change (edit of a tracked file OR a newly created .py). Static files/examples
+# are read per-request, so they are deliberately NOT watched — editing them
+# needs no restart, only a page refresh.
+_RELOAD_EXIT_CODE = 3
+_WATCH_ROOTS = [HERE, HERE.parent / "photonflux"]
+
+
+def _iter_source_files():
+    for root in _WATCH_ROOTS:
+        if not root.exists():
+            continue
+        for p in root.rglob("*.py"):
+            if "__pycache__" in p.parts:
+                continue
+            yield p
+
+
+def _reload_watcher(interval: float = 1.0) -> None:
+    """Poll watched .py files; on the first edit of a tracked file or the
+    appearance of a new .py, exit(3) so the supervisor re-spawns a fresh child
+    that re-imports the changed code. (Deletions are ignored — a removed module
+    only matters once an edit to a surviving file stops importing it, which
+    itself triggers a reload.)"""
+    mtimes = {}
+    for f in _iter_source_files():
+        try:
+            mtimes[f] = f.stat().st_mtime
+        except OSError:
+            pass
+    while True:
+        time.sleep(interval)
+        for f in _iter_source_files():
+            try:
+                m = f.stat().st_mtime
+            except OSError:
+                continue
+            prev = mtimes.get(f)
+            if prev is None:  # newly created .py
+                reason = "added"
+            elif m != prev:   # edited in place
+                reason = "changed"
+            else:
+                continue
+            sys.stdout.write(f"\n[reload] {f.name} {reason} — restarting\n")
+            sys.stdout.flush()
+            os._exit(_RELOAD_EXIT_CODE)
+
+
+def _run_supervisor() -> int:
+    """Re-spawn the server as a child and restart it on reload-triggered exits.
+    Any other exit code (clean shutdown, crash, Ctrl-C) ends the supervisor."""
+    child_env = dict(os.environ, PHOTONFLUX_RELOAD_CHILD="1")
+    while True:
+        try:
+            code = subprocess.call([sys.executable] + sys.argv, env=child_env)
+        except KeyboardInterrupt:
+            return 0
+        if code != _RELOAD_EXIT_CODE:
+            return code
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     # $PORT / $HOST let a container (or PaaS like HF Spaces) place the server;
@@ -227,9 +322,25 @@ def main() -> int:
     ap.add_argument("--port", type=int,
                     default=int(os.environ.get("PORT", "8642")))
     ap.add_argument("--host", default=os.environ.get("HOST", "127.0.0.1"))
+    # --reload auto-restarts on .py edits (dev only; off by default). Env var
+    # PHOTONFLUX_RELOAD=1 is the equivalent for `python server.py` launchers.
+    ap.add_argument("--reload", action="store_true",
+                    default=os.environ.get("PHOTONFLUX_RELOAD", "0") == "1",
+                    help="auto-restart when a .py source file changes")
     args = ap.parse_args()
+
+    is_child = os.environ.get("PHOTONFLUX_RELOAD_CHILD") == "1"
+    if args.reload and not is_child:
+        return _run_supervisor()
+
+    _load_engine()
     server = ThreadingHTTPServer((args.host, args.port), Handler)
-    print(f"photonflux web UI: http://{args.host}:{args.port}")
+    if args.reload:
+        threading.Thread(target=_reload_watcher, daemon=True).start()
+        print(f"photonflux web UI: http://{args.host}:{args.port}  "
+              "(auto-reload on — edit code and refresh the page)")
+    else:
+        print(f"photonflux web UI: http://{args.host}:{args.port}")
     try:
         server.serve_forever()
     except KeyboardInterrupt:

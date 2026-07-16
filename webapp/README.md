@@ -7,7 +7,16 @@ the server is pure stdlib, the frontend is vanilla JS + SVG with a vendored
 
 ```bash
 .venv-circulax/bin/python webapp/server.py        # http://localhost:8642
+.venv-circulax/bin/python webapp/server.py --reload   # dev: auto-restart on .py edits
 ```
+
+Static assets (`static/`) and example JSON are read from disk on every
+request, so editing them is already live — just refresh the page. Editing the
+Python engine (`simulate.py`, `catalog.py`, the `photonflux` package) normally
+needs a restart; run with `--reload` (or `PHOTONFLUX_RELOAD=1`) during
+development and the server auto-restarts whenever a `.py` source file changes,
+so a browser refresh always shows the latest code. Reload is off by default,
+so the container/production entrypoint is unaffected.
 
 ![architecture] frontend (static/) --JSON--> server.py --> simulate.py --> circulax
 

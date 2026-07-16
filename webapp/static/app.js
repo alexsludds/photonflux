@@ -1333,6 +1333,48 @@ function applyAnalysis(a) {
 // ---------------------------------------------------------------------------
 // run + results
 // ---------------------------------------------------------------------------
+// Poll GET /api/progress while a run is in flight and drive the header bar.
+// The backend fraction covers the transient solve (spanning noise seeds and
+// sweep points); compile time reports no fraction, so we hold the bar in an
+// indeterminate sweep until the first real step arrives.
+let progressGen = 0;
+function startProgressPoll() {
+  const bar = $("run-progress"), fill = $("run-progress-fill");
+  if (!bar || !fill) return { stop() {} };
+  // Each poll owns a generation; a stale hide-timeout from a previous run must
+  // not hide the bar a newer run has just shown (rapid re-run via Cmd+Enter).
+  const gen = ++progressGen;
+  let stopped = false, seenFrac = false;
+  bar.hidden = false;
+  bar.classList.add("indeterminate");
+  fill.style.width = "";
+  const timer = setInterval(async () => {
+    let p;
+    try { p = await (await fetch("/api/progress")).json(); }
+    catch { return; }
+    if (stopped || !p || !p.active) return;
+    if (p.frac > 0 || p.phase === "solving") {
+      seenFrac = true;
+      bar.classList.remove("indeterminate");
+      fill.style.width = `${Math.min(100, Math.max(0, p.frac * 100)).toFixed(1)}%`;
+    }
+  }, 200);
+  return {
+    stop() {
+      stopped = true;
+      clearInterval(timer);
+      // A finished solve briefly shows a full bar before it disappears.
+      if (seenFrac) fill.style.width = "100%";
+      setTimeout(() => {
+        if (gen !== progressGen) return;  // a newer run now owns the bar
+        bar.hidden = true;
+        bar.classList.remove("indeterminate");
+        fill.style.width = "0";
+      }, seenFrac ? 220 : 0);
+    },
+  };
+}
+
 async function runSim() {
   const btn = $("btn-run"), status = $("run-status");
   const payload = {
@@ -1371,6 +1413,15 @@ async function runSim() {
       : `running… ${s}s`;
   }, 250);
   status.textContent = "running…";
+  // Live progress bar: poll the backend, which reports where the transient
+  // solver is in simulated time (see webapp/progress.py). It sits indeterminate
+  // during the compile phase (no fraction yet) and fills once stepping begins.
+  // Only time-domain runs report a fraction, so skip the bar for DC/AC/op —
+  // their existing elapsed-time ticker is enough and avoids a bar that can
+  // only ever sit indeterminate. Swept transients keep mode "transient", so
+  // this covers them too, while excluding e.g. a 2-axis AC sweep.
+  const timeDomain = a.mode === "transient" || a.mode === "pulse";
+  const progPoll = timeDomain ? startProgressPoll() : { stop() {} };
   let res;
   try {
     const resp = await fetch("/api/run", {
@@ -1382,6 +1433,7 @@ async function runSim() {
     res = { ok: false, error: `server unreachable: ${e}` };
   }
   clearInterval(tick);
+  progPoll.stop();
   btn.disabled = false;
   const dt = ((performance.now() - t0) / 1000).toFixed(1);
   lastResult = res;

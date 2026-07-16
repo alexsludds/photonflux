@@ -53,6 +53,28 @@ body { display: flex; flex-direction: column; }
 #run-status.err { color: var(--err); }
 #run-status.ok { color: var(--ok); }
 
+/* live transient-solve progress bar (fed by GET /api/progress) */
+#run-progress {
+  display: inline-block; vertical-align: middle; margin-left: 8px;
+  width: 130px; height: 8px; border-radius: 4px; overflow: hidden;
+  background: var(--panel2); border: 1px solid var(--border);
+}
+#run-progress[hidden] { display: none; }
+#run-progress-fill {
+  display: block; height: 100%; width: 0;
+  background: linear-gradient(90deg, var(--accent), var(--accent2));
+  transition: width .18s linear;
+}
+/* pre-stepping (compiling): sweep a chunk back and forth, width fixed */
+#run-progress.indeterminate #run-progress-fill {
+  width: 35%; transition: none;
+  animation: run-progress-indet 1.1s ease-in-out infinite;
+}
+@keyframes run-progress-indet {
+  0%   { margin-left: -35%; }
+  100% { margin-left: 100%; }
+}
+
 /* ---------------- main layout ---------------- */
 #main { flex: 1 1 auto; display: flex; min-height: 0; }
 

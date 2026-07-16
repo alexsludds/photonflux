@@ -1,6 +1,7 @@
 {
-  "title": "18 \u2014 DWDM CPO link: 4-lambda microring TX bank + add-drop demux, one photodiode per channel (single coherent solve)",
+  "title": "WDM O-band testbench",
   "group": "WDM & crosstalk",
+  "description": "DWDM CPO link: 4-lambda microring TX bank + add-drop demux, one photodiode per channel (single coherent solve)",
   "schematic": {
     "instances": {
       "LAS1": {

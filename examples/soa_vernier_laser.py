@@ -4,10 +4,10 @@
 The tunable-laser architecture, built from the repo's Verilog-A parts and
 solved closed-loop in circulax:
 
-    SOA (models/soa.va) -> ring A drop -> ring B drop -> feedback coupler
+    SOA (models/optical_field/soa.va) -> ring A drop -> ring B drop -> feedback coupler
       '---------------------- R_fb = 0.6 ----------------------'  '-> P_out
 
-Each ``models/ring_filter.va`` carries FIVE longitudinal modes, so each ring
+Each ``models/optical_field/ring_filter.va`` carries FIVE longitudinal modes, so each ring
 is a resonance COMB: ring A (R = 400 um) has FSR_A = 29.8 GHz, ring B
 (R = 425 um) has FSR_B = 28.1 GHz. The comb mismatch (dFSR = 1.76 GHz ~ 1.5
 ring linewidths) is a real tunable-laser compromise: at turn-on THREE
@@ -69,7 +69,7 @@ import numpy as np
 from circulax import compile_circuit
 from circulax.components.base_component import Signals, States, source
 
-from cavity import run_transient, staircase_source, terminator
+from _cavity import run_transient, staircase_source, terminator
 from photonflux import cx
 
 C0 = 2.99792458e8

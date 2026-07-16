@@ -6,10 +6,10 @@
 .gitignore
 .venv-circulax/
 out/
-bin/openvaf-r
 bin/openvaf-ir
 models/*.osdi
-models/__jax__/*.osdi
+models/*.osdi.meta.json
+models/__jax__/
 webapp/uploads/
 webapp/models_user/
 **/__pycache__/

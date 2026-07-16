@@ -1,128 +1,129 @@
 {
- "title": "25 — diode envelope detector on a two-tone beat: 100+110 MHz sum -> 10 MHz envelope, RC between carrier and beat",
- "group": "Electronics — analog",
- "schematic": {
-  "instances": {
-   "VS1": {
-    "type": "vsin",
-    "x": 40,
-    "y": 120,
-    "rot": 0,
-    "settings": {
-     "V": 1.0,
-     "freq": 100000000.0
-    }
-   },
-   "VS2": {
-    "type": "vsin",
-    "x": 40,
-    "y": 260,
-    "rot": 0,
-    "settings": {
-     "V": 1.0,
-     "freq": 110000000.0
-    }
-   },
-   "GS": {
-    "type": "ground",
-    "x": 40,
-    "y": 380,
-    "rot": 0,
-    "settings": {}
-   },
-   "RS": {
-    "type": "resistor",
-    "x": 200,
-    "y": 100,
-    "rot": 0,
-    "settings": {
-     "R": 50.0
-    }
-   },
-   "D1": {
-    "type": "diode",
-    "x": 340,
-    "y": 100,
-    "rot": 0,
-    "settings": {}
-   },
-   "CE": {
-    "type": "capacitor",
-    "x": 480,
-    "y": 180,
-    "rot": 0,
-    "settings": {
-     "C": 3e-11
-    }
-   },
-   "RE": {
-    "type": "resistor",
-    "x": 580,
-    "y": 180,
-    "rot": 0,
-    "settings": {
-     "R": 2000.0
-    }
-   },
-   "GE": {
-    "type": "ground",
-    "x": 530,
-    "y": 300,
-    "rot": 0,
-    "settings": {}
-   }
+  "title": "Envelope detector",
+  "group": "Electronics — analog",
+  "description": "diode envelope detector on a two-tone beat: 100+110 MHz sum -> 10 MHz envelope, RC between carrier and beat",
+  "schematic": {
+    "instances": {
+      "VS1": {
+        "type": "vsin",
+        "x": 40,
+        "y": 120,
+        "rot": 0,
+        "settings": {
+          "V": 1.0,
+          "freq": 100000000.0
+        }
+      },
+      "VS2": {
+        "type": "vsin",
+        "x": 40,
+        "y": 260,
+        "rot": 0,
+        "settings": {
+          "V": 1.0,
+          "freq": 110000000.0
+        }
+      },
+      "GS": {
+        "type": "ground",
+        "x": 40,
+        "y": 380,
+        "rot": 0,
+        "settings": {}
+      },
+      "RS": {
+        "type": "resistor",
+        "x": 200,
+        "y": 100,
+        "rot": 0,
+        "settings": {
+          "R": 50.0
+        }
+      },
+      "D1": {
+        "type": "diode",
+        "x": 340,
+        "y": 100,
+        "rot": 0,
+        "settings": {}
+      },
+      "CE": {
+        "type": "capacitor",
+        "x": 480,
+        "y": 180,
+        "rot": 0,
+        "settings": {
+          "C": 3e-11
+        }
+      },
+      "RE": {
+        "type": "resistor",
+        "x": 580,
+        "y": 180,
+        "rot": 0,
+        "settings": {
+          "R": 2000.0
+        }
+      },
+      "GE": {
+        "type": "ground",
+        "x": 530,
+        "y": 300,
+        "rot": 0,
+        "settings": {}
+      }
+    },
+    "wires": [
+      {
+        "from": "VS1,p2",
+        "to": "VS2,p1"
+      },
+      {
+        "from": "VS2,p2",
+        "to": "GS,p1"
+      },
+      {
+        "from": "VS1,p1",
+        "to": "RS,p1"
+      },
+      {
+        "from": "RS,p2",
+        "to": "D1,p1"
+      },
+      {
+        "from": "D1,p2",
+        "to": "CE,p1"
+      },
+      {
+        "from": "D1,p2",
+        "to": "RE,p1"
+      },
+      {
+        "from": "CE,p2",
+        "to": "GE,p1"
+      },
+      {
+        "from": "RE,p2",
+        "to": "GE,p1"
+      }
+    ],
+    "probes": [
+      {
+        "name": "vin",
+        "at": "RS,p2",
+        "color": "#6ecbf5"
+      },
+      {
+        "name": "venv",
+        "at": "D1,p2",
+        "color": "#e6862c"
+      }
+    ]
   },
-  "wires": [
-   {
-    "from": "VS1,p2",
-    "to": "VS2,p1"
-   },
-   {
-    "from": "VS2,p2",
-    "to": "GS,p1"
-   },
-   {
-    "from": "VS1,p1",
-    "to": "RS,p1"
-   },
-   {
-    "from": "RS,p2",
-    "to": "D1,p1"
-   },
-   {
-    "from": "D1,p2",
-    "to": "CE,p1"
-   },
-   {
-    "from": "D1,p2",
-    "to": "RE,p1"
-   },
-   {
-    "from": "CE,p2",
-    "to": "GE,p1"
-   },
-   {
-    "from": "RE,p2",
-    "to": "GE,p1"
-   }
-  ],
-  "probes": [
-   {
-    "name": "vin",
-    "at": "RS,p2",
-    "color": "#6ecbf5"
-   },
-   {
-    "name": "venv",
-    "at": "D1,p2",
-    "color": "#e6862c"
-   }
-  ]
- },
- "analysis": {
-  "mode": "transient",
-  "t_stop": 4e-07,
-  "points": 4000,
-  "solver": "bdf2"
- }
+  "analysis": {
+    "mode": "transient",
+    "t_stop": 4e-07,
+    "points": 4000,
+    "solver": "bdf2"
+  }
 }

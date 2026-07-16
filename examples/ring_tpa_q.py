@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Nonlinear absorption capping the quality factor of a high-Q silicon ring.
 
-``models/ring_nl.va`` is an all-pass microring whose INTRINSIC loss grows
+``models/optical_field/ring_nl.va`` is an all-pass microring whose INTRINSIC loss grows
 with the stored field: two-photon absorption of the circulating intensity,
 plus free-carrier absorption from the TPA-generated carrier population.
 Resonant enhancement makes this brutal — at Q ~ 1e6 a milliwatt in the bus
@@ -45,7 +45,7 @@ from scipy.optimize import brentq
 
 from circulax import compile_circuit
 
-from cavity import port_power, terminator
+from _cavity import port_power, terminator
 from photonflux import cx
 
 C0 = 2.99792458e8
@@ -302,7 +302,7 @@ def main() -> int:
     ax.grid(alpha=0.3)
 
     fig.suptitle("TPA + free-carrier absorption limiting a high-Q silicon "
-                 "microring (models/ring_nl.va, circulax)", fontsize=11)
+                 "microring (models/optical_field/ring_nl.va, circulax)", fontsize=11)
     fig.tight_layout()
     OUT.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(OUT, dpi=120)

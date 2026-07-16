@@ -1,150 +1,151 @@
 {
- "title": "22 — common-source amplifier: gm·RD ≈ 5x inverting gain (β = 1 mA/V², Vov = 0.5 V, RD = 10 kΩ)",
- "group": "Electronics — analog",
- "schematic": {
-  "instances": {
-   "VDD": {
-    "type": "vdc",
-    "x": 480,
-    "y": 60,
-    "rot": 0,
-    "settings": {
-     "V": 5.0
-    }
-   },
-   "GDD": {
-    "type": "ground",
-    "x": 560,
-    "y": 60,
-    "rot": 0,
-    "settings": {}
-   },
-   "VB": {
-    "type": "vdc",
-    "x": 40,
-    "y": 300,
-    "rot": 0,
-    "settings": {
-     "V": 1.5
-    }
-   },
-   "GB": {
-    "type": "ground",
-    "x": 40,
-    "y": 400,
-    "rot": 0,
-    "settings": {}
-   },
-   "VIN": {
-    "type": "vsin",
-    "x": 40,
-    "y": 180,
-    "rot": 0,
-    "settings": {
-     "V": 0.05,
-     "freq": 10000000.0
-    }
-   },
-   "RD": {
-    "type": "resistor",
-    "x": 360,
-    "y": 120,
-    "rot": 0,
-    "settings": {
-     "R": 10000.0
-    }
-   },
-   "MN": {
-    "type": "nmos",
-    "x": 360,
-    "y": 260,
-    "rot": 0,
-    "settings": {
-     "Kp": 2e-05,
-     "W": 5e-05,
-     "L": 1e-06,
-     "Vth": 1.0,
-     "lam": 0.0
-    }
-   },
-   "CL": {
-    "type": "capacitor",
-    "x": 520,
-    "y": 260,
-    "rot": 0,
-    "settings": {
-     "C": 5e-13
-    }
-   },
-   "GC": {
-    "type": "ground",
-    "x": 520,
-    "y": 360,
-    "rot": 0,
-    "settings": {}
-   },
-   "GS": {
-    "type": "ground",
-    "x": 360,
-    "y": 400,
-    "rot": 0,
-    "settings": {}
-   }
+  "title": "Common-source amplifier",
+  "group": "Electronics — analog",
+  "description": "common-source amplifier: gm·RD ≈ 5x inverting gain (β = 1 mA/V², Vov = 0.5 V, RD = 10 kΩ)",
+  "schematic": {
+    "instances": {
+      "VDD": {
+        "type": "vdc",
+        "x": 480,
+        "y": 60,
+        "rot": 0,
+        "settings": {
+          "V": 5.0
+        }
+      },
+      "GDD": {
+        "type": "ground",
+        "x": 560,
+        "y": 60,
+        "rot": 0,
+        "settings": {}
+      },
+      "VB": {
+        "type": "vdc",
+        "x": 40,
+        "y": 300,
+        "rot": 0,
+        "settings": {
+          "V": 1.5
+        }
+      },
+      "GB": {
+        "type": "ground",
+        "x": 40,
+        "y": 400,
+        "rot": 0,
+        "settings": {}
+      },
+      "VIN": {
+        "type": "vsin",
+        "x": 40,
+        "y": 180,
+        "rot": 0,
+        "settings": {
+          "V": 0.05,
+          "freq": 10000000.0
+        }
+      },
+      "RD": {
+        "type": "resistor",
+        "x": 360,
+        "y": 120,
+        "rot": 0,
+        "settings": {
+          "R": 10000.0
+        }
+      },
+      "MN": {
+        "type": "nmos",
+        "x": 360,
+        "y": 260,
+        "rot": 0,
+        "settings": {
+          "Kp": 2e-05,
+          "W": 5e-05,
+          "L": 1e-06,
+          "Vth": 1.0,
+          "lam": 0.0
+        }
+      },
+      "CL": {
+        "type": "capacitor",
+        "x": 520,
+        "y": 260,
+        "rot": 0,
+        "settings": {
+          "C": 5e-13
+        }
+      },
+      "GC": {
+        "type": "ground",
+        "x": 520,
+        "y": 360,
+        "rot": 0,
+        "settings": {}
+      },
+      "GS": {
+        "type": "ground",
+        "x": 360,
+        "y": 400,
+        "rot": 0,
+        "settings": {}
+      }
+    },
+    "wires": [
+      {
+        "from": "VDD,p1",
+        "to": "RD,p1"
+      },
+      {
+        "from": "VDD,p2",
+        "to": "GDD,p1"
+      },
+      {
+        "from": "RD,p2",
+        "to": "MN,d"
+      },
+      {
+        "from": "VIN,p1",
+        "to": "MN,g"
+      },
+      {
+        "from": "VIN,p2",
+        "to": "VB,p1"
+      },
+      {
+        "from": "VB,p2",
+        "to": "GB,p1"
+      },
+      {
+        "from": "MN,s",
+        "to": "GS,p1"
+      },
+      {
+        "from": "MN,d",
+        "to": "CL,p1"
+      },
+      {
+        "from": "CL,p2",
+        "to": "GC,p1"
+      }
+    ],
+    "probes": [
+      {
+        "name": "vin",
+        "at": "MN,g",
+        "color": "#6ecbf5"
+      },
+      {
+        "name": "vout",
+        "at": "MN,d",
+        "color": "#e6862c"
+      }
+    ]
   },
-  "wires": [
-   {
-    "from": "VDD,p1",
-    "to": "RD,p1"
-   },
-   {
-    "from": "VDD,p2",
-    "to": "GDD,p1"
-   },
-   {
-    "from": "RD,p2",
-    "to": "MN,d"
-   },
-   {
-    "from": "VIN,p1",
-    "to": "MN,g"
-   },
-   {
-    "from": "VIN,p2",
-    "to": "VB,p1"
-   },
-   {
-    "from": "VB,p2",
-    "to": "GB,p1"
-   },
-   {
-    "from": "MN,s",
-    "to": "GS,p1"
-   },
-   {
-    "from": "MN,d",
-    "to": "CL,p1"
-   },
-   {
-    "from": "CL,p2",
-    "to": "GC,p1"
-   }
-  ],
-  "probes": [
-   {
-    "name": "vin",
-    "at": "MN,g",
-    "color": "#6ecbf5"
-   },
-   {
-    "name": "vout",
-    "at": "MN,d",
-    "color": "#e6862c"
-   }
-  ]
- },
- "analysis": {
-  "mode": "transient",
-  "t_stop": 4e-07,
-  "points": 2000
- }
+  "analysis": {
+    "mode": "transient",
+    "t_stop": 4e-07,
+    "points": 2000
+  }
 }

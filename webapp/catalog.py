@@ -80,7 +80,7 @@ CATALOG: dict[str, dict] = {
     "laser_dml": {
         "label": "DML Laser (VA)",
         "category": "Lasers",
-        "doc": "models/laser_dml.va — directly-modulated laser, static L-I: "
+        "doc": "models/optical_power/laser_dml.va — directly-modulated laser, static L-I: "
                "P = slope*(I - Ith) above threshold, first-order optical "
                "response tau. Drive current flows an->cat (linearised diode "
                "Von/Rs). Power-domain model: pout carries E = sqrt(P), optical "
@@ -106,7 +106,7 @@ CATALOG: dict[str, dict] = {
     "laser_rate": {
         "label": "Rate-Eq. Laser (VA)",
         "category": "Lasers",
-        "doc": "models/laser_rate.va — directly-modulated laser from the "
+        "doc": "models/optical_power/laser_rate.va — directly-modulated laser from the "
                "single-mode rate equations: turn-on delay, relaxation "
                "oscillations, pattern-dependent ringing (what the static DML "
                "cannot show). Defaults are a generic 1.31 um DFB: Ith ~19 mA, "
@@ -145,7 +145,7 @@ CATALOG: dict[str, dict] = {
     "mzm_tw": {
         "label": "MZM Traveling-Wave (VA)",
         "category": "Modulators",
-        "doc": "models/mzm_tw.va — traveling-wave MZM. On top of the "
+        "doc": "models/optical_power/mzm_tw.va — traveling-wave MZM. On top of the "
                "quasi-static cos() transfer it models the two effects that "
                "set a real TW electrode's EO bandwidth: frequency-dependent "
                "electrode loss (pole at f_el) and optical/RF velocity "
@@ -181,7 +181,7 @@ CATALOG: dict[str, dict] = {
     "ring_mod_inj": {
         "label": "Microring, Injection (VA)",
         "category": "Modulators",
-        "doc": "models/ring_mod_inj.va — carrier-INJECTION microring: "
+        "doc": "models/optical_field/ring_mod_inj.va — carrier-INJECTION microring: "
                "forward-biased PIN shifter, resonance BLUE-shifts with the "
                "lifetime-filtered injected current (tau_c limits the "
                "modulation bandwidth to ~1/(2 pi tau_c) — drive with "
@@ -225,7 +225,7 @@ CATALOG: dict[str, dict] = {
     "mzm_seg": {
         "label": "MZM Segmented (VA)",
         "category": "Modulators",
-        "doc": "models/mzm_seg.va — segmented-electrode MZM (optical DAC): "
+        "doc": "models/optical_power/mzm_seg.va — segmented-electrode MZM (optical DAC): "
                "three binary-weighted segments (4/7, 2/7, 1/7 of the "
                "electrode) driven independently synthesise up to 8 phase "
                "levels from plain digital rails — drive segments 1+2 for "
@@ -274,7 +274,7 @@ CATALOG: dict[str, dict] = {
     "ring_mod": {
         "label": "Microring Modulator (VA)",
         "category": "Modulators",
-        "doc": "models/ring_mod.va — coupled-mode-theory microring modulator "
+        "doc": "models/optical_field/ring_mod.va — coupled-mode-theory microring modulator "
                "compiled from Verilog-A to JAX. gnd must be grounded.",
         "ports": _ports("pin:o pout:o vp:e vn:e gnd:e"),
         "params": [
@@ -315,7 +315,7 @@ CATALOG: dict[str, dict] = {
     "soa": {
         "label": "SOA (VA)",
         "category": "Lasers",
-        "doc": "models/soa.va — semiconductor optical amplifier: lumped "
+        "doc": "models/optical_field/soa.va — semiconductor optical amplifier: lumped "
                "Agrawal-Olsson gain reservoir tau_c*dh/dt = h0(I) - h - "
                "(G-1)*P/p_sat, G = e^h. BIDIRECTIONAL: forward (fin->fout) "
                "and backward (bin->bout) waves share the reservoir, so it "
@@ -379,7 +379,7 @@ CATALOG: dict[str, dict] = {
     "wmirror": {
         "label": "Mirror 2x2 (VA, waves)",
         "category": "Photonic Passives",
-        "doc": "models/mirror.va — partial reflector on DIRECTED waves: "
+        "doc": "models/optical_field/mirror.va — partial reflector on DIRECTED waves: "
                "lo = r*e^{j*phi}*li + jt*ri, ro = jt*li + r*e^{j*phi}*ri "
                "(unitary, r = sqrt(refl)). The cavity-forming twin of the "
                "nodal Partial Mirror: use it to close loops around the SOA "
@@ -415,7 +415,7 @@ CATALOG: dict[str, dict] = {
     "ring_comb": {
         "label": "Ring Filter Comb (VA)",
         "category": "Photonic Passives",
-        "doc": "models/ring_filter.va — add-drop microring with FIVE "
+        "doc": "models/optical_field/ring_filter.va — add-drop microring with FIVE "
                "longitudinal modes (m = -2..+2 at FSR = c/(n_g*2*pi*R)), so "
                "the resonance COMB is modelled — the Vernier-laser building "
                "block (example 37). Heater hp/hn is a plain resistor whose "
@@ -457,7 +457,7 @@ CATALOG: dict[str, dict] = {
     "ring_kerr": {
         "label": "Kerr FWM Ring (VA)",
         "category": "Photonic Passives",
-        "doc": "models/ring_kerr.va — add-drop microring whose FIVE modes "
+        "doc": "models/optical_field/ring_kerr.va — add-drop microring whose FIVE modes "
                "(m = -2..+2 at the FSR) mix through the intracavity chi(3) "
                "Kerr nonlinearity: the modal (Lugiato-Lefever) form of "
                "four-wave mixing in a resonator. Pump one resonance and "
@@ -505,7 +505,7 @@ CATALOG: dict[str, dict] = {
     "ring_nl": {
         "label": "Nonlinear Ring TPA/FCA (VA)",
         "category": "Photonic Passives",
-        "doc": "models/ring_nl.va — high-Q all-pass ring whose intrinsic "
+        "doc": "models/optical_field/ring_nl.va — high-Q all-pass ring whose intrinsic "
                "loss grows with the stored field: two-photon absorption of "
                "the circulating intensity + free-carrier absorption of the "
                "TPA-generated carriers (lifetime tau_fc), plus Kerr red / "
@@ -550,7 +550,7 @@ CATALOG: dict[str, dict] = {
     "wg_nl": {
         "label": "Nonlinear Waveguide (VA)",
         "category": "Photonic Passives",
-        "doc": "models/waveguide_nl.va — silicon-wire segment with two-"
+        "doc": "models/optical_field/waveguide_nl.va — silicon-wire segment with two-"
                "photon absorption (exact closed form), free-carrier "
                "absorption of the TPA carriers (lifetime tau_fc), Kerr SPM "
                "and free-carrier dispersion phase. Lumped single segment: "

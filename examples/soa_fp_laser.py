@@ -2,8 +2,8 @@
 """Fabry-Perot laser built from parts: a Verilog-A SOA between two partially
 reflective mirrors, solved as one circulax system.
 
-Nothing in this circuit "is" a laser — ``models/soa.va`` is a bidirectional
-Agrawal-Olsson gain reservoir and ``models/mirror.va`` is a unitary partial
+Nothing in this circuit "is" a laser — ``models/optical_field/soa.va`` is a bidirectional
+Agrawal-Olsson gain reservoir and ``models/optical_field/mirror.va`` is a unitary partial
 reflector — but close the loop
 
     HR mirror (R1 = 0.9)  <->  SOA (both directions, shared gain)  <->
@@ -50,7 +50,7 @@ import numpy as np
 
 from circulax import compile_circuit
 
-from cavity import port_power, run_transient, staircase_source, terminator
+from _cavity import port_power, run_transient, staircase_source, terminator
 from photonflux import cx
 
 # --- the device -------------------------------------------------------------

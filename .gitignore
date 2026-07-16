@@ -4,13 +4,14 @@
 # Generated plots / scratch
 out/
 
-# Mac-native binaries — the image rebuilds openvaf-ir for Linux from source
-bin/openvaf-r
+# Mac-native binary — the image rebuilds openvaf-ir for Linux from source
 bin/openvaf-ir
 
-# Mac-native compiled device models — regenerated for Linux at image warmup
+# Compiled device models + content-hash JAX cache — regenerated on first use
+# (cx.va / warmup.py); never source, always derived.
 models/*.osdi
-models/__jax__/*.osdi
+models/*.osdi.meta.json
+models/__jax__/
 
 # Local/user runtime state
 webapp/uploads/
@@ -20,6 +21,7 @@ webapp/models_user/
 **/__pycache__/
 *.pyc
 *.pyo
+.pytest_cache/
 .DS_Store
 .vscode/
 .idea/
@@ -27,3 +29,9 @@ webapp/models_user/
 
 # Python build artifact
 *.egg-info/
+
+# Local Claude Code settings (per-machine, not shared)
+.claude/settings.local.json
+
+# Auto Claude data directory
+.auto-claude/

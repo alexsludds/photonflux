@@ -1,6 +1,7 @@
 {
-  "title": "06 \u2014 SKY130 NFET flavors: bandwidth / f_T (fixture-free |h21|)",
+  "title": "SKY130 NFET f_T",
   "group": "SKY130 transistors",
+  "description": "SKY130 NFET flavors: bandwidth / f_T (fixture-free |h21|)",
   "schematic": {
     "instances": {
       "MN1": {

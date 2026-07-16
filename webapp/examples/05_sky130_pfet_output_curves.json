@@ -1,6 +1,7 @@
 {
-  "title": "05 \u2014 SKY130 PFET flavors: output curves (Id\u2013Vds, stepped Vgs, 3rd quadrant)",
+  "title": "SKY130 PFET output curves",
   "group": "SKY130 transistors",
+  "description": "SKY130 PFET flavors: output curves (Id–Vds, stepped Vgs, 3rd quadrant)",
   "schematic": {
     "instances": {
       "VD1": {

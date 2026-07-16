@@ -1,12 +1,12 @@
 {
-  "title": "02 \u2014 MZM link with NMOS driver",
+  "title": "MZM link with NMOS driver",
   "group": "Links & receivers",
   "schematic": {
     "instances": {
       "LAS1": {
         "type": "cw_laser",
-        "x": 40,
-        "y": 180,
+        "x": 60,
+        "y": 280,
         "rot": 0,
         "settings": {
           "wavelength_nm": 1310.0,
@@ -15,8 +15,8 @@
       },
       "MZM1": {
         "type": "mzm",
-        "x": 300,
-        "y": 170,
+        "x": 260,
+        "y": 270,
         "rot": 0,
         "settings": {
           "vpi": 3.3,
@@ -27,8 +27,8 @@
       },
       "FIB1": {
         "type": "waveguide",
-        "x": 460,
-        "y": 190,
+        "x": 430,
+        "y": 290,
         "rot": 0,
         "settings": {
           "length_m": 0.0015,
@@ -39,22 +39,22 @@
       },
       "PD1": {
         "type": "photodiode",
-        "x": 580,
-        "y": 180,
+        "x": 570,
+        "y": 280,
         "rot": 0,
         "settings": {}
       },
       "OA1": {
         "type": "opamp",
-        "x": 700,
-        "y": 180,
+        "x": 730,
+        "y": 280,
         "rot": 0,
         "settings": {}
       },
       "RF1": {
         "type": "resistor",
-        "x": 680,
-        "y": 120,
+        "x": 730,
+        "y": 220,
         "rot": 0,
         "settings": {
           "R": 1000.0
@@ -62,8 +62,8 @@
       },
       "V1": {
         "type": "vdc",
-        "x": 300,
-        "y": 180,
+        "x": 390,
+        "y": 150,
         "rot": 180,
         "settings": {
           "V": 3.3
@@ -71,18 +71,18 @@
       },
       "RB1": {
         "type": "resistor",
-        "x": 310,
-        "y": 290,
-        "rot": 90,
+        "x": 350,
+        "y": 220,
+        "rot": 180,
         "settings": {
           "R": 300.0
         }
       },
       "VIN1": {
         "type": "vpulse",
-        "x": 150,
-        "y": 320,
-        "rot": 90,
+        "x": 110,
+        "y": 170,
+        "rot": 0,
         "settings": {
           "v1": 0.0,
           "v2": 3.3,
@@ -95,9 +95,10 @@
       },
       "MN1": {
         "type": "nmos",
-        "x": 280,
-        "y": 350,
-        "rot": 0,
+        "x": 270,
+        "y": 170,
+        "rot": 180,
+        "flip": true,
         "settings": {
           "W": 0.0006,
           "L": 5e-07,
@@ -107,170 +108,98 @@
       },
       "CD1": {
         "type": "capacitor",
-        "x": 390,
-        "y": 374,
-        "rot": 90,
+        "x": 160,
+        "y": 205,
+        "rot": 180,
         "settings": {
           "C": 5e-14
         }
       },
       "GND1": {
         "type": "ground",
-        "x": 60,
-        "y": 264,
+        "x": 80,
+        "y": 340,
         "rot": 0,
         "settings": {}
       },
       "GND2": {
         "type": "ground",
-        "x": 330,
-        "y": 274,
+        "x": 290,
+        "y": 350,
         "rot": 0,
         "settings": {}
       },
       "GND3": {
         "type": "ground",
-        "x": 590,
-        "y": 290,
+        "x": 600,
+        "y": 350,
         "rot": 0,
         "settings": {}
       },
       "GND4": {
         "type": "ground",
-        "x": 700,
-        "y": 300,
+        "x": 740,
+        "y": 360,
         "rot": 0,
         "settings": {}
       },
       "GND5": {
         "type": "ground",
-        "x": 300,
-        "y": 136,
-        "rot": 0,
+        "x": 390,
+        "y": 110,
+        "rot": 180,
         "settings": {}
       },
       "GND6": {
         "type": "ground",
-        "x": 300,
-        "y": 450,
-        "rot": 0,
+        "x": 290,
+        "y": 130,
+        "rot": 180,
         "settings": {}
       },
       "GND7": {
         "type": "ground",
-        "x": 440,
-        "y": 416,
+        "x": 140,
+        "y": 240,
+        "rot": 0,
+        "settings": {}
+      },
+      "GND8": {
+        "type": "ground",
+        "x": 90,
+        "y": 245,
         "rot": 0,
         "settings": {}
       }
     },
     "wires": [
-      {
-        "from": "LAS1,p1",
-        "to": "MZM1,pin"
-      },
-      {
-        "from": "MZM1,pout",
-        "to": "FIB1,p1"
-      },
-      {
-        "from": "FIB1,p2",
-        "to": "PD1,po_p"
-      },
-      {
-        "from": "LAS1,p2",
-        "to": "GND1,p1"
-      },
-      {
-        "from": "MZM1,vn",
-        "to": "GND2,p1"
-      },
-      {
-        "from": "V1,p1",
-        "to": "RB1,p1"
-      },
-      {
-        "from": "RB1,p2",
-        "to": "MN1,d"
-      },
-      {
-        "from": "MN1,d",
-        "to": "MZM1,vp"
-      },
-      {
-        "from": "MN1,d",
-        "to": "CD1,p1"
-      },
-      {
-        "from": "VIN1,p1",
-        "to": "MN1,g"
-      },
-      {
-        "from": "V1,p2",
-        "to": "GND5,p1"
-      },
-      {
-        "from": "VIN1,p2",
-        "to": "GND5,p1"
-      },
-      {
-        "from": "MN1,s",
-        "to": "GND6,p1"
-      },
-      {
-        "from": "CD1,p2",
-        "to": "GND7,p1"
-      },
-      {
-        "from": "PD1,po_n",
-        "to": "GND3,p1"
-      },
-      {
-        "from": "PD1,an",
-        "to": "GND3,p1"
-      },
-      {
-        "from": "PD1,cat",
-        "to": "OA1,in_m"
-      },
-      {
-        "from": "PD1,cat",
-        "to": "RF1,p1"
-      },
-      {
-        "from": "OA1,out_p",
-        "to": "RF1,p2"
-      },
-      {
-        "from": "OA1,in_p",
-        "to": "GND4,p1"
-      },
-      {
-        "from": "OA1,out_m",
-        "to": "GND4,p1"
-      }
+      { "from": "LAS1,p1", "to": "MZM1,pin" },
+      { "from": "MZM1,pout", "to": "FIB1,p1" },
+      { "from": "FIB1,p2", "to": "PD1,po_p" },
+      { "from": "LAS1,p2", "to": "GND1,p1" },
+      { "from": "MZM1,vn", "to": "GND2,p1" },
+      { "from": "V1,p1", "to": "RB1,p1" },
+      { "from": "RB1,p2", "to": "MN1,d" },
+      { "from": "MN1,d", "to": "MZM1,vp" },
+      { "from": "MN1,d", "to": "CD1,p1" },
+      { "from": "VIN1,p1", "to": "MN1,g" },
+      { "from": "V1,p2", "to": "GND5,p1" },
+      { "from": "VIN1,p2", "to": "GND8,p1" },
+      { "from": "MN1,s", "to": "GND6,p1" },
+      { "from": "CD1,p2", "to": "GND7,p1" },
+      { "from": "PD1,po_n", "to": "GND3,p1" },
+      { "from": "PD1,an", "to": "GND3,p1" },
+      { "from": "OA1,in_m", "to": "RF1,p1" },
+      { "from": "PD1,cat", "to": "OA1,in_m" },
+      { "from": "OA1,out_p", "to": "RF1,p2" },
+      { "from": "OA1,in_p", "to": "GND4,p1" },
+      { "from": "OA1,out_m", "to": "GND4,p1" }
     ],
     "probes": [
-      {
-        "name": "vin",
-        "at": "VIN1,p1",
-        "color": "#8a8aa3"
-      },
-      {
-        "name": "vdrv",
-        "at": "MN1,d",
-        "color": "#f87171"
-      },
-      {
-        "name": "popt_rx",
-        "at": "PD1,po_p",
-        "color": "#fbbf24"
-      },
-      {
-        "name": "vout",
-        "at": "OA1,out_p",
-        "color": "#6ecbf5"
-      }
+      { "name": "vin", "at": "VIN1,p1", "color": "#8a8aa3" },
+      { "name": "vdrv", "at": "MN1,d", "color": "#f87171" },
+      { "name": "popt_rx", "at": "PD1,po_p", "color": "#fbbf24" },
+      { "name": "vout", "at": "OA1,out_p", "color": "#6ecbf5" }
     ]
   },
   "analysis": {

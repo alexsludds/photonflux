@@ -1,298 +1,299 @@
 {
- "title": "31 — CMOS Schmitt trigger (6T): triangle in, square out — rising and falling thresholds split by the feedback pair",
- "group": "Electronics — digital",
- "schematic": {
-  "instances": {
-   "VDD": {
-    "type": "vdc",
-    "x": 60,
-    "y": 40,
-    "rot": 0,
-    "settings": {
-     "V": 3.3
-    }
-   },
-   "GDD": {
-    "type": "ground",
-    "x": 140,
-    "y": 40,
-    "rot": 0,
-    "settings": {}
-   },
-   "VIN": {
-    "type": "vpulse",
-    "x": 40,
-    "y": 300,
-    "rot": 0,
-    "settings": {
-     "v1": 0.0,
-     "v2": 3.3,
-     "td": 5e-09,
-     "tr": 2e-07,
-     "tf": 2e-07,
-     "pw": 1e-09,
-     "per": 4.02e-07
-    }
-   },
-   "GIN": {
-    "type": "ground",
-    "x": 40,
-    "y": 400,
-    "rot": 0,
-    "settings": {}
-   },
-   "MP1": {
-    "type": "pmos",
-    "x": 300,
-    "y": 100,
-    "rot": 0,
-    "settings": {
-     "Kp": 1e-05,
-     "W": 2e-05,
-     "L": 1e-06,
-     "Vth": -1.0,
-     "lam": 0.0
-    }
-   },
-   "MP2": {
-    "type": "pmos",
-    "x": 300,
-    "y": 220,
-    "rot": 0,
-    "settings": {
-     "Kp": 1e-05,
-     "W": 2e-05,
-     "L": 1e-06,
-     "Vth": -1.0,
-     "lam": 0.0
-    }
-   },
-   "MPF": {
-    "type": "pmos",
-    "x": 480,
-    "y": 160,
-    "rot": 0,
-    "settings": {
-     "Kp": 1e-05,
-     "W": 4e-05,
-     "L": 1e-06,
-     "Vth": -1.0,
-     "lam": 0.0
-    }
-   },
-   "GPF": {
-    "type": "ground",
-    "x": 480,
-    "y": 260,
-    "rot": 0,
-    "settings": {}
-   },
-   "MN2": {
-    "type": "nmos",
-    "x": 300,
-    "y": 340,
-    "rot": 0,
-    "settings": {
-     "Kp": 2e-05,
-     "W": 1e-05,
-     "L": 1e-06,
-     "Vth": 1.0,
-     "lam": 0.0
-    }
-   },
-   "MN1": {
-    "type": "nmos",
-    "x": 300,
-    "y": 460,
-    "rot": 0,
-    "settings": {
-     "Kp": 2e-05,
-     "W": 1e-05,
-     "L": 1e-06,
-     "Vth": 1.0,
-     "lam": 0.0
-    }
-   },
-   "GN1": {
-    "type": "ground",
-    "x": 300,
-    "y": 570,
-    "rot": 0,
-    "settings": {}
-   },
-   "MNF": {
-    "type": "nmos",
-    "x": 480,
-    "y": 400,
-    "rot": 0,
-    "settings": {
-     "Kp": 2e-05,
-     "W": 2e-05,
-     "L": 1e-06,
-     "Vth": 1.0,
-     "lam": 0.0
-    }
-   },
-   "CO": {
-    "type": "capacitor",
-    "x": 640,
-    "y": 280,
-    "rot": 0,
-    "settings": {
-     "C": 2e-14
-    }
-   },
-   "GCO": {
-    "type": "ground",
-    "x": 640,
-    "y": 380,
-    "rot": 0,
-    "settings": {}
-   },
-   "CPX": {
-    "type": "capacitor",
-    "x": 160,
-    "y": 160,
-    "rot": 0,
-    "settings": {
-     "C": 2e-15
-    }
-   },
-   "GPX": {
-    "type": "ground",
-    "x": 160,
-    "y": 260,
-    "rot": 0,
-    "settings": {}
-   },
-   "CNX": {
-    "type": "capacitor",
-    "x": 160,
-    "y": 400,
-    "rot": 0,
-    "settings": {
-     "C": 2e-15
-    }
-   },
-   "GNX": {
-    "type": "ground",
-    "x": 160,
-    "y": 500,
-    "rot": 0,
-    "settings": {}
-   }
+  "title": "Schmitt trigger",
+  "group": "Electronics — digital",
+  "description": "CMOS Schmitt trigger (6T): triangle in, square out — rising and falling thresholds split by the feedback pair",
+  "schematic": {
+    "instances": {
+      "VDD": {
+        "type": "vdc",
+        "x": 60,
+        "y": 40,
+        "rot": 0,
+        "settings": {
+          "V": 3.3
+        }
+      },
+      "GDD": {
+        "type": "ground",
+        "x": 140,
+        "y": 40,
+        "rot": 0,
+        "settings": {}
+      },
+      "VIN": {
+        "type": "vpulse",
+        "x": 40,
+        "y": 300,
+        "rot": 0,
+        "settings": {
+          "v1": 0.0,
+          "v2": 3.3,
+          "td": 5e-09,
+          "tr": 2e-07,
+          "tf": 2e-07,
+          "pw": 1e-09,
+          "per": 4.02e-07
+        }
+      },
+      "GIN": {
+        "type": "ground",
+        "x": 40,
+        "y": 400,
+        "rot": 0,
+        "settings": {}
+      },
+      "MP1": {
+        "type": "pmos",
+        "x": 300,
+        "y": 100,
+        "rot": 0,
+        "settings": {
+          "Kp": 1e-05,
+          "W": 2e-05,
+          "L": 1e-06,
+          "Vth": -1.0,
+          "lam": 0.0
+        }
+      },
+      "MP2": {
+        "type": "pmos",
+        "x": 300,
+        "y": 220,
+        "rot": 0,
+        "settings": {
+          "Kp": 1e-05,
+          "W": 2e-05,
+          "L": 1e-06,
+          "Vth": -1.0,
+          "lam": 0.0
+        }
+      },
+      "MPF": {
+        "type": "pmos",
+        "x": 480,
+        "y": 160,
+        "rot": 0,
+        "settings": {
+          "Kp": 1e-05,
+          "W": 4e-05,
+          "L": 1e-06,
+          "Vth": -1.0,
+          "lam": 0.0
+        }
+      },
+      "GPF": {
+        "type": "ground",
+        "x": 480,
+        "y": 260,
+        "rot": 0,
+        "settings": {}
+      },
+      "MN2": {
+        "type": "nmos",
+        "x": 300,
+        "y": 340,
+        "rot": 0,
+        "settings": {
+          "Kp": 2e-05,
+          "W": 1e-05,
+          "L": 1e-06,
+          "Vth": 1.0,
+          "lam": 0.0
+        }
+      },
+      "MN1": {
+        "type": "nmos",
+        "x": 300,
+        "y": 460,
+        "rot": 0,
+        "settings": {
+          "Kp": 2e-05,
+          "W": 1e-05,
+          "L": 1e-06,
+          "Vth": 1.0,
+          "lam": 0.0
+        }
+      },
+      "GN1": {
+        "type": "ground",
+        "x": 300,
+        "y": 570,
+        "rot": 0,
+        "settings": {}
+      },
+      "MNF": {
+        "type": "nmos",
+        "x": 480,
+        "y": 400,
+        "rot": 0,
+        "settings": {
+          "Kp": 2e-05,
+          "W": 2e-05,
+          "L": 1e-06,
+          "Vth": 1.0,
+          "lam": 0.0
+        }
+      },
+      "CO": {
+        "type": "capacitor",
+        "x": 640,
+        "y": 280,
+        "rot": 0,
+        "settings": {
+          "C": 2e-14
+        }
+      },
+      "GCO": {
+        "type": "ground",
+        "x": 640,
+        "y": 380,
+        "rot": 0,
+        "settings": {}
+      },
+      "CPX": {
+        "type": "capacitor",
+        "x": 160,
+        "y": 160,
+        "rot": 0,
+        "settings": {
+          "C": 2e-15
+        }
+      },
+      "GPX": {
+        "type": "ground",
+        "x": 160,
+        "y": 260,
+        "rot": 0,
+        "settings": {}
+      },
+      "CNX": {
+        "type": "capacitor",
+        "x": 160,
+        "y": 400,
+        "rot": 0,
+        "settings": {
+          "C": 2e-15
+        }
+      },
+      "GNX": {
+        "type": "ground",
+        "x": 160,
+        "y": 500,
+        "rot": 0,
+        "settings": {}
+      }
+    },
+    "wires": [
+      {
+        "from": "VDD,p2",
+        "to": "GDD,p1"
+      },
+      {
+        "from": "VIN,p2",
+        "to": "GIN,p1"
+      },
+      {
+        "from": "VDD,p1",
+        "to": "MP1,s"
+      },
+      {
+        "from": "MP1,d",
+        "to": "MP2,s"
+      },
+      {
+        "from": "MP2,d",
+        "to": "MN2,d"
+      },
+      {
+        "from": "MN2,s",
+        "to": "MN1,d"
+      },
+      {
+        "from": "MN1,s",
+        "to": "GN1,p1"
+      },
+      {
+        "from": "VIN,p1",
+        "to": "MP1,g"
+      },
+      {
+        "from": "VIN,p1",
+        "to": "MP2,g"
+      },
+      {
+        "from": "VIN,p1",
+        "to": "MN1,g"
+      },
+      {
+        "from": "VIN,p1",
+        "to": "MN2,g"
+      },
+      {
+        "from": "MPF,s",
+        "to": "MP1,d"
+      },
+      {
+        "from": "MPF,g",
+        "to": "MP2,d"
+      },
+      {
+        "from": "MPF,d",
+        "to": "GPF,p1"
+      },
+      {
+        "from": "MNF,s",
+        "to": "MN2,s"
+      },
+      {
+        "from": "MNF,g",
+        "to": "MP2,d"
+      },
+      {
+        "from": "MNF,d",
+        "to": "VDD,p1"
+      },
+      {
+        "from": "MP2,d",
+        "to": "CO,p1"
+      },
+      {
+        "from": "CO,p2",
+        "to": "GCO,p1"
+      },
+      {
+        "from": "MP1,d",
+        "to": "CPX,p1"
+      },
+      {
+        "from": "CPX,p2",
+        "to": "GPX,p1"
+      },
+      {
+        "from": "MN2,s",
+        "to": "CNX,p1"
+      },
+      {
+        "from": "CNX,p2",
+        "to": "GNX,p1"
+      }
+    ],
+    "probes": [
+      {
+        "name": "vin",
+        "at": "MP1,g",
+        "color": "#6ecbf5"
+      },
+      {
+        "name": "vout",
+        "at": "MP2,d",
+        "color": "#e6862c"
+      }
+    ]
   },
-  "wires": [
-   {
-    "from": "VDD,p2",
-    "to": "GDD,p1"
-   },
-   {
-    "from": "VIN,p2",
-    "to": "GIN,p1"
-   },
-   {
-    "from": "VDD,p1",
-    "to": "MP1,s"
-   },
-   {
-    "from": "MP1,d",
-    "to": "MP2,s"
-   },
-   {
-    "from": "MP2,d",
-    "to": "MN2,d"
-   },
-   {
-    "from": "MN2,s",
-    "to": "MN1,d"
-   },
-   {
-    "from": "MN1,s",
-    "to": "GN1,p1"
-   },
-   {
-    "from": "VIN,p1",
-    "to": "MP1,g"
-   },
-   {
-    "from": "VIN,p1",
-    "to": "MP2,g"
-   },
-   {
-    "from": "VIN,p1",
-    "to": "MN1,g"
-   },
-   {
-    "from": "VIN,p1",
-    "to": "MN2,g"
-   },
-   {
-    "from": "MPF,s",
-    "to": "MP1,d"
-   },
-   {
-    "from": "MPF,g",
-    "to": "MP2,d"
-   },
-   {
-    "from": "MPF,d",
-    "to": "GPF,p1"
-   },
-   {
-    "from": "MNF,s",
-    "to": "MN2,s"
-   },
-   {
-    "from": "MNF,g",
-    "to": "MP2,d"
-   },
-   {
-    "from": "MNF,d",
-    "to": "VDD,p1"
-   },
-   {
-    "from": "MP2,d",
-    "to": "CO,p1"
-   },
-   {
-    "from": "CO,p2",
-    "to": "GCO,p1"
-   },
-   {
-    "from": "MP1,d",
-    "to": "CPX,p1"
-   },
-   {
-    "from": "CPX,p2",
-    "to": "GPX,p1"
-   },
-   {
-    "from": "MN2,s",
-    "to": "CNX,p1"
-   },
-   {
-    "from": "CNX,p2",
-    "to": "GNX,p1"
-   }
-  ],
-  "probes": [
-   {
-    "name": "vin",
-    "at": "MP1,g",
-    "color": "#6ecbf5"
-   },
-   {
-    "name": "vout",
-    "at": "MP2,d",
-    "color": "#e6862c"
-   }
-  ]
- },
- "analysis": {
-  "mode": "transient",
-  "t_stop": 8.1e-07,
-  "points": 4000,
-  "solver": "bdf2"
- }
+  "analysis": {
+    "mode": "transient",
+    "t_stop": 8.1e-07,
+    "points": 4000,
+    "solver": "bdf2"
+  }
 }

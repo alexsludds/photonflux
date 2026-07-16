@@ -1,12 +1,17 @@
-"""Toolchain discovery: openvaf-r, libngspice, include dir, SKY130 PDK.
+"""Toolchain discovery for the circulax flow: openvaf-ir, VA includes,
+libngspice (SKY130 card extraction only), and the SKY130 PDK.
 
 Everything is overridable via environment variables:
 
-  PHOTONFLUX_OPENVAF     path to the openvaf-r binary
+  PHOTONFLUX_OPENVAF_IR  path to the openvaf-ir binary (ChipFlow OpenVAF fork)
   PHOTONFLUX_INCLUDE     Verilog-A include directory (discipline.h, ...)
-  NGSPICE_LIBRARY_PATH   libngspice shared library
+  NGSPICE_LIBRARY_PATH   libngspice shared library (PDK card extraction)
   SKY130_NGSPICE_LIB     sky130.lib.spice (wins over PDK_ROOT / volare)
   PDK_ROOT               open_pdks-style root containing sky130A/
+
+Note: libngspice is used *only* to have ngspice parse the SKY130 PDK and hand
+back resolved BSIM4 model cards (``cx.sky130_card``). There is no ngspice
+simulation flow — every circuit is solved by circulax (JAX). See ``cx.py``.
 """
 from __future__ import annotations
 
@@ -22,11 +27,16 @@ MODELS_DIR = REPO / "models"
 OUT_DIR = REPO / "out"
 
 
-def openvaf_path() -> Path:
-    env = os.environ.get("PHOTONFLUX_OPENVAF")
+def openvaf_ir_path() -> Path:
+    """The ChipFlow-fork openvaf binary used to compile Verilog-A to OSDI.
+
+    Override with ``PHOTONFLUX_OPENVAF_IR``. Built from
+    github.com/robtaylor/OpenVAF (branch ``vajax``); see the README.
+    """
+    env = os.environ.get("PHOTONFLUX_OPENVAF_IR")
     if env:
         return Path(env)
-    return REPO / "bin" / "openvaf-r"
+    return REPO / "bin" / "openvaf-ir"
 
 
 def include_dir() -> Path:
@@ -36,9 +46,10 @@ def include_dir() -> Path:
     return REPO / "include"
 
 
-def openvaf_version() -> str:
+def openvaf_ir_version() -> str:
     out = subprocess.run(
-        [str(openvaf_path()), "--version"], capture_output=True, text=True, timeout=30
+        [str(openvaf_ir_path()), "--version"],
+        capture_output=True, text=True, timeout=30,
     )
     return out.stdout.strip() or out.stderr.strip()
 
@@ -74,17 +85,17 @@ class Check:
 
 
 def doctor() -> list[Check]:
-    """Verify every prerequisite of the co-sim flow on this machine."""
+    """Verify every prerequisite of the circulax flow on this machine."""
     checks: list[Check] = []
 
-    p = openvaf_path()
+    p = openvaf_ir_path()
     if p.exists():
         try:
-            checks.append(Check("openvaf-r", True, f"{p}  ({openvaf_version()})"))
+            checks.append(Check("openvaf-ir", True, f"{p}  ({openvaf_ir_version()})"))
         except Exception as e:  # binary exists but does not run
-            checks.append(Check("openvaf-r", False, f"{p} exists but failed: {e}"))
+            checks.append(Check("openvaf-ir", False, f"{p} exists but failed: {e}"))
     else:
-        checks.append(Check("openvaf-r", False, f"missing {p}; build it (see README)"))
+        checks.append(Check("openvaf-ir", False, f"missing {p}; build it (see README)"))
 
     inc = include_dir()
     have = {f.name for f in inc.glob("*.h")} if inc.is_dir() else set()

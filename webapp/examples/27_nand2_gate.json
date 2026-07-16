@@ -1,252 +1,253 @@
 {
- "title": "27 — CMOS NAND2: A at 25 MHz, B at 12.5 MHz walk the truth table — out is low only when both inputs are high",
- "group": "Electronics — digital",
- "schematic": {
-  "instances": {
-   "VDD": {
-    "type": "vdc",
-    "x": 340,
-    "y": 40,
-    "rot": 0,
-    "settings": {
-     "V": 3.3
-    }
-   },
-   "GDD": {
-    "type": "ground",
-    "x": 420,
-    "y": 40,
-    "rot": 0,
-    "settings": {}
-   },
-   "VA": {
-    "type": "vpulse",
-    "x": 40,
-    "y": 160,
-    "rot": 0,
-    "settings": {
-     "v1": 0.0,
-     "v2": 3.3,
-     "td": 1e-09,
-     "tr": 5e-10,
-     "tf": 5e-10,
-     "pw": 1.95e-08,
-     "per": 4e-08
-    }
-   },
-   "GA": {
-    "type": "ground",
-    "x": 40,
-    "y": 260,
-    "rot": 0,
-    "settings": {}
-   },
-   "VB": {
-    "type": "vpulse",
-    "x": 40,
-    "y": 360,
-    "rot": 0,
-    "settings": {
-     "v1": 0.0,
-     "v2": 3.3,
-     "td": 1e-09,
-     "tr": 5e-10,
-     "tf": 5e-10,
-     "pw": 3.95e-08,
-     "per": 8e-08
-    }
-   },
-   "GB": {
-    "type": "ground",
-    "x": 40,
-    "y": 460,
-    "rot": 0,
-    "settings": {}
-   },
-   "MPA": {
-    "type": "pmos",
-    "x": 260,
-    "y": 140,
-    "rot": 0,
-    "settings": {
-     "Kp": 1e-05,
-     "W": 2e-05,
-     "L": 1e-06,
-     "Vth": -1.0,
-     "lam": 0.0
-    }
-   },
-   "MPB": {
-    "type": "pmos",
-    "x": 420,
-    "y": 140,
-    "rot": 0,
-    "settings": {
-     "Kp": 1e-05,
-     "W": 2e-05,
-     "L": 1e-06,
-     "Vth": -1.0,
-     "lam": 0.0
-    }
-   },
-   "MNA": {
-    "type": "nmos",
-    "x": 340,
-    "y": 300,
-    "rot": 0,
-    "settings": {
-     "Kp": 2e-05,
-     "W": 1e-05,
-     "L": 1e-06,
-     "Vth": 1.0,
-     "lam": 0.0
-    }
-   },
-   "MNB": {
-    "type": "nmos",
-    "x": 340,
-    "y": 420,
-    "rot": 0,
-    "settings": {
-     "Kp": 2e-05,
-     "W": 1e-05,
-     "L": 1e-06,
-     "Vth": 1.0,
-     "lam": 0.0
-    }
-   },
-   "GN": {
-    "type": "ground",
-    "x": 340,
-    "y": 530,
-    "rot": 0,
-    "settings": {}
-   },
-   "CL": {
-    "type": "capacitor",
-    "x": 540,
-    "y": 240,
-    "rot": 0,
-    "settings": {
-     "C": 5e-14
-    }
-   },
-   "GC": {
-    "type": "ground",
-    "x": 540,
-    "y": 340,
-    "rot": 0,
-    "settings": {}
-   },
-   "CX": {
-    "type": "capacitor",
-    "x": 240,
-    "y": 380,
-    "rot": 0,
-    "settings": {
-     "C": 2e-15
-    }
-   },
-   "GX": {
-    "type": "ground",
-    "x": 240,
-    "y": 470,
-    "rot": 0,
-    "settings": {}
-   }
+  "title": "NAND2 gate",
+  "group": "Electronics — digital",
+  "description": "CMOS NAND2: A at 25 MHz, B at 12.5 MHz walk the truth table — out is low only when both inputs are high",
+  "schematic": {
+    "instances": {
+      "VDD": {
+        "type": "vdc",
+        "x": 340,
+        "y": 40,
+        "rot": 0,
+        "settings": {
+          "V": 3.3
+        }
+      },
+      "GDD": {
+        "type": "ground",
+        "x": 420,
+        "y": 40,
+        "rot": 0,
+        "settings": {}
+      },
+      "VA": {
+        "type": "vpulse",
+        "x": 40,
+        "y": 160,
+        "rot": 0,
+        "settings": {
+          "v1": 0.0,
+          "v2": 3.3,
+          "td": 1e-09,
+          "tr": 5e-10,
+          "tf": 5e-10,
+          "pw": 1.95e-08,
+          "per": 4e-08
+        }
+      },
+      "GA": {
+        "type": "ground",
+        "x": 40,
+        "y": 260,
+        "rot": 0,
+        "settings": {}
+      },
+      "VB": {
+        "type": "vpulse",
+        "x": 40,
+        "y": 360,
+        "rot": 0,
+        "settings": {
+          "v1": 0.0,
+          "v2": 3.3,
+          "td": 1e-09,
+          "tr": 5e-10,
+          "tf": 5e-10,
+          "pw": 3.95e-08,
+          "per": 8e-08
+        }
+      },
+      "GB": {
+        "type": "ground",
+        "x": 40,
+        "y": 460,
+        "rot": 0,
+        "settings": {}
+      },
+      "MPA": {
+        "type": "pmos",
+        "x": 260,
+        "y": 140,
+        "rot": 0,
+        "settings": {
+          "Kp": 1e-05,
+          "W": 2e-05,
+          "L": 1e-06,
+          "Vth": -1.0,
+          "lam": 0.0
+        }
+      },
+      "MPB": {
+        "type": "pmos",
+        "x": 420,
+        "y": 140,
+        "rot": 0,
+        "settings": {
+          "Kp": 1e-05,
+          "W": 2e-05,
+          "L": 1e-06,
+          "Vth": -1.0,
+          "lam": 0.0
+        }
+      },
+      "MNA": {
+        "type": "nmos",
+        "x": 340,
+        "y": 300,
+        "rot": 0,
+        "settings": {
+          "Kp": 2e-05,
+          "W": 1e-05,
+          "L": 1e-06,
+          "Vth": 1.0,
+          "lam": 0.0
+        }
+      },
+      "MNB": {
+        "type": "nmos",
+        "x": 340,
+        "y": 420,
+        "rot": 0,
+        "settings": {
+          "Kp": 2e-05,
+          "W": 1e-05,
+          "L": 1e-06,
+          "Vth": 1.0,
+          "lam": 0.0
+        }
+      },
+      "GN": {
+        "type": "ground",
+        "x": 340,
+        "y": 530,
+        "rot": 0,
+        "settings": {}
+      },
+      "CL": {
+        "type": "capacitor",
+        "x": 540,
+        "y": 240,
+        "rot": 0,
+        "settings": {
+          "C": 5e-14
+        }
+      },
+      "GC": {
+        "type": "ground",
+        "x": 540,
+        "y": 340,
+        "rot": 0,
+        "settings": {}
+      },
+      "CX": {
+        "type": "capacitor",
+        "x": 240,
+        "y": 380,
+        "rot": 0,
+        "settings": {
+          "C": 2e-15
+        }
+      },
+      "GX": {
+        "type": "ground",
+        "x": 240,
+        "y": 470,
+        "rot": 0,
+        "settings": {}
+      }
+    },
+    "wires": [
+      {
+        "from": "VDD,p1",
+        "to": "MPA,s"
+      },
+      {
+        "from": "VDD,p1",
+        "to": "MPB,s"
+      },
+      {
+        "from": "VDD,p2",
+        "to": "GDD,p1"
+      },
+      {
+        "from": "MPA,d",
+        "to": "MNA,d"
+      },
+      {
+        "from": "MPB,d",
+        "to": "MNA,d"
+      },
+      {
+        "from": "MNA,s",
+        "to": "MNB,d"
+      },
+      {
+        "from": "MNB,s",
+        "to": "GN,p1"
+      },
+      {
+        "from": "MNA,s",
+        "to": "CX,p1"
+      },
+      {
+        "from": "CX,p2",
+        "to": "GX,p1"
+      },
+      {
+        "from": "VA,p1",
+        "to": "MPA,g"
+      },
+      {
+        "from": "VA,p1",
+        "to": "MNA,g"
+      },
+      {
+        "from": "VA,p2",
+        "to": "GA,p1"
+      },
+      {
+        "from": "VB,p1",
+        "to": "MPB,g"
+      },
+      {
+        "from": "VB,p1",
+        "to": "MNB,g"
+      },
+      {
+        "from": "VB,p2",
+        "to": "GB,p1"
+      },
+      {
+        "from": "MNA,d",
+        "to": "CL,p1"
+      },
+      {
+        "from": "CL,p2",
+        "to": "GC,p1"
+      }
+    ],
+    "probes": [
+      {
+        "name": "va",
+        "at": "MPA,g",
+        "color": "#6ecbf5"
+      },
+      {
+        "name": "vb",
+        "at": "MPB,g",
+        "color": "#e6862c"
+      },
+      {
+        "name": "vout",
+        "at": "MNA,d",
+        "color": "#8fd18f"
+      }
+    ]
   },
-  "wires": [
-   {
-    "from": "VDD,p1",
-    "to": "MPA,s"
-   },
-   {
-    "from": "VDD,p1",
-    "to": "MPB,s"
-   },
-   {
-    "from": "VDD,p2",
-    "to": "GDD,p1"
-   },
-   {
-    "from": "MPA,d",
-    "to": "MNA,d"
-   },
-   {
-    "from": "MPB,d",
-    "to": "MNA,d"
-   },
-   {
-    "from": "MNA,s",
-    "to": "MNB,d"
-   },
-   {
-    "from": "MNB,s",
-    "to": "GN,p1"
-   },
-   {
-    "from": "MNA,s",
-    "to": "CX,p1"
-   },
-   {
-    "from": "CX,p2",
-    "to": "GX,p1"
-   },
-   {
-    "from": "VA,p1",
-    "to": "MPA,g"
-   },
-   {
-    "from": "VA,p1",
-    "to": "MNA,g"
-   },
-   {
-    "from": "VA,p2",
-    "to": "GA,p1"
-   },
-   {
-    "from": "VB,p1",
-    "to": "MPB,g"
-   },
-   {
-    "from": "VB,p1",
-    "to": "MNB,g"
-   },
-   {
-    "from": "VB,p2",
-    "to": "GB,p1"
-   },
-   {
-    "from": "MNA,d",
-    "to": "CL,p1"
-   },
-   {
-    "from": "CL,p2",
-    "to": "GC,p1"
-   }
-  ],
-  "probes": [
-   {
-    "name": "va",
-    "at": "MPA,g",
-    "color": "#6ecbf5"
-   },
-   {
-    "name": "vb",
-    "at": "MPB,g",
-    "color": "#e6862c"
-   },
-   {
-    "name": "vout",
-    "at": "MNA,d",
-    "color": "#8fd18f"
-   }
-  ]
- },
- "analysis": {
-  "mode": "transient",
-  "t_stop": 1.6e-07,
-  "points": 3200,
-  "solver": "bdf2"
- }
+  "analysis": {
+    "mode": "transient",
+    "t_stop": 1.6e-07,
+    "points": 3200,
+    "solver": "bdf2"
+  }
 }

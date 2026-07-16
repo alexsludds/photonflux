@@ -10,13 +10,13 @@ out/
 *.pyc
 *.pyo
 
-# Mac-native binaries — replaced by the Linux build / left out (unused by webapp)
-bin/openvaf-r
+# Mac-native binary — replaced by the Linux build inside the image
 bin/openvaf-ir
 
-# Mac-native compiled device models — regenerated for Linux during warmup
+# Compiled device models + JAX cache — regenerated for Linux during warmup
 models/*.osdi
-models/__jax__/*.osdi
+models/*.osdi.meta.json
+models/__jax__/
 
 # Local/user runtime state that must not ship in a public image
 webapp/uploads/

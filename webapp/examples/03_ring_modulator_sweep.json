@@ -1,6 +1,7 @@
 {
-  "title": "03 \u2014 Microring modulator DC tuning curve",
+  "title": "Microring modulator tuning",
   "group": "Lasers & modulators",
+  "description": "Microring modulator DC tuning curve",
   "schematic": {
     "instances": {
       "LAS1": {

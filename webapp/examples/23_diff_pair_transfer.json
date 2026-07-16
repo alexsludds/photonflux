@@ -1,193 +1,194 @@
 {
- "title": "23 — differential pair: tanh transfer, sweep V(in+) with the tail current stepped 0.1/0.2/0.4 mA",
- "group": "Electronics — analog",
- "schematic": {
-  "instances": {
-   "VDD": {
-    "type": "vdc",
-    "x": 340,
-    "y": 40,
-    "rot": 0,
-    "settings": {
-     "V": 5.0
-    }
-   },
-   "GDD": {
-    "type": "ground",
-    "x": 420,
-    "y": 40,
-    "rot": 0,
-    "settings": {}
-   },
-   "RD1": {
-    "type": "resistor",
-    "x": 240,
-    "y": 120,
-    "rot": 0,
-    "settings": {
-     "R": 7500.0
-    }
-   },
-   "RD2": {
-    "type": "resistor",
-    "x": 440,
-    "y": 120,
-    "rot": 0,
-    "settings": {
-     "R": 7500.0
-    }
-   },
-   "MN1": {
-    "type": "nmos",
-    "x": 240,
-    "y": 260,
-    "rot": 0,
-    "settings": {
-     "Kp": 2e-05,
-     "W": 0.0001,
-     "L": 1e-06,
-     "Vth": 1.0,
-     "lam": 0.0
-    }
-   },
-   "MN2": {
-    "type": "nmos",
-    "x": 440,
-    "y": 260,
-    "rot": 0,
-    "settings": {
-     "Kp": 2e-05,
-     "W": 0.0001,
-     "L": 1e-06,
-     "Vth": 1.0,
-     "lam": 0.0
-    }
-   },
-   "IT": {
-    "type": "idc",
-    "x": 340,
-    "y": 380,
-    "rot": 0,
-    "settings": {
-     "I": 0.0002
-    }
-   },
-   "GT": {
-    "type": "ground",
-    "x": 340,
-    "y": 470,
-    "rot": 0,
-    "settings": {}
-   },
-   "VIN": {
-    "type": "vdc",
-    "x": 60,
-    "y": 260,
-    "rot": 0,
-    "settings": {
-     "V": 2.5
-    }
-   },
-   "GI": {
-    "type": "ground",
-    "x": 60,
-    "y": 360,
-    "rot": 0,
-    "settings": {}
-   },
-   "VCM": {
-    "type": "vdc",
-    "x": 620,
-    "y": 260,
-    "rot": 0,
-    "settings": {
-     "V": 2.5
-    }
-   },
-   "GC": {
-    "type": "ground",
-    "x": 620,
-    "y": 360,
-    "rot": 0,
-    "settings": {}
-   }
+  "title": "Differential pair",
+  "group": "Electronics — analog",
+  "description": "differential pair: tanh transfer, sweep V(in+) with the tail current stepped 0.1/0.2/0.4 mA",
+  "schematic": {
+    "instances": {
+      "VDD": {
+        "type": "vdc",
+        "x": 340,
+        "y": 40,
+        "rot": 0,
+        "settings": {
+          "V": 5.0
+        }
+      },
+      "GDD": {
+        "type": "ground",
+        "x": 420,
+        "y": 40,
+        "rot": 0,
+        "settings": {}
+      },
+      "RD1": {
+        "type": "resistor",
+        "x": 240,
+        "y": 120,
+        "rot": 0,
+        "settings": {
+          "R": 7500.0
+        }
+      },
+      "RD2": {
+        "type": "resistor",
+        "x": 440,
+        "y": 120,
+        "rot": 0,
+        "settings": {
+          "R": 7500.0
+        }
+      },
+      "MN1": {
+        "type": "nmos",
+        "x": 240,
+        "y": 260,
+        "rot": 0,
+        "settings": {
+          "Kp": 2e-05,
+          "W": 0.0001,
+          "L": 1e-06,
+          "Vth": 1.0,
+          "lam": 0.0
+        }
+      },
+      "MN2": {
+        "type": "nmos",
+        "x": 440,
+        "y": 260,
+        "rot": 0,
+        "settings": {
+          "Kp": 2e-05,
+          "W": 0.0001,
+          "L": 1e-06,
+          "Vth": 1.0,
+          "lam": 0.0
+        }
+      },
+      "IT": {
+        "type": "idc",
+        "x": 340,
+        "y": 380,
+        "rot": 0,
+        "settings": {
+          "I": 0.0002
+        }
+      },
+      "GT": {
+        "type": "ground",
+        "x": 340,
+        "y": 470,
+        "rot": 0,
+        "settings": {}
+      },
+      "VIN": {
+        "type": "vdc",
+        "x": 60,
+        "y": 260,
+        "rot": 0,
+        "settings": {
+          "V": 2.5
+        }
+      },
+      "GI": {
+        "type": "ground",
+        "x": 60,
+        "y": 360,
+        "rot": 0,
+        "settings": {}
+      },
+      "VCM": {
+        "type": "vdc",
+        "x": 620,
+        "y": 260,
+        "rot": 0,
+        "settings": {
+          "V": 2.5
+        }
+      },
+      "GC": {
+        "type": "ground",
+        "x": 620,
+        "y": 360,
+        "rot": 0,
+        "settings": {}
+      }
+    },
+    "wires": [
+      {
+        "from": "VDD,p1",
+        "to": "RD1,p1"
+      },
+      {
+        "from": "VDD,p1",
+        "to": "RD2,p1"
+      },
+      {
+        "from": "VDD,p2",
+        "to": "GDD,p1"
+      },
+      {
+        "from": "RD1,p2",
+        "to": "MN1,d"
+      },
+      {
+        "from": "RD2,p2",
+        "to": "MN2,d"
+      },
+      {
+        "from": "VIN,p1",
+        "to": "MN1,g"
+      },
+      {
+        "from": "VIN,p2",
+        "to": "GI,p1"
+      },
+      {
+        "from": "VCM,p1",
+        "to": "MN2,g"
+      },
+      {
+        "from": "VCM,p2",
+        "to": "GC,p1"
+      },
+      {
+        "from": "MN1,s",
+        "to": "IT,p1"
+      },
+      {
+        "from": "MN2,s",
+        "to": "IT,p1"
+      },
+      {
+        "from": "IT,p2",
+        "to": "GT,p1"
+      }
+    ],
+    "probes": [
+      {
+        "name": "voutp",
+        "at": "MN1,d",
+        "color": "#6ecbf5"
+      },
+      {
+        "name": "voutn",
+        "at": "MN2,d",
+        "color": "#e6862c"
+      }
+    ]
   },
-  "wires": [
-   {
-    "from": "VDD,p1",
-    "to": "RD1,p1"
-   },
-   {
-    "from": "VDD,p1",
-    "to": "RD2,p1"
-   },
-   {
-    "from": "VDD,p2",
-    "to": "GDD,p1"
-   },
-   {
-    "from": "RD1,p2",
-    "to": "MN1,d"
-   },
-   {
-    "from": "RD2,p2",
-    "to": "MN2,d"
-   },
-   {
-    "from": "VIN,p1",
-    "to": "MN1,g"
-   },
-   {
-    "from": "VIN,p2",
-    "to": "GI,p1"
-   },
-   {
-    "from": "VCM,p1",
-    "to": "MN2,g"
-   },
-   {
-    "from": "VCM,p2",
-    "to": "GC,p1"
-   },
-   {
-    "from": "MN1,s",
-    "to": "IT,p1"
-   },
-   {
-    "from": "MN2,s",
-    "to": "IT,p1"
-   },
-   {
-    "from": "IT,p2",
-    "to": "GT,p1"
-   }
-  ],
-  "probes": [
-   {
-    "name": "voutp",
-    "at": "MN1,d",
-    "color": "#6ecbf5"
-   },
-   {
-    "name": "voutn",
-    "at": "MN2,d",
-    "color": "#e6862c"
-   }
-  ]
- },
- "analysis": {
-  "mode": "dcsweep",
-  "instance": "VIN",
-  "param": "V",
-  "start": 1.7,
-  "stop": 3.3,
-  "points": 161,
-  "step_instance": "IT",
-  "step_param": "I",
-  "step_values": [
-   0.0001,
-   0.0002,
-   0.0004
-  ]
- }
+  "analysis": {
+    "mode": "dcsweep",
+    "instance": "VIN",
+    "param": "V",
+    "start": 1.7,
+    "stop": 3.3,
+    "points": 161,
+    "step_instance": "IT",
+    "step_param": "I",
+    "step_values": [
+      0.0001,
+      0.0002,
+      0.0004
+    ]
+  }
 }

@@ -10,7 +10,7 @@ The conventions differ, which is the interesting part:
 
 * **photonflux** rides the *power* convention — an optical node voltage *is*
   the optical power in watts, and the photonics are compiled Verilog-A
-  (``models/photodiode.va``: ``Iph = R*V(popt)``) solved inside ngspice.
+  (``models/optical_power/photodiode.va``: ``Iph = R*V(popt)``) solved inside ngspice.
 
 * **circulax** is a *coherent-field* simulator — every optical node carries a
   complex field amplitude ``E``, and optical power is ``|E|^2``. The whole
@@ -25,7 +25,7 @@ the same ``build()`` is end-to-end differentiable — you could ``jax.grad`` the
 TIA output swing w.r.t. ``R``, ``Rf`` or the fibre loss for inverse design.
 
     python examples/photodiode_tia.py
-        -> out/circulax_photodiode_tia.png
+        -> out/photodiode_tia.png
 """
 from __future__ import annotations
 
@@ -57,7 +57,7 @@ P_OFF = 3e-3         # [W]
 P_ON = 18e-3         # [W]
 FIBER_LOSS_DB = 3.0  # 3 dB fibre, like ls.add_fiber(..., loss_db=3)
 
-OUT = Path(__file__).resolve().parents[1] / "out" / "circulax_photodiode_tia.png"
+OUT = Path(__file__).resolve().parents[1] / "out" / "photodiode_tia.png"
 
 
 # ===========================================================================
@@ -110,7 +110,7 @@ def Photodiode(
     Electrical side (``an``/``cat``): a photocurrent ``Iph = R*|E|^2 + Idk`` is
     sunk at the cathode and sourced at the anode (reverse photocurrent), with a
     junction capacitance ``Cj`` across the diode for the front-end bandwidth
-    pole. This is the ``Iph + Cj*ddt(V)`` of ``models/photodiode.va`` — here
+    pole. This is the ``Iph + Cj*ddt(V)`` of ``models/optical_power/photodiode.va`` — here
     ``|E|^2`` replaces the power-domain node voltage.
     """
     e = signals.po_p - signals.po_n            # complex optical field

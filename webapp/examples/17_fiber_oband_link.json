@@ -1,6 +1,7 @@
 {
-  "title": "17 \u2014 The same 25 Gb/s / 20 km link at 1311 nm: O-band (zero dispersion) re-opens the eye",
+  "title": "O-band fiber link",
   "group": "Channels & equalization",
+  "description": "The same 25 Gb/s / 20 km link at 1311 nm: O-band (zero dispersion) re-opens the eye",
   "schematic": {
     "instances": {
       "LAS1": {

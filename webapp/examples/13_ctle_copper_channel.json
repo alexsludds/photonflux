@@ -1,6 +1,7 @@
 {
-  "title": "13 \u2014 10 Gb/s over a lossy copper channel, equalized by a CTLE",
+  "title": "CTLE copper channel",
   "group": "Channels & equalization",
+  "description": "10 Gb/s over a lossy copper channel, equalized by a CTLE",
   "schematic": {
     "instances": {
       "PAT1": {

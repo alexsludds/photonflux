@@ -12,6 +12,6 @@ Notes:
 * The port marks "parameter not given" with in-band sentinels (`-12345789`
   for reals) and resolves defaults at runtime — the OSDI NaN-not-given
   mechanism drives that ladder exactly like ngspice's model setup.
-* Compile this file with `bin/openvaf-ir` (ChipFlow openvaf fork), **not**
-  `bin/openvaf-r` — the latter miscompiles it to OSDI (segfault in
-  setup_model).
+* Compile this file with `bin/openvaf-ir` (the ChipFlow openvaf fork). The
+  stock OpenVAF-Reloaded miscompiles it to OSDI (segfault in `setup_model`),
+  which is why the fork is the only OpenVAF the project ships.

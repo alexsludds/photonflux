@@ -22,7 +22,9 @@ Example: `feature/gra-12-add-supabase-sync`
 
 ## Pull Requests
 
-Create with `gh pr create`. PR body must include:
+Create with `gh pr create`. Mark PRs **ready for review by default** — do
+not pass `--draft` unless the work is explicitly incomplete or the user asks
+for a draft. PR body must include:
 - Summary of changes
 - Verification: `bun run build` result, files changed
 - Link to the Linear issue

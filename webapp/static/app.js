@@ -1660,7 +1660,8 @@ function eyeTraceOptions() {
 let eyeInit = false;
 function renderEye() {
   const hint = $("eye-hint"), canvas = $("eye-canvas"),
-        ctrls = $("eye-controls"), sel = $("eye-trace");
+        ctrls = $("eye-controls"), sel = $("eye-trace"),
+        swSel = $("eye-sweep"), swWrap = $("eye-sweep-wrap");
   const names = eyeTraceOptions();
   const usable = names.length > 0;
   hint.hidden = usable;
@@ -1680,6 +1681,7 @@ function renderEye() {
       $(id).addEventListener("change", renderEye));
     $("eye-mod").addEventListener("change", renderEye);
     sel.addEventListener("change", renderEye);
+    swSel.addEventListener("change", renderEye);
   }
   const prev = sel.value;
   sel.innerHTML = names.map((n) => `<option>${n}</option>`).join("");
@@ -1688,7 +1690,30 @@ function renderEye() {
   const fam = visibleTraces(lastResult.traces)
     .filter((q) => (q.probe || q.name) === sel.value);
   if (!fam.length) return;
-  const tr = fam[0];
+
+  // parameter sweep: overlay every swept eye, or isolate a single value.
+  // Merged sweep traces are named "<probe> @ <label>" (see _merge_run); the
+  // shared `probe` otherwise pools them all together, so group by that label.
+  const labelOf = (q) => {
+    const nm = q.name || "";
+    const i = nm.indexOf(" @ ");
+    return i >= 0 ? nm.slice(i + 3) : null;
+  };
+  const labels = [...new Set(fam.map(labelOf).filter(Boolean))];
+  const isSweep = !!lastResult.sweep_overlay && labels.length > 1;
+  swWrap.hidden = !isSweep;
+  if (isSweep) {
+    const prevSw = swSel.value;
+    swSel.innerHTML = '<option value="__all__">overlay all</option>'
+      + labels.map((l) => `<option value="${l}">${l}</option>`).join("");
+    swSel.value = (prevSw === "__all__" || labels.includes(prevSw))
+      ? prevSw : "__all__";
+  }
+  const shown = (isSweep && swSel.value !== "__all__")
+    ? fam.filter((q) => labelOf(q) === swSel.value)
+    : fam;
+  if (!shown.length) return;
+  const tr = shown[0];
   const t = lastResult.x;
   const ui = parseSI($("eye-ui").value);
   if (!(ui > 0) || t.length < 8) return;
@@ -1706,7 +1731,7 @@ function renderEye() {
     $("eye-metrics").textContent = "record too short for this UI";
     return;
   }
-  const records = fam.map((q) => {
+  const records = shown.map((q) => {
     const v = q.values;
     const ys = new Float64Array(n);
     let j = 0;
@@ -1735,10 +1760,15 @@ function renderEye() {
   const px = (k) => (k / span) * W;
   const py = (y) => H - ((y - lo) / (hi - lo)) * H;
   const alpha = Math.max(0.03, 0.10 / Math.sqrt(records.length));
-  ctx.strokeStyle = tr.domain === "optical"
-    ? `rgba(255,183,77,${alpha})` : `rgba(110,203,245,${alpha})`;
+  // overlaying several swept values: tint each eye with its plot colour so the
+  // families stay distinguishable; otherwise use the flat per-domain hue.
+  const perSweep = isSweep && swSel.value === "__all__";
+  const domHue = tr.domain === "optical"
+    ? "rgb(255,183,77)" : "rgb(110,203,245)";
   ctx.lineWidth = 1;
-  for (const ys of records) {
+  ctx.globalAlpha = alpha;
+  records.forEach((ys, ri) => {
+    ctx.strokeStyle = perSweep ? traceStroke(shown[ri]) : domHue;
     for (let i = 0; i + 1 < n; i++) {
       const k = i % osr;                      // phase within one UI
       for (const rep of [0, osr]) {           // draw into both UI windows
@@ -1748,7 +1778,8 @@ function renderEye() {
         ctx.stroke();
       }
     }
-  }
+  });
+  ctx.globalAlpha = 1;
   // UI gridlines + centre markers
   ctx.strokeStyle = "rgba(255,255,255,0.18)";
   ctx.setLineDash([4, 5]);
@@ -1805,7 +1836,11 @@ function renderEye() {
   const widthUI = Math.min(best, osr) / osr;
 
   const unit = tr.unit || "";
-  $("eye-metrics").textContent =
+  // note whether these metrics pool several swept eyes or describe just one
+  const swNote = isSweep
+    ? (perSweep ? `${records.length} eyes overlaid  |  ` : `${swSel.value}  |  `)
+    : "";
+  $("eye-metrics").textContent = swNote +
     `levels: ${km.levels.map((x) => fmtSI(x)).join(" / ")} ${unit}` +
     `  |  eye height: ${eyes.map((h) => fmtSI(h)).join(" / ")} ${unit}` +
     `  |  width: ${(widthUI * 100).toFixed(0)}% UI` +

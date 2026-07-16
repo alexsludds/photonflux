@@ -112,6 +112,48 @@ body { display: flex; flex-direction: column; }
 .insp-btns button:hover { border-color: var(--accent); }
 .insp-btns button.danger:hover { border-color: var(--err); color: var(--err); }
 
+.insp-va-btn {
+  display: block; width: 100%; margin: 10px 0 0;
+  background: var(--panel2); color: var(--text);
+  border: 1px solid var(--border); border-radius: 4px;
+  padding: 6px; font: inherit; cursor: pointer;
+}
+.insp-va-btn:hover { border-color: var(--accent); color: var(--accent2); }
+
+/* ---------------- modal (Verilog-A source viewer) ---------------- */
+.modal-backdrop {
+  position: fixed; inset: 0; z-index: 1000;
+  background: rgba(0, 0, 0, 0.55);
+  display: flex; align-items: center; justify-content: center;
+}
+.modal {
+  display: flex; flex-direction: column;
+  width: min(860px, 90vw); max-height: 85vh;
+  background: var(--panel); color: var(--text);
+  border: 1px solid var(--border); border-radius: 8px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5); overflow: hidden;
+}
+.modal-head {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 12px; background: var(--panel2);
+  border-bottom: 1px solid var(--border);
+}
+.modal-title {
+  flex: 1; font-size: 12px; font-weight: 600; color: var(--text-dim);
+  font-family: ui-monospace, monospace; word-break: break-all;
+}
+.modal-close {
+  flex: 0 0 auto; background: transparent; color: var(--text-dim);
+  border: 1px solid var(--border); border-radius: 4px;
+  padding: 2px 8px; cursor: pointer; font: inherit;
+}
+.modal-close:hover { border-color: var(--err); color: var(--err); }
+.modal-body {
+  margin: 0; padding: 12px 14px; overflow: auto;
+  font: 12px/1.55 ui-monospace, monospace; color: var(--text);
+  white-space: pre; tab-size: 4;
+}
+
 /* ---------------- schematic ---------------- */
 .comp { cursor: move; }
 .comp .body { stroke: var(--text); stroke-width: 1.6; fill: none; }

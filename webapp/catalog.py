@@ -17,7 +17,12 @@ the catalog itself can be served instantly.
 """
 from __future__ import annotations
 
+import re
+from pathlib import Path
 from typing import Any
+
+# repo root (webapp/'s parent) — built-in Verilog-A sources live under models/
+REPO_ROOT = Path(__file__).resolve().parent.parent
 
 # ---------------------------------------------------------------------------
 # helpers to keep entries terse
@@ -1736,7 +1741,61 @@ _NOISY_BUILDERS = {"cwn": _cw_laser_noisy, "pdn": _photodiode_noisy,
 # user-uploaded Verilog-A models (webapp/models_user/*.va)
 # ---------------------------------------------------------------------------
 
-USER_VA_DIR = __import__("pathlib").Path(__file__).resolve().parent / "models_user"
+USER_VA_DIR = Path(__file__).resolve().parent / "models_user"
+
+
+def _veriloga_file(entry: dict) -> Path | None:
+    """Absolute path to the Verilog-A source backing a catalog entry, else None.
+
+    User uploads carry a ``user_va`` stem under ``models_user/``; built-in VA
+    cards begin their ``doc`` with the repo-relative ``models/…/<name>.va``
+    path (see the catalog above). Non-VA components return None.
+    """
+    stem = entry.get("user_va")
+    if stem:
+        return USER_VA_DIR / f"{stem}.va"
+    m = re.match(r"\s*(models/\S+\.va)\b", entry.get("doc", ""))
+    if m:
+        return REPO_ROOT / m.group(1)
+    return None
+
+
+def _resolved_va_file(entry: dict) -> Path | None:
+    """Resolved ``.va`` path for an entry, confined to the ``models/`` and
+    ``models_user/`` trees (so a ``..``/symlink escape returns None), or None
+    when the entry is not VA-backed or the file is missing."""
+    f = _veriloga_file(entry)
+    if f is None:
+        return None
+    f = f.resolve()
+    roots = ((REPO_ROOT / "models").resolve(), USER_VA_DIR.resolve())
+    return f if any(r in f.parents for r in roots) and f.is_file() else None
+
+
+def _va_relpath(f: Path) -> str:
+    return str(f.relative_to(REPO_ROOT)) if REPO_ROOT in f.parents else f.name
+
+
+def _annotate_veriloga(entry: dict) -> None:
+    """Tag one entry with a ``veriloga`` display path (repo-relative) when it is
+    backed by a readable, in-tree ``.va`` file, else None — the UI keys its
+    source-viewer button off this field, so this must agree with what
+    ``veriloga_source`` will actually serve."""
+    f = _resolved_va_file(entry)
+    entry["veriloga"] = _va_relpath(f) if f else None
+
+
+def veriloga_source(key: str) -> tuple[str, str] | None:
+    """``(display_path, source_text)`` for a VA-backed catalog key, else None.
+
+    Reads are confined to the ``models/`` and ``models_user/`` trees so a
+    crafted ``type`` can never escape into arbitrary files.
+    """
+    entry = CATALOG.get(key)
+    if entry is None:
+        return None
+    f = _resolved_va_file(entry)
+    return (_va_relpath(f), f.read_text()) if f else None
 
 
 def _doc_from_va(text: str) -> str:
@@ -1779,6 +1838,7 @@ def register_user_va(stem: str) -> dict:
                    for n in param_names],
         "user_va": stem,
     }
+    _annotate_veriloga(CATALOG[key])
     return CATALOG[key]
 
 
@@ -1794,6 +1854,13 @@ def load_user_va() -> list[str]:
         except Exception as e:  # a broken upload must not kill the server
             print(f"user VA {p.name}: failed to load — {e}")
     return out
+
+
+# tag every static card up front so /api/components tells the UI which
+# components can show their Verilog-A source (uploads are tagged on register).
+for _entry in CATALOG.values():
+    _annotate_veriloga(_entry)
+del _entry
 
 
 def build_models(sky130_geoms: dict[str, tuple[str, float, float]] | None = None,

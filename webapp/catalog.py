@@ -797,7 +797,7 @@ CATALOG: dict[str, dict] = {
         "lti": "filter",
     },
     "tia": {
-        "label": "TIA (macro)",
+        "label": "TIA",
         "category": "Amplifiers & EQ",
         "doc": "Behavioural transimpedance amplifier: `inp` is a virtual-"
                "ground current input, `out` drives -gain*Iin through a two-"

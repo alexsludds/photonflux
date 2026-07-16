@@ -869,11 +869,12 @@ CATALOG: dict[str, dict] = {
                "predistortion for a quadrature-biased MZM (set rlm_vpi to "
                "its V-pi), and RJ/PJ/DCD jitter on the edge times. "
                "mode=pulse emits one isolated UI for pulse-response runs. "
+               "The unit interval is set globally by the top-bar baud rate "
+               "(UI = 1/baud), not per source. "
                "The waveform is baked at compile time: parameter edits "
                "recompile the circuit (seconds).",
         "ports": _ports("p1:e p2:e"),
         "params": [
-            _p("ui", 100e-12, "s", "Unit interval", rebuild=True),
             _p("mode", "nrz", "", "Mode", rebuild=True, kind="enum",
                choices=["nrz", "pam4", "pulse"]),
             _p("order", 7, "", "PRBS order", rebuild=True, kind="enum",

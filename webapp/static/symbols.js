@@ -620,7 +620,7 @@ const HEADLINE_PARAM = {
   ring_mod_inj: "tau_c", mzm_seg: "vpi",
   waveguide: "length_m", splitter: "split_ratio", dir_coupler: "coupling",
   grating: "center_wavelength_nm", opt_filter: "center_nm", opt_mirror: "R",
-  photodiode: "R", vdc: "V", vpulse: "v2", vsin: "V", idc: "I", prbs: "ui",
+  photodiode: "R", vdc: "V", vpulse: "v2", vsin: "V", idc: "I",
   resistor: "R", capacitor: "C", inductor: "L", diode: "Is",
   nmos: "W", pmos: "W", opamp: "A", tia: "gain_ohm", ctle: "peaking_db",
   channel: "loss_db", s2p_channel: "z0", fiber_cd: "length_km",

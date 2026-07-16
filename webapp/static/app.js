@@ -28,7 +28,12 @@ const ID_PREFIX = {
 // global state
 // ---------------------------------------------------------------------------
 let CAT = {};                    // backend catalog: type -> {ports, params, ...}
-let state = { instances: {}, wires: [], probes: [], notes: [] };
+// `globals` holds schematic-wide parameters. `baud` (symbols/s) is the single
+// source of truth for the signaling rate: the PRBS unit interval and the eye
+// fold both derive UI = 1/baud from it, rather than each carrying their own.
+const DEFAULT_BAUD = 10e9;       // 10 GBd -> 100 ps UI
+let state = { instances: {}, wires: [], probes: [], notes: [],
+              globals: { baud: DEFAULT_BAUD } };
 let undoStack = [], redoStack = [];
 let view = { x: 60, y: 40, k: 1 };
 
@@ -122,6 +127,43 @@ function autosave() {
   try { localStorage.setItem("photonflux_sch", JSON.stringify(state)); } catch {}
 }
 
+// ---------------------------------------------------------------------------
+// global baud rate (schematic-wide). UI = 1/baud; the PRBS source and the eye
+// diagram both pull from here instead of carrying a per-instance unit interval.
+// ---------------------------------------------------------------------------
+function globalBaud() {
+  const b = state.globals && state.globals.baud;
+  return b > 0 ? b : DEFAULT_BAUD;
+}
+function globalUI() { return 1 / globalBaud(); }
+
+// Make `state.globals.baud` authoritative. On a schematic that predates the
+// global (or a fresh load), seed it from the first PRBS source's unit interval
+// so legacy circuits keep their rate, then strip the now-vestigial per-instance
+// `ui` so the global stays the sole source of truth.
+function adoptGlobals(st) {
+  st.globals = st.globals || {};
+  if (!(st.globals.baud > 0)) {
+    let baud = DEFAULT_BAUD;
+    for (const inst of Object.values(st.instances || {})) {
+      const ui = inst.type === "prbs" ? (inst.settings || {}).ui : undefined;
+      if (ui > 0) { baud = 1 / ui; break; }
+    }
+    st.globals.baud = baud;
+  }
+  for (const inst of Object.values(st.instances || {})) {
+    if (inst.type === "prbs" && inst.settings) delete inst.settings.ui;
+  }
+}
+
+// mirror state -> top-bar input (skip while the user is mid-edit). fmtNum, not
+// fmtSI: baud is an editable field that must round-trip through parseSI, so a
+// fractional lane rate (10.3125 GBd) isn't collapsed to "10.3G" and corrupted.
+function syncGlobalsUI() {
+  const el = document.getElementById("glob-baud");
+  if (el && document.activeElement !== el) el.value = fmtNum(globalBaud());
+}
+
 function newId(type) {
   const prefix = ID_PREFIX[type] || "U";
   let n = 1;
@@ -158,6 +200,7 @@ function deleteSelection() {
 // rendering
 // ---------------------------------------------------------------------------
 function render() {
+  syncGlobalsUI();
   layers.notes.innerHTML = "";
   layers.comps.innerHTML = "";
   layers.wires.innerHTML = "";
@@ -219,7 +262,9 @@ function render() {
       const hp = HEADLINE_PARAM[inst.type];
       const cat = CAT[inst.type];
       let valTxt = "";
-      if (hp && cat) {
+      if (inst.type === "prbs") {
+        valTxt = `${fmtSI(globalUI())}s`;   // UI pulled from the global baud rate
+      } else if (hp && cat) {
         const spec = cat.params.find((p) => p.name === hp);
         const v = (inst.settings && inst.settings[hp] !== undefined)
           ? inst.settings[hp] : spec?.default;
@@ -1252,8 +1297,12 @@ async function runSim() {
   const btn = $("btn-run"), status = $("run-status");
   const payload = {
     schematic: {
+      // PRBS sources pull their unit interval from the global baud rate: inject
+      // UI = 1/baud here so the backend waveform builder, eye and BER post-proc
+      // all see one consistent rate.
       instances: Object.fromEntries(Object.entries(state.instances).map(
-        ([id, i]) => [id, { type: i.type, settings: i.settings || {} }])),
+        ([id, i]) => [id, { type: i.type, settings: i.type === "prbs"
+          ? { ...(i.settings || {}), ui: globalUI() } : (i.settings || {}) }])),
       wires: state.wires.map((w) => [w.from, w.to]),
       probes: state.probes.map((p) => ({ name: p.name, at: p.at,
         ...(p.spectrum ? { spectrum: true } : {}) })),
@@ -1640,14 +1689,16 @@ function setResultsTab(tab) {
 // eye diagram: fold the transient record at the UI, density-render + metrics
 // ---------------------------------------------------------------------------
 function eyeDefaults() {
-  // prefill UI/levels from a pattern source on the canvas, if any
+  // UI folds at the global baud rate; modulation levels come from a pattern
+  // source on the canvas, if any
+  let mod = 2;
   for (const inst of Object.values(state.instances)) {
     if (inst.type === "prbs") {
-      const s = inst.settings || {};
-      return { ui: s.ui ?? 100e-12, mod: s.mode === "pam4" ? 4 : 2 };
+      mod = (inst.settings || {}).mode === "pam4" ? 4 : 2;
+      break;
     }
   }
-  return { ui: 100e-12, mod: 2 };
+  return { ui: globalUI(), mod };
 }
 
 function eyeTraceOptions() {
@@ -2062,13 +2113,25 @@ $("file-load").addEventListener("change", async () => {
 });
 
 $("btn-new").addEventListener("click", () => {
-  commit(() => { state = { instances: {}, wires: [], probes: [], notes: [] }; });
+  commit(() => { state = { instances: {}, wires: [], probes: [], notes: [],
+    globals: { baud: DEFAULT_BAUD } }; });
   selection = null;
   renderInspector();
 });
 
 $("btn-undo").addEventListener("click", undo);
 $("btn-redo").addEventListener("click", redo);
+
+$("glob-baud").addEventListener("change", () => {
+  const v = parseSI($("glob-baud").value);
+  if (!(v > 0)) { $("glob-baud").value = fmtNum(globalBaud()); return; }
+  commit(() => { state.globals = state.globals || {}; state.globals.baud = v; });
+  // the eye folds at the global UI — keep its control in step
+  $("eye-ui").value = fmtNum(globalUI());
+  if ($("tab-eye").classList.contains("active")) renderEye();
+});
+$("glob-baud").addEventListener("keydown",
+  (e) => { if (e.key === "Enter") e.target.blur(); });
 
 function loadDocument(doc) {
   const sch = doc.schematic || doc;
@@ -2079,10 +2142,13 @@ function loadDocument(doc) {
         Array.isArray(w) ? { from: w[0], to: w[1] } : w),
       probes: sch.probes || [],
       notes: sch.notes || [],
+      globals: sch.globals || {},
     };
+    adoptGlobals(state);
   });
   selection = null;
   applyAnalysis(doc.analysis);
+  $("eye-ui").value = fmtNum(globalUI());   // eye folds at the loaded baud rate
   renderInspector();
   zoomToFit();
 }
@@ -2217,7 +2283,7 @@ async function boot() {
     try {
       const sch = JSON.parse(saved);
       if (Object.keys(sch.instances || {}).length) {
-        state = sch; loaded = true; render(); zoomToFit();
+        state = sch; adoptGlobals(state); loaded = true; render(); zoomToFit();
         // analysis config isn't autosaved, but the sweep pane should survive
         // a plain reload (like the fx panel) — restore it from localStorage
         restoreRunCfg();

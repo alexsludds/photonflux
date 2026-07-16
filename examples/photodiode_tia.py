@@ -243,7 +243,7 @@ def main() -> int:
           f"({2 * circuit.sys_size} real), {len(circuit.groups)} component groups")
 
     # DC operating point, then transient with adaptive Diffrax stepping
-    t_max = 4e-9
+    t_max = 40e-9
     y0 = circuit.dc()
     saveat = diffrax.SaveAt(ts=jnp.linspace(0.0, t_max, 800))
     sol = circuit.transient(

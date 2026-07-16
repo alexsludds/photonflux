@@ -107,7 +107,7 @@ def evaluate(topology: str, p: dict, design: dict, mdl: dict,
     R.build_driver = _bd
     # the testbench is chatty; keep its per-eval prints out of the search log
     with contextlib.redirect_stdout(io.StringIO()):
-        out = R.run_transient(mdl, design, baud, nbits, driver=topology)
+        out = R.run_transient(mdl, design, baud, nbits, driver=topology, progress=False)
         t, vin, vdrv, p_rx, bits, t_bit, spu, t_edge, inverting = out
         _, eye_h, er_db, _ = R.eye_and_metrics(
             t, p_rx, bits, t_bit, spu, inverting=inverting)

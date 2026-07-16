@@ -7,6 +7,8 @@ from __future__ import annotations
 import diffrax
 import jax.numpy as jnp
 import numpy as np
+
+from _progress import transient_progress_meter
 from circulax.components.base_component import Signals, States, component, source
 
 
@@ -43,7 +45,8 @@ def terminator():
     return Terminator
 
 
-def run_transient(c, t_max: float, dt: float, save_every: float, y0=None):
+def run_transient(c, t_max: float, dt: float, save_every: float, y0=None,
+                  progress: bool = True):
     """DC then fixed-step BDF2 (circulax 0.2.1's adaptive retry path
     misreports divergence with VA/OSDI devices in a complex system — the
     ring_mod_sky130.py solver note)."""
@@ -59,6 +62,7 @@ def run_transient(c, t_max: float, dt: float, save_every: float, y0=None):
             linear_solver=c.solver, newton_max_steps=40),
         max_steps=int(t_max / dt) + 10, throw=False,
         stepsize_controller=diffrax.ConstantStepSize(),
+        progress_meter=transient_progress_meter(progress),
     )
     assert sol.result == diffrax.RESULTS.successful, f"transient failed: {sol.result}"
     return np.asarray(sol.ts), sol

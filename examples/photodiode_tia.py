@@ -45,6 +45,8 @@ from circulax.components.base_component import Signals, States, component, sourc
 from circulax.components.electronic import Resistor
 from circulax.components.photonic import OpticalWaveguide
 
+from _progress import transient_progress_meter
+
 # --- receiver parameters ----------------------------------------------------
 R_PD = 0.8            # photodiode responsivity [A/W]
 IDK = 1e-9            # dark current [A]
@@ -255,6 +257,7 @@ def main() -> int:
         max_steps=200_000,
         throw=False,
         stepsize_controller=diffrax.PIDController(rtol=1e-4, atol=1e-7),
+        progress_meter=transient_progress_meter(),
     )
     if sol.result != diffrax.RESULTS.successful:
         print(f"transient FAILED: {sol.result}")

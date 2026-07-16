@@ -602,6 +602,40 @@ function flipSelected(vertical) {
 }
 
 // ---------------------------------------------------------------------------
+// Verilog-A source viewer (read-only modal)
+// ---------------------------------------------------------------------------
+function showVeriloga(type, path) {
+  document.getElementById("va-modal")?.remove();  // one at a time
+  const esc = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;");
+  const back = document.createElement("div");
+  back.id = "va-modal";
+  back.className = "modal-backdrop";
+  back.innerHTML = `
+    <div class="modal" role="dialog" aria-label="Verilog-A source">
+      <div class="modal-head">
+        <span class="modal-title">${esc(path)}</span>
+        <button class="modal-close" title="Close (Esc)">&#x2715;</button>
+      </div>
+      <pre class="modal-body" tabindex="0">Loading&hellip;</pre>
+    </div>`;
+  document.body.appendChild(back);
+  const close = () => { back.remove(); document.removeEventListener("keydown", onKey); };
+  const onKey = (e) => { if (e.key === "Escape") close(); };
+  document.addEventListener("keydown", onKey);
+  back.addEventListener("mousedown", (e) => { if (e.target === back) close(); });
+  back.querySelector(".modal-close").onclick = close;
+  const pre = back.querySelector(".modal-body");
+  pre.focus();
+  fetch("/api/veriloga?type=" + encodeURIComponent(type))
+    .then((r) => r.json())
+    .then((d) => {
+      pre.textContent = d.ok ? d.source
+        : `Could not load Verilog-A source: ${d.error || "unknown error"}`;
+    })
+    .catch((e) => { pre.textContent = `Could not load Verilog-A source: ${e}`; });
+}
+
+// ---------------------------------------------------------------------------
 // inspector
 // ---------------------------------------------------------------------------
 function renderInspector() {
@@ -660,6 +694,11 @@ function renderInspector() {
           <input data-param="${p.name}" value="${fmtNum(+v)}">
           <span class="unit">${p.unit || ""}</span></div>`;
       }
+    }
+    if (cat.veriloga) {
+      const vaTitle = esc(cat.veriloga).replace(/"/g, "&quot;");
+      html += `<button id="insp-va" class="insp-va-btn"
+        title="View ${vaTitle}">&#x1F441; View Verilog-A source</button>`;
     }
     html += `<div class="insp-doc">${cat.doc || ""}</div>`;
     body.innerHTML = html;
@@ -751,6 +790,7 @@ function renderInspector() {
     $("insp-flip-h").onclick = () => flipSelected(false);
     $("insp-flip-v").onclick = () => flipSelected(true);
     $("insp-del").onclick = deleteSelection;
+    if (cat.veriloga) $("insp-va").onclick = () => showVeriloga(inst.type, cat.veriloga);
     $("insp-rename").addEventListener("change", () => renameInstance(id, $("insp-rename").value));
     return;
   }

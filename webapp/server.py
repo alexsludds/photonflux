@@ -120,6 +120,18 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/examples":
             self._json(_examples_index())
             return
+        if path == "/api/veriloga":
+            import catalog
+            from urllib.parse import parse_qs, urlsplit
+            key = (parse_qs(urlsplit(self.path).query).get("type") or [""])[0]
+            src = catalog.veriloga_source(key)
+            if src is None:
+                self._json({"ok": False,
+                            "error": "no Verilog-A source for this component"},
+                           404)
+            else:
+                self._json({"ok": True, "path": src[0], "source": src[1]})
+            return
         if path.startswith("/api/examples/"):
             p = EXAMPLES / (path.rsplit("/", 1)[1] + ".json")
             if p.is_file() and p.resolve().parent == EXAMPLES.resolve():

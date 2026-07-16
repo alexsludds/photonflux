@@ -9,7 +9,7 @@ devices from the volare PDK, not square-law stand-ins.
   power, emitting a constant field ``E = sqrt(P)``. All modulation happens in
   the modulator; the laser is never modulated directly (house convention).
 * **Modulator** — ``cx.mzm()``: field-convention Mach-Zehnder with the same
-  intensity transfer as ``models/mzm.va``, its electrodes driven by a SKY130
+  intensity transfer as ``models/optical_power/mzm.va``, its electrodes driven by a SKY130
   5 V FET common-source stage.
 * **Electronics** — ``cx.sky130_fet(...)``: ngspice resolves the volare model
   card (corner, `{...}` expressions, W/L bin), and the BSIM4.8 Verilog-A is
@@ -26,7 +26,7 @@ Topology (mirrors example 02's receiver exactly):
            -> SKY130 CMOS inverter TIA (pfet 40/0.18 + nfet 15/0.18, Rf = 1k)
 
     python examples/link_sky130.py
-        -> out/circulax_link_sky130.png
+        -> out/link_sky130.png
 """
 from __future__ import annotations
 
@@ -67,7 +67,7 @@ V_DDA = 1.8           # receiver rail [V]
 R_PULLUP = 300.0      # driver drain pull-up [ohm]
 RF = 1000.0           # TIA feedback resistance [ohm]
 
-OUT = Path(__file__).resolve().parents[1] / "out" / "circulax_link_sky130.png"
+OUT = Path(__file__).resolve().parents[1] / "out" / "link_sky130.png"
 
 
 def build_models() -> dict:

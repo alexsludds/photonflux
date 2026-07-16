@@ -2089,13 +2089,16 @@ async function loadExamples() {
       }
       const o = document.createElement("option");
       o.value = ex.id; o.textContent = ex.title;
+      if (ex.description) o.title = ex.description;   // hover shows the full blurb
       groups.get(g).appendChild(o);
     }
   } catch {}
   sel.addEventListener("change", async () => {
     if (!sel.value) return;
     try {
-      loadDocument(await (await fetch("/api/examples/" + sel.value)).json());
+      const doc = await (await fetch("/api/examples/" + sel.value)).json();
+      loadDocument(doc);
+      if (doc.description) setHint(doc.description);   // info panel on load
     } catch (e) { setHint(`could not load example: ${e}`, true); }
     sel.value = "";
   });

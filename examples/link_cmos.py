@@ -8,7 +8,7 @@ the same topology with real SKY130 BSIM4 devices.
 House convention for sources: the laser is **CW only** — ``cx.cw_laser()``,
 parameterised by wavelength and power, emitting a constant field
 ``E = sqrt(P)``. All modulation happens in a modulator (``cx.mzm()``, the
-field-convention twin of ``models/mzm.va``):
+field-convention twin of ``models/optical_power/mzm.va``):
 
   * driver:  an NMOS common-source stage swings the MZM electrodes off a
     3.3 V rail (gate driven by a SPICE-style PULSE),
@@ -20,7 +20,7 @@ The whole thing — driver FET, MZM transfer, 3 dB fibre, detector, and the
 two-FET inverter with feedback — is one nonlinear complex system, solved by a
 single Newton DC + Diffrax transient, and end-to-end differentiable.
 
-    python examples/link_cmos.py   # -> out/circulax_link_cmos.png
+    python examples/link_cmos.py   # -> out/link_cmos.png
 """
 from __future__ import annotations
 
@@ -69,7 +69,7 @@ VTH_N, VTH_P = 0.45, -0.45
 WN, WP, LCH = 15e-6, 30e-6, 0.5e-6
 LAMBDA = 0.10         # channel-length modulation -> finite inverter gain
 
-OUT = Path(__file__).resolve().parents[1] / "out" / "circulax_link_cmos.png"
+OUT = Path(__file__).resolve().parents[1] / "out" / "link_cmos.png"
 
 
 # ===========================================================================

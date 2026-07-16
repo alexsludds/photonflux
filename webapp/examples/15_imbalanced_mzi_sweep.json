@@ -1,6 +1,7 @@
 {
-  "title": "15 \u2014 Imbalanced MZI from building blocks: wavelength sweep, FSR = lam^2/(n_g dL)",
+  "title": "Imbalanced MZI sweep",
   "group": "Passive photonics",
+  "description": "Imbalanced MZI from building blocks: wavelength sweep, FSR = lam^2/(n_g dL)",
   "schematic": {
     "instances": {
       "LAS1": {

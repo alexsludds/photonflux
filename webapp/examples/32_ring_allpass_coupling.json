@@ -1,99 +1,100 @@
 {
- "title": "32 — all-pass microring through critical coupling: κ² = 0.02 / 0.088 / 0.30 vs the 0.4 dB round-trip loss — the notch only bottoms out at κ² = 1-a² = 0.088",
- "group": "Passive photonics",
- "schematic": {
-  "instances": {
-   "LAS": {
-    "type": "cw_laser",
-    "x": 40,
-    "y": 160,
-    "rot": 0,
-    "settings": {
-     "power": 0.001,
-     "wavelength_nm": 1310.0
-    }
-   },
-   "GND": {
-    "type": "ground",
-    "x": 40,
-    "y": 250,
-    "rot": 0,
-    "settings": {}
-   },
-   "CPL": {
-    "type": "dir_coupler",
-    "x": 240,
-    "y": 180,
-    "rot": 0,
-    "settings": {
-     "coupling": 0.088
-    }
-   },
-   "WG": {
-    "type": "waveguide",
-    "x": 320,
-    "y": 60,
-    "rot": 0,
-    "settings": {
-     "length_m": 0.000199775,
-     "loss_dB_cm": 20.0,
-     "neff": 2.4,
-     "n_group": 4.0,
-     "center_wavelength_nm": 1310.0,
-     "wavelength_nm": 1310.0
-    }
-   },
-   "TT": {
-    "type": "opt_term",
-    "x": 460,
-    "y": 200,
-    "rot": 0,
-    "settings": {}
-   }
+  "title": "Ring all-pass coupling",
+  "group": "Passive photonics",
+  "description": "all-pass microring through critical coupling: κ² = 0.02 / 0.088 / 0.30 vs the 0.4 dB round-trip loss — the notch only bottoms out at κ² = 1-a² = 0.088",
+  "schematic": {
+    "instances": {
+      "LAS": {
+        "type": "cw_laser",
+        "x": 40,
+        "y": 160,
+        "rot": 0,
+        "settings": {
+          "power": 0.001,
+          "wavelength_nm": 1310.0
+        }
+      },
+      "GND": {
+        "type": "ground",
+        "x": 40,
+        "y": 250,
+        "rot": 0,
+        "settings": {}
+      },
+      "CPL": {
+        "type": "dir_coupler",
+        "x": 240,
+        "y": 180,
+        "rot": 0,
+        "settings": {
+          "coupling": 0.088
+        }
+      },
+      "WG": {
+        "type": "waveguide",
+        "x": 320,
+        "y": 60,
+        "rot": 0,
+        "settings": {
+          "length_m": 0.000199775,
+          "loss_dB_cm": 20.0,
+          "neff": 2.4,
+          "n_group": 4.0,
+          "center_wavelength_nm": 1310.0,
+          "wavelength_nm": 1310.0
+        }
+      },
+      "TT": {
+        "type": "opt_term",
+        "x": 460,
+        "y": 200,
+        "rot": 0,
+        "settings": {}
+      }
+    },
+    "wires": [
+      {
+        "from": "LAS,p1",
+        "to": "CPL,p1"
+      },
+      {
+        "from": "LAS,p2",
+        "to": "GND,p1"
+      },
+      {
+        "from": "CPL,p4",
+        "to": "WG,p1"
+      },
+      {
+        "from": "WG,p2",
+        "to": "CPL,p2"
+      },
+      {
+        "from": "CPL,p3",
+        "to": "TT,p1"
+      }
+    ],
+    "probes": [
+      {
+        "name": "thru",
+        "at": "CPL,p3",
+        "color": "#6ecbf5"
+      }
+    ]
   },
-  "wires": [
-   {
-    "from": "LAS,p1",
-    "to": "CPL,p1"
-   },
-   {
-    "from": "LAS,p2",
-    "to": "GND,p1"
-   },
-   {
-    "from": "CPL,p4",
-    "to": "WG,p1"
-   },
-   {
-    "from": "WG,p2",
-    "to": "CPL,p2"
-   },
-   {
-    "from": "CPL,p3",
-    "to": "TT,p1"
-   }
-  ],
-  "probes": [
-   {
-    "name": "thru",
-    "at": "CPL,p3",
-    "color": "#6ecbf5"
-   }
-  ]
- },
- "analysis": {
-  "mode": "dcsweep",
-  "instance": "*",
-  "param": "wavelength_nm",
-  "start": 1307.5,
-  "stop": 1312.5,
-  "points": 2001,
-  "step_instance": "CPL",
-  "step_param": "coupling",
-  "step_values": [
-   0.02,
-   0.088,
-   0.3
-  ]
- }
+  "analysis": {
+    "mode": "dcsweep",
+    "instance": "*",
+    "param": "wavelength_nm",
+    "start": 1307.5,
+    "stop": 1312.5,
+    "points": 2001,
+    "step_instance": "CPL",
+    "step_param": "coupling",
+    "step_values": [
+      0.02,
+      0.088,
+      0.3
+    ]
+  }
 }

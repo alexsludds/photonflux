@@ -1,7 +1,10 @@
 """Direct ctypes binding to libngspice (the shared-library ngspice API).
 
-This replaces PySpice with a ~250-line wrapper that does exactly what the
-co-sim flow needs and nothing else:
+There is no ngspice *simulation* flow — every circuit is solved by circulax
+(JAX). This binding exists only so that ``cx.sky130_card`` can have ngspice
+resolve the SKY130 PDK (``.lib`` corner stitching, ``{...}`` card expressions,
+W/L bin selection) and hand back the fully-expanded BSIM4 model card via
+``showmod``. It is a ~250-line wrapper that does exactly that and nothing else:
 
   * synchronous command execution with captured stdout/stderr,
   * netlist loading via ngSpice_Circ,
@@ -10,8 +13,7 @@ co-sim flow needs and nothing else:
   * honest error surfacing (ngspice "Error:" lines raise NgSpiceError).
 
 libngspice keeps *global* state: there is exactly one simulator instance
-per process. `NgSpice.get()` returns the process-wide singleton. Parallel
-sweeps therefore run one process per worker (see photonflux.sweep).
+per process. `NgSpice.get()` returns the process-wide singleton.
 """
 from __future__ import annotations
 

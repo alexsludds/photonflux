@@ -1,6 +1,7 @@
 {
-  "title": "16 \u2014 Passive ring add-drop filter from two couplers + two waveguides",
+  "title": "Ring add-drop filter",
   "group": "Passive photonics",
+  "description": "Passive ring add-drop filter from two couplers + two waveguides",
   "schematic": {
     "instances": {
       "LAS1": {

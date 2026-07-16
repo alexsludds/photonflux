@@ -1,341 +1,342 @@
 {
- "title": "30 — transmission-gate 2:1 analog mux: SEL toggles the output between a 50 MHz sine and a 25 MHz square",
- "group": "Electronics — digital",
- "schematic": {
-  "instances": {
-   "VDD": {
-    "type": "vdc",
-    "x": 60,
-    "y": 40,
-    "rot": 0,
-    "settings": {
-     "V": 3.3
-    }
-   },
-   "GDD": {
-    "type": "ground",
-    "x": 140,
-    "y": 40,
-    "rot": 0,
-    "settings": {}
-   },
-   "SEL": {
-    "type": "vpulse",
-    "x": 40,
-    "y": 140,
-    "rot": 0,
-    "settings": {
-     "v1": 0.0,
-     "v2": 3.3,
-     "td": 1e-09,
-     "tr": 1e-09,
-     "tf": 1e-09,
-     "pw": 9.9e-08,
-     "per": 2e-07
-    }
-   },
-   "GSE": {
-    "type": "ground",
-    "x": 40,
-    "y": 240,
-    "rot": 0,
-    "settings": {}
-   },
-   "MPS": {
-    "type": "pmos",
-    "x": 200,
-    "y": 120,
-    "rot": 0,
-    "settings": {
-     "Kp": 1e-05,
-     "W": 2e-05,
-     "L": 1e-06,
-     "Vth": -1.0,
-     "lam": 0.0
-    }
-   },
-   "MNS": {
-    "type": "nmos",
-    "x": 200,
-    "y": 260,
-    "rot": 0,
-    "settings": {
-     "Kp": 2e-05,
-     "W": 1e-05,
-     "L": 1e-06,
-     "Vth": 1.0,
-     "lam": 0.0
-    }
-   },
-   "GNS": {
-    "type": "ground",
-    "x": 200,
-    "y": 370,
-    "rot": 0,
-    "settings": {}
-   },
-   "CS": {
-    "type": "capacitor",
-    "x": 300,
-    "y": 190,
-    "rot": 0,
-    "settings": {
-     "C": 1e-14
-    }
-   },
-   "GCS": {
-    "type": "ground",
-    "x": 300,
-    "y": 290,
-    "rot": 0,
-    "settings": {}
-   },
-   "VAO": {
-    "type": "vdc",
-    "x": 40,
-    "y": 420,
-    "rot": 0,
-    "settings": {
-     "V": 1.65
-    }
-   },
-   "GAO": {
-    "type": "ground",
-    "x": 40,
-    "y": 520,
-    "rot": 0,
-    "settings": {}
-   },
-   "VA": {
-    "type": "vsin",
-    "x": 160,
-    "y": 420,
-    "rot": 0,
-    "settings": {
-     "V": 0.8,
-     "freq": 50000000.0
-    }
-   },
-   "VB": {
-    "type": "vpulse",
-    "x": 40,
-    "y": 600,
-    "rot": 0,
-    "settings": {
-     "v1": 0.6,
-     "v2": 2.7,
-     "td": 0.0,
-     "tr": 2e-09,
-     "tf": 2e-09,
-     "pw": 1.8e-08,
-     "per": 4e-08
-    }
-   },
-   "GB": {
-    "type": "ground",
-    "x": 40,
-    "y": 700,
-    "rot": 0,
-    "settings": {}
-   },
-   "MNA": {
-    "type": "nmos",
-    "x": 480,
-    "y": 420,
-    "rot": 0,
-    "settings": {
-     "Kp": 2e-05,
-     "W": 1e-05,
-     "L": 1e-06,
-     "Vth": 1.0,
-     "lam": 0.0
-    }
-   },
-   "MPA": {
-    "type": "pmos",
-    "x": 480,
-    "y": 520,
-    "rot": 0,
-    "settings": {
-     "Kp": 1e-05,
-     "W": 2e-05,
-     "L": 1e-06,
-     "Vth": -1.0,
-     "lam": 0.0
-    }
-   },
-   "MNB": {
-    "type": "nmos",
-    "x": 480,
-    "y": 620,
-    "rot": 0,
-    "settings": {
-     "Kp": 2e-05,
-     "W": 1e-05,
-     "L": 1e-06,
-     "Vth": 1.0,
-     "lam": 0.0
-    }
-   },
-   "MPB": {
-    "type": "pmos",
-    "x": 480,
-    "y": 720,
-    "rot": 0,
-    "settings": {
-     "Kp": 1e-05,
-     "W": 2e-05,
-     "L": 1e-06,
-     "Vth": -1.0,
-     "lam": 0.0
-    }
-   },
-   "CL": {
-    "type": "capacitor",
-    "x": 700,
-    "y": 520,
-    "rot": 0,
-    "settings": {
-     "C": 2e-14
-    }
-   },
-   "GL": {
-    "type": "ground",
-    "x": 700,
-    "y": 620,
-    "rot": 0,
-    "settings": {}
-   }
+  "title": "Transmission-gate mux",
+  "group": "Electronics — digital",
+  "description": "transmission-gate 2:1 analog mux: SEL toggles the output between a 50 MHz sine and a 25 MHz square",
+  "schematic": {
+    "instances": {
+      "VDD": {
+        "type": "vdc",
+        "x": 60,
+        "y": 40,
+        "rot": 0,
+        "settings": {
+          "V": 3.3
+        }
+      },
+      "GDD": {
+        "type": "ground",
+        "x": 140,
+        "y": 40,
+        "rot": 0,
+        "settings": {}
+      },
+      "SEL": {
+        "type": "vpulse",
+        "x": 40,
+        "y": 140,
+        "rot": 0,
+        "settings": {
+          "v1": 0.0,
+          "v2": 3.3,
+          "td": 1e-09,
+          "tr": 1e-09,
+          "tf": 1e-09,
+          "pw": 9.9e-08,
+          "per": 2e-07
+        }
+      },
+      "GSE": {
+        "type": "ground",
+        "x": 40,
+        "y": 240,
+        "rot": 0,
+        "settings": {}
+      },
+      "MPS": {
+        "type": "pmos",
+        "x": 200,
+        "y": 120,
+        "rot": 0,
+        "settings": {
+          "Kp": 1e-05,
+          "W": 2e-05,
+          "L": 1e-06,
+          "Vth": -1.0,
+          "lam": 0.0
+        }
+      },
+      "MNS": {
+        "type": "nmos",
+        "x": 200,
+        "y": 260,
+        "rot": 0,
+        "settings": {
+          "Kp": 2e-05,
+          "W": 1e-05,
+          "L": 1e-06,
+          "Vth": 1.0,
+          "lam": 0.0
+        }
+      },
+      "GNS": {
+        "type": "ground",
+        "x": 200,
+        "y": 370,
+        "rot": 0,
+        "settings": {}
+      },
+      "CS": {
+        "type": "capacitor",
+        "x": 300,
+        "y": 190,
+        "rot": 0,
+        "settings": {
+          "C": 1e-14
+        }
+      },
+      "GCS": {
+        "type": "ground",
+        "x": 300,
+        "y": 290,
+        "rot": 0,
+        "settings": {}
+      },
+      "VAO": {
+        "type": "vdc",
+        "x": 40,
+        "y": 420,
+        "rot": 0,
+        "settings": {
+          "V": 1.65
+        }
+      },
+      "GAO": {
+        "type": "ground",
+        "x": 40,
+        "y": 520,
+        "rot": 0,
+        "settings": {}
+      },
+      "VA": {
+        "type": "vsin",
+        "x": 160,
+        "y": 420,
+        "rot": 0,
+        "settings": {
+          "V": 0.8,
+          "freq": 50000000.0
+        }
+      },
+      "VB": {
+        "type": "vpulse",
+        "x": 40,
+        "y": 600,
+        "rot": 0,
+        "settings": {
+          "v1": 0.6,
+          "v2": 2.7,
+          "td": 0.0,
+          "tr": 2e-09,
+          "tf": 2e-09,
+          "pw": 1.8e-08,
+          "per": 4e-08
+        }
+      },
+      "GB": {
+        "type": "ground",
+        "x": 40,
+        "y": 700,
+        "rot": 0,
+        "settings": {}
+      },
+      "MNA": {
+        "type": "nmos",
+        "x": 480,
+        "y": 420,
+        "rot": 0,
+        "settings": {
+          "Kp": 2e-05,
+          "W": 1e-05,
+          "L": 1e-06,
+          "Vth": 1.0,
+          "lam": 0.0
+        }
+      },
+      "MPA": {
+        "type": "pmos",
+        "x": 480,
+        "y": 520,
+        "rot": 0,
+        "settings": {
+          "Kp": 1e-05,
+          "W": 2e-05,
+          "L": 1e-06,
+          "Vth": -1.0,
+          "lam": 0.0
+        }
+      },
+      "MNB": {
+        "type": "nmos",
+        "x": 480,
+        "y": 620,
+        "rot": 0,
+        "settings": {
+          "Kp": 2e-05,
+          "W": 1e-05,
+          "L": 1e-06,
+          "Vth": 1.0,
+          "lam": 0.0
+        }
+      },
+      "MPB": {
+        "type": "pmos",
+        "x": 480,
+        "y": 720,
+        "rot": 0,
+        "settings": {
+          "Kp": 1e-05,
+          "W": 2e-05,
+          "L": 1e-06,
+          "Vth": -1.0,
+          "lam": 0.0
+        }
+      },
+      "CL": {
+        "type": "capacitor",
+        "x": 700,
+        "y": 520,
+        "rot": 0,
+        "settings": {
+          "C": 2e-14
+        }
+      },
+      "GL": {
+        "type": "ground",
+        "x": 700,
+        "y": 620,
+        "rot": 0,
+        "settings": {}
+      }
+    },
+    "wires": [
+      {
+        "from": "VDD,p1",
+        "to": "MPS,s"
+      },
+      {
+        "from": "VDD,p2",
+        "to": "GDD,p1"
+      },
+      {
+        "from": "SEL,p1",
+        "to": "MPS,g"
+      },
+      {
+        "from": "SEL,p1",
+        "to": "MNS,g"
+      },
+      {
+        "from": "SEL,p2",
+        "to": "GSE,p1"
+      },
+      {
+        "from": "MPS,d",
+        "to": "MNS,d"
+      },
+      {
+        "from": "MNS,s",
+        "to": "GNS,p1"
+      },
+      {
+        "from": "MPS,d",
+        "to": "CS,p1"
+      },
+      {
+        "from": "CS,p2",
+        "to": "GCS,p1"
+      },
+      {
+        "from": "VAO,p2",
+        "to": "GAO,p1"
+      },
+      {
+        "from": "VAO,p1",
+        "to": "VA,p2"
+      },
+      {
+        "from": "VA,p1",
+        "to": "MNA,s"
+      },
+      {
+        "from": "MNA,d",
+        "to": "CL,p1"
+      },
+      {
+        "from": "SEL,p1",
+        "to": "MNA,g"
+      },
+      {
+        "from": "VA,p1",
+        "to": "MPA,s"
+      },
+      {
+        "from": "MPA,d",
+        "to": "CL,p1"
+      },
+      {
+        "from": "MPS,d",
+        "to": "MPA,g"
+      },
+      {
+        "from": "VB,p1",
+        "to": "MNB,s"
+      },
+      {
+        "from": "MNB,d",
+        "to": "CL,p1"
+      },
+      {
+        "from": "MPS,d",
+        "to": "MNB,g"
+      },
+      {
+        "from": "VB,p1",
+        "to": "MPB,s"
+      },
+      {
+        "from": "MPB,d",
+        "to": "CL,p1"
+      },
+      {
+        "from": "SEL,p1",
+        "to": "MPB,g"
+      },
+      {
+        "from": "VB,p2",
+        "to": "GB,p1"
+      },
+      {
+        "from": "CL,p2",
+        "to": "GL,p1"
+      }
+    ],
+    "probes": [
+      {
+        "name": "sel",
+        "at": "MPS,g",
+        "color": "#6ecbf5"
+      },
+      {
+        "name": "va",
+        "at": "MNA,s",
+        "color": "#e6862c"
+      },
+      {
+        "name": "vb",
+        "at": "MNB,s",
+        "color": "#8fd18f"
+      },
+      {
+        "name": "vout",
+        "at": "CL,p1",
+        "color": "#f08fb0"
+      }
+    ]
   },
-  "wires": [
-   {
-    "from": "VDD,p1",
-    "to": "MPS,s"
-   },
-   {
-    "from": "VDD,p2",
-    "to": "GDD,p1"
-   },
-   {
-    "from": "SEL,p1",
-    "to": "MPS,g"
-   },
-   {
-    "from": "SEL,p1",
-    "to": "MNS,g"
-   },
-   {
-    "from": "SEL,p2",
-    "to": "GSE,p1"
-   },
-   {
-    "from": "MPS,d",
-    "to": "MNS,d"
-   },
-   {
-    "from": "MNS,s",
-    "to": "GNS,p1"
-   },
-   {
-    "from": "MPS,d",
-    "to": "CS,p1"
-   },
-   {
-    "from": "CS,p2",
-    "to": "GCS,p1"
-   },
-   {
-    "from": "VAO,p2",
-    "to": "GAO,p1"
-   },
-   {
-    "from": "VAO,p1",
-    "to": "VA,p2"
-   },
-   {
-    "from": "VA,p1",
-    "to": "MNA,s"
-   },
-   {
-    "from": "MNA,d",
-    "to": "CL,p1"
-   },
-   {
-    "from": "SEL,p1",
-    "to": "MNA,g"
-   },
-   {
-    "from": "VA,p1",
-    "to": "MPA,s"
-   },
-   {
-    "from": "MPA,d",
-    "to": "CL,p1"
-   },
-   {
-    "from": "MPS,d",
-    "to": "MPA,g"
-   },
-   {
-    "from": "VB,p1",
-    "to": "MNB,s"
-   },
-   {
-    "from": "MNB,d",
-    "to": "CL,p1"
-   },
-   {
-    "from": "MPS,d",
-    "to": "MNB,g"
-   },
-   {
-    "from": "VB,p1",
-    "to": "MPB,s"
-   },
-   {
-    "from": "MPB,d",
-    "to": "CL,p1"
-   },
-   {
-    "from": "SEL,p1",
-    "to": "MPB,g"
-   },
-   {
-    "from": "VB,p2",
-    "to": "GB,p1"
-   },
-   {
-    "from": "CL,p2",
-    "to": "GL,p1"
-   }
-  ],
-  "probes": [
-   {
-    "name": "sel",
-    "at": "MPS,g",
-    "color": "#6ecbf5"
-   },
-   {
-    "name": "va",
-    "at": "MNA,s",
-    "color": "#e6862c"
-   },
-   {
-    "name": "vb",
-    "at": "MNB,s",
-    "color": "#8fd18f"
-   },
-   {
-    "name": "vout",
-    "at": "CL,p1",
-    "color": "#f08fb0"
-   }
-  ]
- },
- "analysis": {
-  "mode": "transient",
-  "t_stop": 4e-07,
-  "points": 4000,
-  "solver": "bdf2"
- }
+  "analysis": {
+    "mode": "transient",
+    "t_stop": 4e-07,
+    "points": 4000,
+    "solver": "bdf2"
+  }
 }

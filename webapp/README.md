@@ -331,7 +331,7 @@ strength in the other.
   emerge on the OSA at exactly 2f_p - f_s and 2f_s - f_p with the textbook
   T*(k*P_p)^2*P_s efficiency (the full scaling proof lives in
   `examples/wg_fwm.py`); example 40 moves the chi(3) INSIDE a resonator —
-  `ring_kerr` (models/ring_kerr.va, five FSR-spaced modes sharing the Kerr
+  `ring_kerr` (models/optical_field/ring_kerr.va, five FSR-spaced modes sharing the Kerr
   nonlinearity, the modal Lugiato-Lefever equations) pumped by two lasers
   exactly one FSR apart: the idler emerges in the next resonance over,
   ~1000x the conversion of the same length of straight waveguide, and the
@@ -381,24 +381,41 @@ symbol drawings live in `static/symbols.js` keyed by the same type ids. To add
 a component: add a catalog entry + a models_map entry in `build_models()` + a
 symbol glyph.
 
-## Files
+## Module map
+
+The modules group by role:
 
 ```
-server.py            stdlib HTTP server (static + /api/components, /api/run,
+Server core
+  server.py          stdlib HTTP server (static + /api/components, /api/run,
                      /api/upload, /api/upload_va; runs serialized by a lock)
-simulate.py          schematic JSON -> circulax netlist -> dc/dcsweep/
-                     transient/ac/noise/pulse/optimize
-catalog.py           component catalog + models_map builder (incl. noisy
-                     variants, LTI blocks, user VA)
-wavesrc.py           PRBS/PWL waveform builders + noise banks
-linkpost.py          BER/Q/bathtub link report, RX LS-EQ, pulse/COM, eye metric
-exprs.py             derived-trace expression engine (whitelisted AST)
-vf.py                vector fitting + state-space realisation
-lti.py               channel / s2p / fiber-CD model construction
-optimize.py          Nelder-Mead parameter optimizer + FD sensitivities
-models_user/         uploaded .va models (auto-loaded at startup)
-uploads/             uploaded data files (Touchstone)
-static/              index.html, app.js (editor), symbols.js (glyphs), style.css
-static/vendor/       uPlot 1.6.31 (vendored, no CDN needed)
-examples/*.json      example circuits (schematic + layout + analysis)
+  simulate.py        schematic JSON -> circulax netlist -> dc/dcsweep/
+                     transient/ac/noise/pulse/optimize   (the hub)
+  catalog.py         component catalog + models_map builder (noisy variants,
+                     LTI blocks, user VA)
+  warmup.py          build-time cache warm (lower every VA, compile the FETs)
+
+Signals, waveforms & link post-processing
+  wavesrc.py         PRBS/PWL waveform builders + noise banks
+  linkpost.py        BER/Q/bathtub link report, RX LS-EQ, pulse/COM, eye metric
+  exprs.py           derived-trace expression engine (whitelisted AST)
+  optimize.py        Nelder-Mead parameter optimizer + FD sensitivities
+
+LTI channel construction
+  lti.py             channel / s2p / fiber-CD model construction
+  vf.py              vector fitting + state-space realisation
+
+SKY130 PDK extraction (via photonflux.cx + libngspice)
+  sky130_cards.py    batch BSIM4 FET model-card pre-extraction
+  sky130_passives.py real R / MiM-C values from the PDK
+
+Tools (standalone, not part of the server)
+  tools/wdm_spectrum.py   run example 18 and plot its optical spectra
+
+Frontend & data
+  static/            index.html, app.js (editor), symbols.js (glyphs), style.css
+  static/vendor/     uPlot 1.6.31 (vendored, no CDN needed)
+  examples/*.json    example circuits (schematic + layout + analysis)
+  models_user/       uploaded .va models (auto-loaded at startup)
+  uploads/           uploaded data files (Touchstone)
 ```

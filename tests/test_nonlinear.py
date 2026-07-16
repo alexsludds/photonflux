@@ -1,17 +1,23 @@
-"""Physics pins for the nonlinear-absorption waveguide, the SOA, and the
-cavity building blocks (mirror, ring_filter, ring_nl), run through ngspice.
+"""Steady-state physics of the nonlinear / coherent-field Verilog-A models —
+the TPA+FCA waveguide, the SOA gain reservoir, the mirror, the ring-comb
+filter, and the nonlinear ring — lowered to JAX by ``cx.va`` and solved by
+circulax.
 
-Each test compares the compiled OSDI model against an independent numpy
-solution of the same model equations (closed forms where they exist,
-root-finds where the steady state is transcendental).
+Each test compares the compiled model against an independent numpy solution of
+the same equations (closed forms where they exist, root-finds where the steady
+state is transcendental). The four-wave-mixing and Fabry-Perot-laser studies
+are transient and live in ``examples/wg_fwm.py``, ``ring_fwm.py`` and
+``soa_fp_laser.py``, which carry their own analytic asserts.
 """
 from __future__ import annotations
 
 import numpy as np
+import jax.numpy as jnp
 import pytest
 from scipy.optimize import brentq
 
-import photonflux as ls
+from circuit_helpers import build, op, power
+from photonflux import cx
 
 C0 = 2.99792458e8
 HPL = 6.62607015e-34
@@ -44,48 +50,42 @@ def wg_analytic(p_in: float, **over) -> float:
     return t_tpa * np.exp(-p["sigma_fca"] * nfc * leff)
 
 
-def _wg_op(eng, p_in: float, **params) -> float:
-    ckt = ls.Circuit("wg nl")
-    ckt.raw(".options reltol=1e-10 abstol=1e-15 vntol=1e-12")
-    ckt.raw(f"Vre in_re 0 {np.sqrt(p_in)}", "Vim in_im 0 0")
-    ckt.device(ls.va("waveguide_nl"), "wg",
-               "in_re", "in_im", "out_re", "out_im", "0", **{**WG, **params})
-    r = eng.op(ckt)
-    return float(r["out_re"][0] ** 2 + r["out_im"][0] ** 2) / p_in
+def _wg_T(p_in: float, **params) -> float:
+    vals = op(cx.va("waveguide_nl"),
+              {"in_re": np.sqrt(p_in), "in_im": 0.0},
+              settings={**WG, **params}, reads=["out_re", "out_im"])
+    return power(vals, "out_re", "out_im") / p_in
 
 
-def test_waveguide_linear_limit(eng):
+def test_waveguide_linear_limit():
     # beta = 0: plain exp(-alpha*L) whatever the power
-    t = _wg_op(eng, 10e-3, beta_tpa=0.0)
+    t = _wg_T(10e-3, beta_tpa=0.0)
     assert t == pytest.approx(10 ** (-200.0 * 5000e-6 / 10), rel=1e-6)
 
 
-def test_waveguide_tpa_fca_transmission(eng):
+def test_waveguide_tpa_fca_transmission():
     # transmission droops with power, exactly as the lumped equations say
     for p_in in (1e-4, 1e-3, 10e-3, 100e-3):
-        assert _wg_op(eng, p_in) == pytest.approx(wg_analytic(p_in), rel=1e-6)
-    assert _wg_op(eng, 100e-3) < 0.9 * _wg_op(eng, 1e-4)
+        assert _wg_T(p_in) == pytest.approx(wg_analytic(p_in), rel=1e-6)
+    assert _wg_T(100e-3) < 0.9 * _wg_T(1e-4)
 
 
-def test_waveguide_nl_phase(eng):
-    # Kerr + FCD rotate the field: check |phase| grows with power and that
-    # the rotation leaves |E| untouched (phase-only nonlinearity)
+def test_waveguide_nl_phase():
+    # Kerr + FCD rotate the field: |phase| grows with power, |E| untouched
     p_in = 50e-3
-    ckt = ls.Circuit("wg phase")
-    ckt.raw(f"Vre in_re 0 {np.sqrt(p_in)}", "Vim in_im 0 0")
-    ckt.device(ls.va("waveguide_nl"), "wg",
-               "in_re", "in_im", "out_re", "out_im", "0",
-               **{**WG, "n2_kerr": 4.5e-18, "dn_dn": -4e-27})
-    r = eng.op(ckt)
-    phi = np.arctan2(float(r["out_im"][0]), float(r["out_re"][0]))
-    assert abs(phi) > 0.05          # a measurable nonlinear phase
-    t_power = (r["out_re"][0] ** 2 + r["out_im"][0] ** 2) / p_in
-    assert t_power == pytest.approx(wg_analytic(p_in), rel=1e-6)
+    vals = op(cx.va("waveguide_nl"),
+              {"in_re": np.sqrt(p_in), "in_im": 0.0},
+              settings={**WG, "n2_kerr": 4.5e-18, "dn_dn": -4e-27},
+              reads=["out_re", "out_im"])
+    phi = np.arctan2(vals["out_im"].real, vals["out_re"].real)
+    assert abs(phi) > 0.05                       # a measurable nonlinear phase
+    assert power(vals, "out_re", "out_im") / p_in == pytest.approx(
+        wg_analytic(p_in), rel=1e-6)
 
 
 def wg_kerr_k(**over) -> tuple[float, float]:
-    """(k [rad/W], power transmission T) of the pure-Kerr segment: the phase
-    is trapezoidal in z (endpoint-average intensity x geometric length), so
+    """(k [rad/W], power transmission T) of the pure-Kerr segment: the phase is
+    trapezoidal in z (endpoint-average intensity x geometric length), so
     k = gamma * (1 + e^{-alpha*L})/2 * L with gamma = 2*pi*n2/(lambda*A_eff)."""
     p = {**WG, **over}
     alpha = p["loss_db_m"] * np.log(10) / 10
@@ -96,64 +96,17 @@ def wg_kerr_k(**over) -> tuple[float, float]:
             np.exp(-alpha * length))
 
 
-def test_waveguide_kerr_phase_lumping(eng):
-    # beta = sigma = 0: phi = -k*P_in exactly (pins the trapezoidal lumping
-    # that examples/wg_fwm.py shows converging on the distributed NLSE)
+def test_waveguide_kerr_phase_lumping():
+    # beta = sigma = 0: phi = -k*P_in exactly (pins the trapezoidal lumping that
+    # examples/wg_fwm.py shows converging on the distributed NLSE)
     kerr = dict(beta_tpa=0.0, sigma_fca=0.0, n2_kerr=4.5e-18, dn_dn=0.0)
     k, _ = wg_kerr_k(**kerr)
     for p_in in (10e-3, 50e-3):
-        ckt = ls.Circuit("wg kerr phase")
-        ckt.raw(".options reltol=1e-10 abstol=1e-15 vntol=1e-12")
-        ckt.raw(f"Vre in_re 0 {np.sqrt(p_in)}", "Vim in_im 0 0")
-        ckt.device(ls.va("waveguide_nl"), "wg",
-                   "in_re", "in_im", "out_re", "out_im", "0",
-                   **{**WG, **kerr})
-        r = eng.op(ckt)
-        phi = np.arctan2(float(r["out_im"][0]), float(r["out_re"][0]))
+        vals = op(cx.va("waveguide_nl"),
+                  {"in_re": np.sqrt(p_in), "in_im": 0.0},
+                  settings={**WG, **kerr}, reads=["out_re", "out_im"])
+        phi = np.arctan2(vals["out_im"].real, vals["out_re"].real)
         assert phi == pytest.approx(-k * p_in, rel=1e-6)
-
-
-def test_waveguide_fwm_idler(eng):
-    """chi(3) four-wave mixing through the OSDI/ngspice toolchain: pump and
-    signal tones beat, the instantaneous Kerr phase scatters them, and the
-    idler at 2*f_p - f_s carries the textbook eta = T*(k*P_p)^2*P_s — with
-    slope 2 in pump power. (examples/wg_fwm.py is the full circulax study.)
-    """
-    from scipy.special import jv
-
-    kerr = dict(loss_db_m=100.0, beta_tpa=0.0, sigma_fca=0.0,
-                n2_kerr=4.5e-18, dn_dn=0.0)
-    k, t_pwr = wg_kerr_k(**kerr)
-    f_p, f_s, p_s = 20e9, 30e9, 1e-4
-    dt, t1 = 0.5e-12, 2e-9
-
-    def idler(p_p: float) -> float:
-        ar, ai = np.sqrt(p_p), np.sqrt(p_s)
-        ckt = ls.Circuit("wg fwm")
-        ckt.raw(".options reltol=1e-10 abstol=1e-15 vntol=1e-12")
-        # series-stacked tones: E = sqrt(Pp)e^{j2pi fp t} + sqrt(Ps)e^{j2pi fs t}
-        ckt.raw(f"Vre1 in_re mre SIN(0 {ar} {f_p} 0 0 90)",
-                f"Vre2 mre 0     SIN(0 {ai} {f_s} 0 0 90)",
-                f"Vim1 in_im mim SIN(0 {ar} {f_p} 0 0 0)",
-                f"Vim2 mim 0     SIN(0 {ai} {f_s} 0 0 0)")
-        ckt.device(ls.va("waveguide_nl"), "wg",
-                   "in_re", "in_im", "out_re", "out_im", "0",
-                   **{**WG, **kerr})
-        r = eng.tran(ckt, f"{dt*1e12}p", f"{t1*1e9}n")
-        # resample the last 10 beat periods onto an exact uniform grid
-        tt = 1e-9 + dt * np.arange(2000)
-        e = (np.interp(tt, r.t, r["out_re"])
-             + 1j * np.interp(tt, r.t, r["out_im"]))
-        a = np.fft.fft(e) / len(e)
-        f = np.fft.fftfreq(len(e), d=dt)
-        return float(np.abs(a[np.argmin(np.abs(f - (2 * f_p - f_s)))]) ** 2)
-
-    for p_p in (10e-3, 20e-3):
-        x = 2 * k * np.sqrt(p_p * p_s)
-        p_i_th = t_pwr * (p_p * jv(1, x) ** 2 + p_s * jv(2, x) ** 2)
-        assert idler(p_p) == pytest.approx(p_i_th, rel=2e-2)
-    # and the slope-2 signature, self-normalised
-    assert idler(20e-3) / idler(10e-3) == pytest.approx(4.0, rel=2e-2)
 
 
 # ===========================================================================
@@ -176,69 +129,54 @@ def soa_gain(p_in: float, i_ma: float) -> float:
         brentq(f, h0 - 1e-9, 30.0))
 
 
-def _soa_out(eng, p_in: float, i_ma: float, **params) -> float:
+def _soa_fwd(p_in: float, i_ma: float, *, p_back: float = 0.0, **params) -> float:
+    """Forward output power of the SOA at bias current i_ma, optionally with a
+    saturating backward drive p_back."""
     v = SOA["Von"] + SOA["Rs"] * i_ma * 1e-3
-    ckt = ls.Circuit("soa op")
-    ckt.raw(".options reltol=1e-10 abstol=1e-15 vntol=1e-12")
-    ckt.raw(f"Vre fi_re 0 {np.sqrt(p_in)}", "Vim fi_im 0 0",
-            f"Vb an 0 {v}")
-    ckt.device(ls.va("soa"), "amp",
-               "fi_re", "fi_im", "fo_re", "fo_im",
-               "0", "0", "bo_re", "bo_im",       # backward inputs dark
-               "an", "0", "0", **{**SOA, **params})
-    r = eng.op(ckt)
-    return float(r["fo_re"][0] ** 2 + r["fo_im"][0] ** 2)
+    vals = op(cx.va("soa"),
+              {"fi_re": np.sqrt(p_in), "fi_im": 0.0,
+               "bi_re": np.sqrt(p_back), "bi_im": 0.0,
+               "an": v, "cat": 0.0},
+              settings={**SOA, **params},
+              reads=["fo_re", "fo_im"], terms=[("bo_re", "bo_im")])
+    return power(vals, "fo_re", "fo_im")
 
 
-def test_soa_small_signal_gain(eng):
+def test_soa_small_signal_gain():
     # 10 nW probe at i_op: the full g0 = 20 dB (at 1 uW the reservoir already
-    # compresses by ~1% — pinned exactly by test_soa_gain_saturation)
-    p = _soa_out(eng, 1e-8, 80.0)
-    assert p / 1e-8 == pytest.approx(100.0, rel=1e-3)
+    # compresses by ~1%, pinned by test_soa_gain_saturation)
+    assert _soa_fwd(1e-8, 80.0) / 1e-8 == pytest.approx(100.0, rel=1e-3)
 
 
-def test_soa_transparency_and_absorption(eng):
-    assert _soa_out(eng, 1e-6, 8.0) / 1e-6 == pytest.approx(1.0, rel=1e-3)
-    assert _soa_out(eng, 1e-6, 0.0) / 1e-6 < 0.7      # unbiased: an absorber
+def test_soa_transparency_and_absorption():
+    assert _soa_fwd(1e-6, 8.0) / 1e-6 == pytest.approx(1.0, rel=1e-3)
+    assert _soa_fwd(1e-6, 0.0) / 1e-6 < 0.7           # unbiased: an absorber
 
 
-def test_soa_gain_saturation(eng):
+def test_soa_gain_saturation():
     # gain compresses along the analytic reservoir solution
     for p_in in (0.1e-3, 1e-3, 5e-3):
-        g_ref = soa_gain(p_in, 80.0)
-        assert _soa_out(eng, p_in, 80.0) / p_in == pytest.approx(g_ref, rel=1e-3)
-    assert soa_gain(5e-3, 80.0) < 30  # sanity: deep saturation at 5 mW in
+        assert _soa_fwd(p_in, 80.0) / p_in == pytest.approx(
+            soa_gain(p_in, 80.0), rel=1e-3)
+    assert soa_gain(5e-3, 80.0) < 30                  # sanity: deep saturation
 
 
-def test_soa_bidirectional_shared_gain(eng):
+def test_soa_bidirectional_shared_gain():
     # backward power saturates the forward gain through the shared reservoir
-    p_probe, p_sat_drive = 1e-6, 2e-3
-    v = SOA["Von"] + SOA["Rs"] * 80e-3
-    ckt = ls.Circuit("soa bidi")
-    ckt.raw(f"Vre fi_re 0 {np.sqrt(p_probe)}", "Vim fi_im 0 0",
-            f"Vbr bi_re 0 {np.sqrt(p_sat_drive)}", "Vbi bi_im 0 0",
-            f"Vb an 0 {v}")
-    ckt.device(ls.va("soa"), "amp",
-               "fi_re", "fi_im", "fo_re", "fo_im",
-               "bi_re", "bi_im", "bo_re", "bo_im",
-               "an", "0", "0", **SOA)
-    r = eng.op(ckt)
-    g_fwd = float(r["fo_re"][0] ** 2 + r["fo_im"][0] ** 2) / p_probe
-    # the reservoir sees p_probe + p_sat_drive
-    g_ref = soa_gain(p_probe + p_sat_drive, 80.0)
-    assert g_fwd == pytest.approx(g_ref, rel=1e-3)
+    p_probe, p_drive = 1e-6, 2e-3
+    g_fwd = _soa_fwd(p_probe, 80.0, p_back=p_drive) / p_probe
+    assert g_fwd == pytest.approx(soa_gain(p_probe + p_drive, 80.0), rel=1e-3)
 
 
-def test_soa_chirp_phase(eng):
+def test_soa_chirp_phase():
     # alpha_h rotates the output by -alpha_h*h/2
     v = SOA["Von"] + SOA["Rs"] * 80e-3
-    ckt = ls.Circuit("soa chirp")
-    ckt.raw("Vre fi_re 0 1u", "Vim fi_im 0 0", f"Vb an 0 {v}")
-    ckt.device(ls.va("soa"), "amp",
-               "fi_re", "fi_im", "fo_re", "fo_im", "0", "0", "bo_re", "bo_im",
-               "an", "0", "0", **{**SOA, "alpha_h": 4.0})
-    r = eng.op(ckt)
-    phi = np.arctan2(float(r["fo_im"][0]), float(r["fo_re"][0]))
+    vals = op(cx.va("soa"),
+              {"fi_re": 1e-6, "fi_im": 0.0, "bi_re": 0.0, "bi_im": 0.0,
+               "an": v, "cat": 0.0},
+              settings={**SOA, "alpha_h": 4.0},
+              reads=["fo_re", "fo_im"], terms=[("bo_re", "bo_im")])
+    phi = np.arctan2(vals["fo_im"].real, vals["fo_re"].real)
     h = np.log(soa_gain(0.0, 80.0))
     assert np.angle(np.exp(1j * (phi + 0.5 * 4.0 * h))) == pytest.approx(0.0, abs=1e-3)
 
@@ -246,31 +184,25 @@ def test_soa_chirp_phase(eng):
 # ===========================================================================
 # mirror — unitarity and phase trim
 # ===========================================================================
-def test_mirror_split_and_unitarity(eng):
-    ckt = ls.Circuit("mirror")
-    ckt.raw("Vre li_re 0 1", "Vim li_im 0 0")
-    ckt.device(ls.va("mirror"), "m1",
-               "li_re", "li_im", "lo_re", "lo_im",
-               "0", "0", "ro_re", "ro_im", "0", refl=0.3)
-    r = eng.op(ckt)
-    p_r = float(r["lo_re"][0] ** 2 + r["lo_im"][0] ** 2)
-    p_t = float(r["ro_re"][0] ** 2 + r["ro_im"][0] ** 2)
-    assert p_r == pytest.approx(0.3, rel=1e-9)
-    assert p_t == pytest.approx(0.7, rel=1e-9)
+def test_mirror_split_and_unitarity():
+    vals = op(cx.va("mirror"),
+              {"li_re": 1.0, "li_im": 0.0, "ri_re": 0.0, "ri_im": 0.0},
+              settings={"refl": 0.3},
+              reads=["lo_re", "lo_im", "ro_re", "ro_im"])
+    assert power(vals, "lo_re", "lo_im") == pytest.approx(0.3, rel=1e-9)
+    assert power(vals, "ro_re", "ro_im") == pytest.approx(0.7, rel=1e-9)
     # transmission carries the unitary j: purely imaginary output
-    assert abs(float(r["ro_re"][0])) < 1e-12
-    assert float(r["ro_im"][0]) == pytest.approx(np.sqrt(0.7), rel=1e-9)
+    assert abs(vals["ro_re"].real) < 1e-12
+    assert vals["ro_im"].real == pytest.approx(np.sqrt(0.7), rel=1e-9)
 
 
-def test_mirror_reflection_phase(eng):
-    ckt = ls.Circuit("mirror phase")
-    ckt.raw("Vre li_re 0 1", "Vim li_im 0 0")
-    ckt.device(ls.va("mirror"), "m1",
-               "li_re", "li_im", "lo_re", "lo_im",
-               "0", "0", "ro_re", "ro_im", "0", refl=1.0, phi_r_deg=90.0)
-    r = eng.op(ckt)
-    assert abs(float(r["lo_re"][0])) < 1e-12
-    assert float(r["lo_im"][0]) == pytest.approx(1.0, rel=1e-9)
+def test_mirror_reflection_phase():
+    vals = op(cx.va("mirror"),
+              {"li_re": 1.0, "li_im": 0.0, "ri_re": 0.0, "ri_im": 0.0},
+              settings={"refl": 1.0, "phi_r_deg": 90.0},
+              reads=["lo_re", "lo_im", "ro_re", "ro_im"])
+    assert abs(vals["lo_re"].real) < 1e-12
+    assert vals["lo_im"].real == pytest.approx(1.0, rel=1e-9)
 
 
 # ===========================================================================
@@ -301,92 +233,38 @@ def rf_drop_analytic(dnu: np.ndarray) -> np.ndarray:
     return np.abs(amp) ** 2
 
 
-def _rf_drop(eng, lambda_nm: float, v_heat: float = 0.0) -> float:
-    ckt = ls.Circuit("ring filter")
-    ckt.raw(".options reltol=1e-10 abstol=1e-15 vntol=1e-12")
-    ckt.raw("Vre in_re 0 1m", "Vim in_im 0 0", f"Vh hp 0 {v_heat}")
-    ckt.device(ls.va("ring_filter"), "rf",
-               "in_re", "in_im", "thru_re", "thru_im", "drop_re", "drop_im",
-               "hp", "0", "0", lambda_nm=lambda_nm, **RF)
-    r = eng.op(ckt)
-    return float(r["drop_re"][0] ** 2 + r["drop_im"][0] ** 2) / 1e-6
+def _rf_drop(lambda_nm: float, v_heat: float = 0.0) -> float:
+    vals = op(cx.va("ring_filter"),
+              {"in_re": 1e-3, "in_im": 0.0, "hp": v_heat, "hn": 0.0},
+              settings={"lambda_nm": lambda_nm, **RF},
+              reads=["drop_re", "drop_im"], terms=[("thru_re", "thru_im")])
+    return power(vals, "drop_re", "drop_im") / 1e-6
 
 
-def test_ring_filter_drop_peak_and_comb(eng):
+def test_ring_filter_drop_peak_and_comb():
     lam0 = RF["lambda_res_nm"]
     tau, ite1, ite2, fsr = rf_rates()
     t_peak = rf_drop_analytic(np.array([0.0]))[0]
-    assert _rf_drop(eng, lam0) == pytest.approx(t_peak, rel=1e-6)
+    assert _rf_drop(lam0) == pytest.approx(t_peak, rel=1e-6)
     assert 0.5 < t_peak < 1.0    # strongly coupled add-drop
     # the comb repeats one FSR away (m = +1 mode): same peak height
     lam_p1 = 1 / (1 / (lam0 * 1e-9) + fsr / C0) * 1e9
-    assert _rf_drop(eng, lam_p1) == pytest.approx(
+    assert _rf_drop(lam_p1) == pytest.approx(
         rf_drop_analytic(np.array([fsr]))[0], rel=1e-4)
     # and is dark between modes
     lam_half = 1 / (1 / (lam0 * 1e-9) + 0.5 * fsr / C0) * 1e9
-    assert _rf_drop(eng, lam_half) < 0.01 * t_peak
+    assert _rf_drop(lam_half) < 0.01 * t_peak
 
 
-def test_ring_filter_heater_shift(eng):
+def test_ring_filter_heater_shift():
     # heater power red-shifts the comb: peak moves to lambda_res + dl*P
     v = 2.0
     p_mw = v**2 / RF["r_heater"] * 1e3
     lam_shift = RF["lambda_res_nm"] + RF["dl_dmw_pm"] * p_mw * 1e-3   # pm -> nm
-    t_on_peak = _rf_drop(eng, lam_shift, v_heat=v)
+    t_on_peak = _rf_drop(lam_shift, v_heat=v)
     assert t_on_peak == pytest.approx(rf_drop_analytic(np.array([0.0]))[0], rel=1e-4)
     # the un-shifted wavelength has fallen off the peak
-    assert _rf_drop(eng, RF["lambda_res_nm"], v_heat=v) < 0.9 * t_on_peak
-
-
-# ===========================================================================
-# soa + mirror — Fabry-Perot laser (the integration pin)
-# ===========================================================================
-def test_fp_laser_threshold(eng):
-    """SOA between two partial reflectors lases at G_th = 1/(r1*r2).
-
-    DC Newton lands on the dark stationary branch above threshold (it exists
-    and Newton likes it; stability is a transient property), so the operating
-    point comes from a transient settle — physically, a turn-on.
-    """
-    r1, r2 = 0.9, 0.3
-    h_th = -0.5 * np.log(r1 * r2)
-    g_th = np.exp(h_th)
-    hop = SOA["g0_db"] * np.log(10) / 10
-    i_th = SOA["i_tr_ma"] + h_th / hop * (SOA["i_op_ma"] - SOA["i_tr_ma"])
-    assert 18.0 < i_th < 19.0    # the device this test pins
-
-    def p_settled(i_ma: float) -> float:
-        v_lo = SOA["Von"] + SOA["Rs"] * 5e-3          # start below threshold
-        v_hi = SOA["Von"] + SOA["Rs"] * i_ma * 1e-3
-        ckt = ls.Circuit("fp laser")
-        ckt.raw(".options reltol=1e-9 abstol=1e-14 vntol=1e-10")
-        ckt.raw(f"Vb an 0 PULSE({v_lo} {v_hi} 0.2n 10p 10p 10n 20n)")
-        ckt.device(ls.va("soa"), "amp",
-                   "fi_re", "fi_im", "fo_re", "fo_im",
-                   "bi_re", "bi_im", "bo_re", "bo_im",
-                   "an", "0", "0", **{**SOA, "p_seed": 1e-9})
-        ckt.device(ls.va("mirror"), "m1",
-                   "0", "0", "m1lo_re", "m1lo_im",
-                   "bo_re", "bo_im", "fi_re", "fi_im", "0", refl=r1)
-        ckt.device(ls.va("mirror"), "m2",
-                   "fo_re", "fo_im", "bi_re", "bi_im",
-                   "0", "0", "out_re", "out_im", "0", refl=r2)
-        r = eng.tran(ckt, "2p", "6n")
-        p = r["out_re"] ** 2 + r["out_im"] ** 2
-        return float(p[r.t > 5e-9].mean())
-
-    def p_analytic(i_ma: float) -> float:
-        # reservoir balance with the gain clamped at G_th (r1/r2 are POWER
-        # reflectivities, matching the mirror's refl parameter):
-        #   h0 - h_th = (G_th - 1)*(P_fi + P_bi)/p_sat,
-        #   P_fi + P_bi = P_fi*(1 + r2*G_th),  P_out = (1-r2)*G_th*P_fi
-        h0 = hop * (i_ma - SOA["i_tr_ma"]) / (SOA["i_op_ma"] - SOA["i_tr_ma"])
-        p_fi = (h0 - h_th) * SOA["p_sat"] / ((g_th - 1) * (1 + r2 * g_th))
-        return (1 - r2) * g_th * p_fi
-
-    assert p_settled(15.0) < 1e-5                     # below threshold: dark
-    for i_ma in (30.0, 50.0):                         # clamped-gain L-I line
-        assert p_settled(i_ma) == pytest.approx(p_analytic(i_ma), rel=0.01)
+    assert _rf_drop(RF["lambda_res_nm"], v_heat=v) < 0.9 * t_on_peak
 
 
 # ===========================================================================
@@ -405,19 +283,14 @@ def rnl_rates() -> tuple[float, float, float]:
     return inv_ti, inv_te, v_g
 
 
-def _rnl_sweep(eng, p_in: float, span_pm: float = 8.0, n: int = 241, **over):
+def _rnl_sweep(p_in: float, span_pm: float = 8.0, n: int = 241, **over):
     lam0 = RNL["lambda_res_nm"]
     lams = lam0 + np.linspace(-span_pm, span_pm, n) * 1e-3   # pm -> nm
-    t = np.empty(n)
-    for i, lam in enumerate(lams):
-        ckt = ls.Circuit("ring nl")
-        ckt.raw(".options reltol=1e-10 abstol=1e-15 vntol=1e-12")
-        ckt.raw(f"Vre in_re 0 {np.sqrt(p_in)}", "Vim in_im 0 0")
-        ckt.device(ls.va("ring_nl"), "rg",
-                   "in_re", "in_im", "out_re", "out_im", "0",
-                   lambda_nm=lam, **{**RNL, **over})
-        r = eng.op(ckt)
-        t[i] = (r["out_re"][0] ** 2 + r["out_im"][0] ** 2) / p_in
+    c = build(cx.va("ring_nl"), {"in_re": np.sqrt(p_in), "in_im": 0.0},
+              settings={"lambda_nm": lam0, **RNL, **over},
+              reads=["out_re", "out_im"])
+    y = c.dc(params={"DUT.lambda_nm": jnp.asarray(lams)})
+    t = np.asarray((c.port(y, "out_re") ** 2 + c.port(y, "out_im") ** 2).real) / p_in
     return lams, t
 
 
@@ -427,13 +300,13 @@ def fwhm_pm(lams: np.ndarray, t: np.ndarray) -> float:
     return (lams[below[-1]] - lams[below[0]]) * 1e3   # nm -> pm
 
 
-def test_ring_nl_linear_lorentzian(eng):
-    # beta_tpa = 0 recovers the exact linear CMT Lorentzian (at Q ~ 1.2e6
-    # even 1 uW of input builds enough circulating power for ~0.5% of FCA,
-    # so the "linear" pin must actually switch the nonlinearity off)
+def test_ring_nl_linear_lorentzian():
+    # beta_tpa = 0 recovers the exact linear CMT Lorentzian (at Q ~ 1.2e6 even
+    # 1 uW builds enough circulating power for ~0.5% of FCA, so the "linear" pin
+    # must actually switch the nonlinearity off)
     inv_ti, inv_te, _ = rnl_rates()
     tau = 1 / (inv_ti + inv_te)
-    lams, t = _rnl_sweep(eng, 1e-6, beta_tpa=0.0)
+    lams, t = _rnl_sweep(1e-6, beta_tpa=0.0)
     lam = lams * 1e-9
     delta = 2 * np.pi * C0 * (1 / lam - 1 / (RNL["lambda_res_nm"] * 1e-9))
     t_ref = ((1 - tau * 2 * inv_te) ** 2 + (tau * delta) ** 2) / (1 + (tau * delta) ** 2)
@@ -444,74 +317,11 @@ def test_ring_nl_linear_lorentzian(eng):
         q_loaded, rel=0.1)
 
 
-def test_ring_nl_q_droop_with_power(eng):
+def test_ring_nl_q_droop_with_power():
     # nonlinear absorption broadens the line and lifts the dip floor
-    lams_lo, t_lo = _rnl_sweep(eng, 1e-6)
-    lams_hi, t_hi = _rnl_sweep(eng, 0.5e-3, span_pm=60.0)
+    lams_lo, t_lo = _rnl_sweep(1e-6)
+    lams_hi, t_hi = _rnl_sweep(0.5e-3, span_pm=60.0)
     q_lo = RNL["lambda_res_nm"] / (fwhm_pm(lams_lo, t_lo) * 1e-6)
     q_hi = RNL["lambda_res_nm"] / (fwhm_pm(lams_hi, t_hi) * 1e-6)
     assert q_hi < 0.6 * q_lo          # the Q collapse
     assert t_hi.min() > t_lo.min()    # coupling condition walks away from critical
-
-
-# ===========================================================================
-# ring_kerr — intracavity four-wave mixing (the modal chi(3) ring)
-# ===========================================================================
-RK = dict(lambda_nm=1310.0, lambda_res_nm=1310.0, radius_um=2000.0, n_g=4.0,
-          loss_db_m=30.0, kappa2_in=0.035, kappa2_drop=0.035,
-          a_eff_um2=0.1, n2_kerr=4.5e-18, d2_hz=0.0)
-
-
-def rk_rates() -> dict:
-    circ = 2 * np.pi * RK["radius_um"] * 1e-6
-    v_g = C0 / RK["n_g"]
-    t_rt = circ / v_g
-    w0 = 2 * np.pi * C0 / (RK["lambda_nm"] * 1e-9)
-    inv_i = RK["loss_db_m"] * np.log(10) / 10 * v_g / 2
-    inv_e1 = RK["kappa2_in"] / (2 * t_rt)
-    inv_e2 = RK["kappa2_drop"] / (2 * t_rt)
-    tau = 1 / (inv_i + inv_e1 + inv_e2)
-    k2c = 2 * inv_e1
-    g_u = (w0 / RK["n_g"]) * RK["n2_kerr"] * v_g / (RK["a_eff_um2"] * 1e-12
-                                                    * circ)
-    return dict(fsr=1 / t_rt, tau=tau, k2c=k2c, geff=g_u / k2c)
-
-
-def test_ring_kerr_fwm_idler(eng):
-    """Intracavity FWM through the OSDI/ngspice toolchain: pump on mode 0,
-    signal one FSR away on mode +1, and the idler emerges in mode -1 with
-    the resonant CMT efficiency P_i = (geff*tau*P_p)^2 (k2c*tau)^6 P_s —
-    slope 2 in pump power. (examples/ring_fwm.py is the full study.)"""
-    r = rk_rates()
-    p_s = 10e-6
-    dt_out = 0.5e-12
-    t_settle, n_win = 12e-9, 4096
-    t_win = 12 / r["fsr"]                     # 12 beat periods
-    t1 = t_settle + t_win
-
-    def idler(p_p: float) -> float:
-        a_s = np.sqrt(p_s)
-        ckt = ls.Circuit("ring fwm")
-        ckt.raw(".options reltol=1e-10 abstol=1e-15 vntol=1e-12")
-        # pump at envelope 0 (mode 0) in series with the signal tone at
-        # envelope -FSR (mode +1): E = sqrt(Pp) + sqrt(Ps)e^{-j*2pi*FSR*t}
-        ckt.raw(f"Vre1 in_re mre {np.sqrt(p_p)}",
-                f"Vre2 mre 0     SIN(0 {a_s} {r['fsr']} 0 0 90)",
-                "Vim1 in_im mim 0",
-                f"Vim2 mim 0     SIN(0 {-a_s} {r['fsr']} 0 0 0)")
-        ckt.device(ls.va("ring_kerr"), "rk",
-                   "in_re", "in_im", "thru_re", "thru_im",
-                   "drop_re", "drop_im", "0", **RK)
-        res = eng.tran(ckt, f"{dt_out*1e12}p", f"{t1*1e9}n")
-        tt = t_settle + (t_win / n_win) * np.arange(n_win)
-        e = (np.interp(tt, res.t, res["thru_re"])
-             + 1j * np.interp(tt, res.t, res["thru_im"]))
-        a = np.fft.fft(e) / n_win
-        f = np.fft.fftfreq(n_win, d=t_win / n_win)
-        return float(np.abs(a[np.argmin(np.abs(f - r["fsr"]))]) ** 2)
-
-    for p_p in (50e-6, 100e-6):
-        p_i_th = (r["geff"] * r["tau"] * p_p) ** 2 \
-            * (r["k2c"] * r["tau"]) ** 6 * p_s
-        assert idler(p_p) == pytest.approx(p_i_th, rel=5e-2)
-    assert idler(100e-6) / idler(50e-6) == pytest.approx(4.0, rel=5e-2)

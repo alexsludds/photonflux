@@ -1,6 +1,7 @@
 {
-  "title": "14 \u2014 Carrier-injection ring at 1 Gb/s: lifetime limit vs TX pre-emphasis",
+  "title": "Injection ring OOK",
   "group": "Lasers & modulators",
+  "description": "Carrier-injection ring at 1 Gb/s: lifetime limit vs TX pre-emphasis",
   "schematic": {
     "instances": {
       "LAS1": {

@@ -84,7 +84,12 @@ def va(
     src = Path(name)
     if src.suffix != ".va":
         base = Path(models_dir) if models_dir else toolchain.MODELS_DIR
-        src = base / f"{Path(name).name}.va"
+        stem = Path(name).name
+        src = base / f"{stem}.va"
+        if not src.exists():
+            # models/ groups sources into convention subfolders
+            # (optical_power/, optical_field/, util/); resolve by bare name.
+            src = next(iter(sorted(base.glob(f"**/{stem}.va"))), src)
     if not src.exists():
         raise FileNotFoundError(src)
     _check_va_support(src)
@@ -173,7 +178,7 @@ def cw_laser():
 
 
 def mzm():
-    """Mach-Zehnder modulator, coherent-field twin of ``models/mzm.va``.
+    """Mach-Zehnder modulator, coherent-field twin of ``models/optical_power/mzm.va``.
 
     Optical 2-port (``pin``/``pout``, S-matrix element like circulax's
     OpticalWaveguide) with differential drive electrodes (``vp``/``vn``).
@@ -436,16 +441,9 @@ def sky130_fet(
 def openvaf_ir_path() -> Path:
     """The ChipFlow-fork openvaf binary used for OSDI FET compilation.
 
-    The stock ``bin/openvaf-r`` (23.5.0) miscompiles BSIM4 to OSDI on this
-    machine (segfault in setup); the fork binary produces a correct binary.
-    Override with ``PHOTONFLUX_OPENVAF_IR``.
+    Override with ``PHOTONFLUX_OPENVAF_IR``. See ``toolchain.openvaf_ir_path``.
     """
-    import os
-
-    env = os.environ.get("PHOTONFLUX_OPENVAF_IR")
-    if env:
-        return Path(env)
-    return toolchain.REPO / "bin" / "openvaf-ir"
+    return toolchain.openvaf_ir_path()
 
 
 def _bsim4_osdi() -> Path:
@@ -609,7 +607,7 @@ def _check_va_support(src: Path) -> None:
         raise NotImplementedError(
             f"{src.name}: absdelay() is not supported by the VA->JAX "
             "lowering (no signal history in the solvers). Approximate the "
-            "delay with poles (see models/mzm_tw.va) or use a vector-fitted "
+            "delay with poles (see models/optical_power/mzm_tw.va) or use a vector-fitted "
             "LTI component (webapp channel / fiber_cd).")
     if re.search(r"\b(white_noise|flicker_noise)\s*\(", text):
         import warnings

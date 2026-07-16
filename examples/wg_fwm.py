@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Four-wave mixing in a chi(3) waveguide, pinned against every textbook scaling.
 
-``models/waveguide_nl.va`` with the absorption channels off (beta_tpa =
+``models/optical_field/waveguide_nl.va`` with the absorption channels off (beta_tpa =
 sigma_fca = dn_dn = 0) is a pure Kerr segment — the real part of chi(3):
 
     E_out(t) = sqrt(T) * E_in(t) * exp(-j*k*P_in(t)),      T = exp(-alpha*L)
@@ -74,7 +74,7 @@ from circulax import compile_circuit
 from circulax.components.base_component import Signals, States, source
 from circulax.solvers.transient import BDF2VectorizedTransientSolver
 
-from cavity import terminator
+from _cavity import terminator
 from photonflux import cx
 
 C0 = 2.99792458e8
@@ -379,7 +379,7 @@ def main() -> int:
     # ---- figure -------------------------------------------------------------
     fig, ax = plt.subplots(2, 3, figsize=(15.5, 8.5))
     fig.suptitle("Four-wave mixing in a chi(3) waveguide "
-                 "(models/waveguide_nl.va, Kerr only)", fontsize=13)
+                 "(models/optical_field/waveguide_nl.va, Kerr only)", fontsize=13)
 
     a0 = ax[0, 0]
     sel = p_lines > 1e-26

@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "photonflux"
-version = "0.1.0"
-description = "Analog + photonic co-simulation in Python: Verilog-A (OpenVAF/OSDI) photonics + SPICE electronics over native libngspice"
+version = "0.2.0"
+description = "Differentiable photonic + analog co-simulation in Python: Verilog-A (OpenVAF/OSDI) photonics + SKY130 electronics in one JAX/circulax system"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [

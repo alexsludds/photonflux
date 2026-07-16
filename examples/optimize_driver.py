@@ -52,7 +52,7 @@ import numpy as np
 
 # the testbench we wrap, and the importable driver builders it uses
 import ring_mod_sky130 as R
-import drivers as D
+import _drivers as D
 
 # a single FET wider than this trips the SKY130 model-card bin / netlist load,
 # so keep the search inside a range that always compiles

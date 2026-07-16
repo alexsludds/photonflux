@@ -62,6 +62,7 @@ def _examples_index() -> list[dict]:
         try:
             data = json.loads(p.read_text())
             out.append({"id": p.stem, "title": data.get("title", p.stem),
+                        "description": data.get("description", ""),
                         "group": data.get("group", "More")})
         except json.JSONDecodeError:
             continue

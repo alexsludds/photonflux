@@ -1,6 +1,7 @@
 {
-  "title": "12 \u2014 25 Gb/s over 20 km fiber: dispersion closes the direct-detect eye",
+  "title": "Fiber dispersion link",
   "group": "Channels & equalization",
+  "description": "25 Gb/s over 20 km fiber: dispersion closes the direct-detect eye",
   "schematic": {
     "instances": {
       "LAS1": {

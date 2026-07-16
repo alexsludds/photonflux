@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Testbench: Verilog-A silicon ring modulator driven by a SKY130 inverter.
 
-The device under test is ``models/ring_mod.va`` — a coupled-mode-theory
+The device under test is ``models/optical_field/ring_mod.va`` — a coupled-mode-theory
 all-pass microring parameterised by its physics: R = 7.5 um, n_g = 4.0,
 n_eff = 2.4, 7000 dB/m junction propagation loss over the full circumference,
 bus power coupling kappa^2 = 10 % (mildly overcoupled; critical would be
@@ -35,7 +35,7 @@ Three parts, self-checking:
     .venv-circulax/bin/python examples/ring_mod_sky130.py --driver two-stage
     .venv-circulax/bin/python examples/ring_mod_sky130.py --driver single-neut --cneut 2e-15
 
-The electrode driver is an importable flavor (see ``examples/drivers.py``),
+The electrode driver is an importable flavor (see ``examples/_drivers.py``),
 swapped with ``--driver``: ``single`` is one inverting CMOS inverter;
 ``single-neut`` adds a resizable Miller-neutralization cap (``--cneut``) that
 cancels the output-FET Cgd kickback (watch the 'Cgd overshoot' report shrink);
@@ -44,7 +44,7 @@ cascade off an ideal source is ~33 Gbd-class (opens at ``--baud 30e9``); at the
 50 Gbd default its eye is reported but the strict checks stay calibrated to the
 plain single stage.
 
-        -> out/circulax_ring_mod.png
+        -> out/ring_mod.png
 """
 from __future__ import annotations
 
@@ -68,7 +68,7 @@ from circulax.components.electronic import Capacitor, Resistor, VoltageSource
 from photodiode_tia import Photodiode
 
 # importable CMOS-inverter driver flavors (single, single+neutralization, two-stage)
-from drivers import (
+from _drivers import (
     single_stage_inverter,
     single_stage_neutralized_inverter,
     stitch_driver,
@@ -123,7 +123,7 @@ W_N2_UM = 20.0             # two-stage per-inverter NMOS width [um]
 DRIVER = "single-neut"       # driver flavor: "single" (inverting) or "two-stage"
 TWO_STAGE_TAPER = 1.0      # stage-2/stage-1 width ratio (1.0 = identical stages)
 
-OUT = Path(__file__).resolve().parents[1] / "out" / "circulax_ring_mod.png"
+OUT = Path(__file__).resolve().parents[1] / "out" / "ring_mod.png"
 
 C0 = 2.99792458e8
 F_OPT = C0 / (WAVELENGTH_NM * 1e-9)          # optical carrier ~229 THz
@@ -260,7 +260,7 @@ def base_models() -> dict:
         "cap": Capacitor,
         "vsrc": VoltageSource,
         # NB: the SKY130 inverter FETs are supplied by the driver flavor
-        # (see drivers.py), stitched into the transient netlist below.
+        # (see _drivers.py), stitched into the transient netlist below.
     }
 
 

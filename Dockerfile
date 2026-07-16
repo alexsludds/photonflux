@@ -18,7 +18,7 @@
 #
 # NOTE: this image has not been built on this (arm64, no-daemon) machine. The
 # authoritative build runs on the Space/Cloud builder. The `ovbuild` stage is
-# the one to watch on the first build — see README-DEPLOY.md.
+# the one to watch on the first build — see docs/README-DEPLOY.md.
 # ---------------------------------------------------------------------------
 
 ARG PY_VER=3.12

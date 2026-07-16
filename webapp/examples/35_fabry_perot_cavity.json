@@ -1,126 +1,127 @@
 {
- "title": "35 — Fabry-Perot cavity: two partial mirrors (R = 0.9) around a 100 µm waveguide, driven through a 20 dB pad (an ideal field source is a perfect back-reflector — pad it like a real bench). Airy comb: FSR = λ²/(2·n_g·L) ≈ 2.15 nm, finesse ≈ 29, ~35x intracavity build-up",
- "group": "Passive photonics",
- "schematic": {
-  "instances": {
-   "LAS": {
-    "type": "cw_laser",
-    "x": 40,
-    "y": 160,
-    "rot": 0,
-    "settings": {
-     "power": 0.1,
-     "wavelength_nm": 1310.0
-    }
-   },
-   "GND": {
-    "type": "ground",
-    "x": 40,
-    "y": 250,
-    "rot": 0,
-    "settings": {}
-   },
-   "PAD": {
-    "type": "waveguide",
-    "x": 160,
-    "y": 160,
-    "rot": 0,
-    "settings": {
-     "length_m": 1e-06,
-     "loss_dB_cm": 200000.0,
-     "neff": 2.4,
-     "n_group": 4.0,
-     "center_wavelength_nm": 1310.0,
-     "wavelength_nm": 1310.0
-    }
-   },
-   "M1": {
-    "type": "opt_mirror",
-    "x": 300,
-    "y": 160,
-    "rot": 0,
-    "settings": {
-     "R": 0.9,
-     "il_db": 0.0
-    }
-   },
-   "WG": {
-    "type": "waveguide",
-    "x": 430,
-    "y": 160,
-    "rot": 0,
-    "settings": {
-     "length_m": 9.98875e-05,
-     "loss_dB_cm": 1.0,
-     "neff": 2.4,
-     "n_group": 4.0,
-     "center_wavelength_nm": 1310.0,
-     "wavelength_nm": 1310.0
-    }
-   },
-   "M2": {
-    "type": "opt_mirror",
-    "x": 580,
-    "y": 160,
-    "rot": 0,
-    "settings": {
-     "R": 0.9,
-     "il_db": 0.0
-    }
-   },
-   "TT": {
-    "type": "opt_term",
-    "x": 720,
-    "y": 160,
-    "rot": 0,
-    "settings": {}
-   }
+  "title": "Fabry-Perot cavity",
+  "group": "Passive photonics",
+  "description": "Fabry-Perot cavity: two partial mirrors (R = 0.9) around a 100 µm waveguide, driven through a 20 dB pad (an ideal field source is a perfect back-reflector — pad it like a real bench). Airy comb: FSR = λ²/(2·n_g·L) ≈ 2.15 nm, finesse ≈ 29, ~35x intracavity build-up",
+  "schematic": {
+    "instances": {
+      "LAS": {
+        "type": "cw_laser",
+        "x": 40,
+        "y": 160,
+        "rot": 0,
+        "settings": {
+          "power": 0.1,
+          "wavelength_nm": 1310.0
+        }
+      },
+      "GND": {
+        "type": "ground",
+        "x": 40,
+        "y": 250,
+        "rot": 0,
+        "settings": {}
+      },
+      "PAD": {
+        "type": "waveguide",
+        "x": 160,
+        "y": 160,
+        "rot": 0,
+        "settings": {
+          "length_m": 1e-06,
+          "loss_dB_cm": 200000.0,
+          "neff": 2.4,
+          "n_group": 4.0,
+          "center_wavelength_nm": 1310.0,
+          "wavelength_nm": 1310.0
+        }
+      },
+      "M1": {
+        "type": "opt_mirror",
+        "x": 300,
+        "y": 160,
+        "rot": 0,
+        "settings": {
+          "R": 0.9,
+          "il_db": 0.0
+        }
+      },
+      "WG": {
+        "type": "waveguide",
+        "x": 430,
+        "y": 160,
+        "rot": 0,
+        "settings": {
+          "length_m": 9.98875e-05,
+          "loss_dB_cm": 1.0,
+          "neff": 2.4,
+          "n_group": 4.0,
+          "center_wavelength_nm": 1310.0,
+          "wavelength_nm": 1310.0
+        }
+      },
+      "M2": {
+        "type": "opt_mirror",
+        "x": 580,
+        "y": 160,
+        "rot": 0,
+        "settings": {
+          "R": 0.9,
+          "il_db": 0.0
+        }
+      },
+      "TT": {
+        "type": "opt_term",
+        "x": 720,
+        "y": 160,
+        "rot": 0,
+        "settings": {}
+      }
+    },
+    "wires": [
+      {
+        "from": "LAS,p1",
+        "to": "PAD,p1"
+      },
+      {
+        "from": "LAS,p2",
+        "to": "GND,p1"
+      },
+      {
+        "from": "PAD,p2",
+        "to": "M1,p1"
+      },
+      {
+        "from": "M1,p2",
+        "to": "WG,p1"
+      },
+      {
+        "from": "WG,p2",
+        "to": "M2,p1"
+      },
+      {
+        "from": "M2,p2",
+        "to": "TT,p1"
+      }
+    ],
+    "probes": [
+      {
+        "name": "trans",
+        "at": "M2,p2",
+        "color": "#6ecbf5"
+      },
+      {
+        "name": "cavity",
+        "at": "WG,p1",
+        "color": "#e6862c"
+      }
+    ]
   },
-  "wires": [
-   {
-    "from": "LAS,p1",
-    "to": "PAD,p1"
-   },
-   {
-    "from": "LAS,p2",
-    "to": "GND,p1"
-   },
-   {
-    "from": "PAD,p2",
-    "to": "M1,p1"
-   },
-   {
-    "from": "M1,p2",
-    "to": "WG,p1"
-   },
-   {
-    "from": "WG,p2",
-    "to": "M2,p1"
-   },
-   {
-    "from": "M2,p2",
-    "to": "TT,p1"
-   }
-  ],
-  "probes": [
-   {
-    "name": "trans",
-    "at": "M2,p2",
-    "color": "#6ecbf5"
-   },
-   {
-    "name": "cavity",
-    "at": "WG,p1",
-    "color": "#e6862c"
-   }
-  ]
- },
- "analysis": {
-  "mode": "dcsweep",
-  "instance": "*",
-  "param": "wavelength_nm",
-  "start": 1307.0,
-  "stop": 1313.0,
-  "points": 4001
- }
+  "analysis": {
+    "mode": "dcsweep",
+    "instance": "*",
+    "param": "wavelength_nm",
+    "start": 1307.0,
+    "stop": 1313.0,
+    "points": 4001
+  }
 }

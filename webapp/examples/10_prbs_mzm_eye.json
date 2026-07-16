@@ -1,6 +1,7 @@
 {
-  "title": "10 \u2014 PRBS NRZ over an MZM link: optical + received eye",
+  "title": "PRBS NRZ MZM eye",
   "group": "Links & receivers",
+  "description": "PRBS NRZ over an MZM link: optical + received eye",
   "schematic": {
     "instances": {
       "LAS1": {

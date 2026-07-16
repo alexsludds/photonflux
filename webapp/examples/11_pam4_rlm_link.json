@@ -1,6 +1,7 @@
 {
-  "title": "11 \u2014 PAM4 with RLM predistortion over an MZM link (eye + BER)",
+  "title": "PAM4 RLM link",
   "group": "Links & receivers",
+  "description": "PAM4 with RLM predistortion over an MZM link (eye + BER)",
   "schematic": {
     "instances": {
       "LAS1": {

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Four-wave mixing INSIDE a ring resonator, driven by lasers one FSR apart.
 
-``models/ring_kerr.va`` is an add-drop microring whose five longitudinal
+``models/optical_field/ring_kerr.va`` is an add-drop microring whose five longitudinal
 modes (m = -2..+2, spaced by the FSR) share the intracavity chi(3) Kerr
 nonlinearity — the modal (Lugiato-Lefever) picture of a Kerr comb:
 
@@ -40,7 +40,7 @@ Self-checks (all asserted):
                    line-by-line against the golden ODE
   8. enhancement — the same chi(3), same physical length (the 12.5 mm
                    circumference), same input, as a STRAIGHT waveguide
-                   (models/waveguide_nl.va): the ring converts ~1000x more
+                   (models/optical_field/waveguide_nl.va): the ring converts ~1000x more
 
     .venv-circulax/bin/python examples/ring_fwm.py
 
@@ -68,7 +68,7 @@ from circulax import compile_circuit
 from circulax.components.base_component import Signals, States, source
 from circulax.solvers.transient import BDF2VectorizedTransientSolver
 
-from cavity import terminator
+from _cavity import terminator
 from photonflux import cx
 
 C0 = 2.99792458e8
@@ -457,7 +457,7 @@ def main() -> int:
     # ---- figure -------------------------------------------------------------
     fig, ax = plt.subplots(2, 3, figsize=(15.5, 8.5))
     fig.suptitle("Four-wave mixing inside a Kerr ring resonator "
-                 "(models/ring_kerr.va): pump + signal one FSR apart",
+                 "(models/optical_field/ring_kerr.va): pump + signal one FSR apart",
                  fontsize=13)
 
     a0 = ax[0, 0]

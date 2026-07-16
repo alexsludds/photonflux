@@ -1,14 +1,14 @@
-"""Bit patterns and stimulus generation for link simulations.
+"""Bit patterns for link simulations (engine-agnostic).
 
-Conventions: NRZ levels, bit period `t_bit`, edges of width `t_rise`
-centred on bit boundaries (matching how the PWL sources in this repo have
-always been built).
+``prbs`` returns a maximal-length pseudo-random bit sequence; drive it into a
+circulax stimulus source (see ``webapp/wavesrc.py`` or
+``examples/ring_mod_sky130.py``).
 """
 from __future__ import annotations
 
 import numpy as np
 
-__all__ = ["prbs", "nrz_pwl", "sample_centers"]
+__all__ = ["prbs", "sample_centers"]
 
 # Fibonacci LFSR second tap for x^n + x^k + 1 generators.
 _PRBS_TAPS = {5: 3, 6: 5, 7: 6, 9: 5, 11: 9, 15: 14, 23: 18, 31: 28}
@@ -29,27 +29,6 @@ def prbs(order: int = 7, nbits: int | None = None, seed: int = 1) -> np.ndarray:
         fb = ((reg >> (order - 1)) ^ (reg >> (k - 1))) & 1
         reg = ((reg << 1) | fb) & ((1 << order) - 1)
     return out
-
-
-def nrz_pwl(
-    bits: np.ndarray,
-    t_bit: float,
-    t_rise: float,
-    v0: float,
-    v1: float,
-    t0: float = 0.0,
-) -> str:
-    """Compact PWL() string: one level per bit, `t_rise`-wide edges at
-    bit boundaries. Suitable for `Vin in 0 <returned string>`."""
-    levels = [v1 if b else v0 for b in bits]
-    pts = [(t0, levels[0])]
-    for i in range(1, len(levels)):
-        if levels[i] != levels[i - 1]:
-            tb = t0 + i * t_bit
-            pts.append((tb - t_rise / 2, levels[i - 1]))
-            pts.append((tb + t_rise / 2, levels[i]))
-    pts.append((t0 + len(levels) * t_bit, levels[-1]))
-    return "PWL(" + " ".join(f"{t:.6e} {v:.6g}" for t, v in pts) + ")"
 
 
 def sample_centers(

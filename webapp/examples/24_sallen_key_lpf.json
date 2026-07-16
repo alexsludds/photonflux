@@ -1,302 +1,303 @@
 {
- "title": "24 — Sallen-Key 2nd-order Butterworth low-pass (fc = 10 MHz, Q = 0.71) vs a passive RC-RC: sharper knee, -40 dB/dec",
- "group": "Electronics — analog",
- "schematic": {
-  "instances": {
-   "VSK": {
-    "type": "vdc",
-    "x": 40,
-    "y": 120,
-    "rot": 0,
-    "settings": {
-     "V": 0.0
-    }
-   },
-   "GSK": {
-    "type": "ground",
-    "x": 40,
-    "y": 220,
-    "rot": 0,
-    "settings": {}
-   },
-   "RA0": {
-    "type": "resistor",
-    "x": 110,
-    "y": 100,
-    "rot": 0,
-    "settings": {
-     "R": 1000.0
-    }
-   },
-   "R1": {
-    "type": "resistor",
-    "x": 180,
-    "y": 100,
-    "rot": 0,
-    "settings": {
-     "R": 1590.0
-    }
-   },
-   "R2": {
-    "type": "resistor",
-    "x": 320,
-    "y": 100,
-    "rot": 0,
-    "settings": {
-     "R": 1590.0
-    }
-   },
-   "C1": {
-    "type": "capacitor",
-    "x": 320,
-    "y": 200,
-    "rot": 0,
-    "settings": {
-     "C": 1.416e-11
-    }
-   },
-   "C2": {
-    "type": "capacitor",
-    "x": 460,
-    "y": 200,
-    "rot": 0,
-    "settings": {
-     "C": 7.08e-12
-    }
-   },
-   "GC2": {
-    "type": "ground",
-    "x": 460,
-    "y": 300,
-    "rot": 0,
-    "settings": {}
-   },
-   "OA": {
-    "type": "opamp",
-    "x": 600,
-    "y": 120,
-    "rot": 0,
-    "settings": {
-     "A": 1000000.0
-    }
-   },
-   "GOA": {
-    "type": "ground",
-    "x": 680,
-    "y": 220,
-    "rot": 0,
-    "settings": {}
-   },
-   "VRC": {
-    "type": "vdc",
-    "x": 40,
-    "y": 380,
-    "rot": 0,
-    "settings": {
-     "V": 0.0
-    }
-   },
-   "GRC": {
-    "type": "ground",
-    "x": 40,
-    "y": 480,
-    "rot": 0,
-    "settings": {}
-   },
-   "RB0": {
-    "type": "resistor",
-    "x": 110,
-    "y": 360,
-    "rot": 0,
-    "settings": {
-     "R": 1000.0
-    }
-   },
-   "R3": {
-    "type": "resistor",
-    "x": 180,
-    "y": 360,
-    "rot": 0,
-    "settings": {
-     "R": 1590.0
-    }
-   },
-   "C3": {
-    "type": "capacitor",
-    "x": 250,
-    "y": 450,
-    "rot": 0,
-    "settings": {
-     "C": 1e-11
-    }
-   },
-   "G3": {
-    "type": "ground",
-    "x": 250,
-    "y": 540,
-    "rot": 0,
-    "settings": {}
-   },
-   "R4": {
-    "type": "resistor",
-    "x": 320,
-    "y": 360,
-    "rot": 0,
-    "settings": {
-     "R": 1590.0
-    }
-   },
-   "C4": {
-    "type": "capacitor",
-    "x": 390,
-    "y": 450,
-    "rot": 0,
-    "settings": {
-     "C": 1e-11
-    }
-   },
-   "G4": {
-    "type": "ground",
-    "x": 390,
-    "y": 540,
-    "rot": 0,
-    "settings": {}
-   },
-   "OA2": {
-    "type": "opamp",
-    "x": 600,
-    "y": 380,
-    "rot": 0,
-    "settings": {
-     "A": 1000000.0
-    }
-   },
-   "GOA2": {
-    "type": "ground",
-    "x": 680,
-    "y": 480,
-    "rot": 0,
-    "settings": {}
-   }
+  "title": "Sallen-Key low-pass",
+  "group": "Electronics — analog",
+  "description": "Sallen-Key 2nd-order Butterworth low-pass (fc = 10 MHz, Q = 0.71) vs a passive RC-RC: sharper knee, -40 dB/dec",
+  "schematic": {
+    "instances": {
+      "VSK": {
+        "type": "vdc",
+        "x": 40,
+        "y": 120,
+        "rot": 0,
+        "settings": {
+          "V": 0.0
+        }
+      },
+      "GSK": {
+        "type": "ground",
+        "x": 40,
+        "y": 220,
+        "rot": 0,
+        "settings": {}
+      },
+      "RA0": {
+        "type": "resistor",
+        "x": 110,
+        "y": 100,
+        "rot": 0,
+        "settings": {
+          "R": 1000.0
+        }
+      },
+      "R1": {
+        "type": "resistor",
+        "x": 180,
+        "y": 100,
+        "rot": 0,
+        "settings": {
+          "R": 1590.0
+        }
+      },
+      "R2": {
+        "type": "resistor",
+        "x": 320,
+        "y": 100,
+        "rot": 0,
+        "settings": {
+          "R": 1590.0
+        }
+      },
+      "C1": {
+        "type": "capacitor",
+        "x": 320,
+        "y": 200,
+        "rot": 0,
+        "settings": {
+          "C": 1.416e-11
+        }
+      },
+      "C2": {
+        "type": "capacitor",
+        "x": 460,
+        "y": 200,
+        "rot": 0,
+        "settings": {
+          "C": 7.08e-12
+        }
+      },
+      "GC2": {
+        "type": "ground",
+        "x": 460,
+        "y": 300,
+        "rot": 0,
+        "settings": {}
+      },
+      "OA": {
+        "type": "opamp",
+        "x": 600,
+        "y": 120,
+        "rot": 0,
+        "settings": {
+          "A": 1000000.0
+        }
+      },
+      "GOA": {
+        "type": "ground",
+        "x": 680,
+        "y": 220,
+        "rot": 0,
+        "settings": {}
+      },
+      "VRC": {
+        "type": "vdc",
+        "x": 40,
+        "y": 380,
+        "rot": 0,
+        "settings": {
+          "V": 0.0
+        }
+      },
+      "GRC": {
+        "type": "ground",
+        "x": 40,
+        "y": 480,
+        "rot": 0,
+        "settings": {}
+      },
+      "RB0": {
+        "type": "resistor",
+        "x": 110,
+        "y": 360,
+        "rot": 0,
+        "settings": {
+          "R": 1000.0
+        }
+      },
+      "R3": {
+        "type": "resistor",
+        "x": 180,
+        "y": 360,
+        "rot": 0,
+        "settings": {
+          "R": 1590.0
+        }
+      },
+      "C3": {
+        "type": "capacitor",
+        "x": 250,
+        "y": 450,
+        "rot": 0,
+        "settings": {
+          "C": 1e-11
+        }
+      },
+      "G3": {
+        "type": "ground",
+        "x": 250,
+        "y": 540,
+        "rot": 0,
+        "settings": {}
+      },
+      "R4": {
+        "type": "resistor",
+        "x": 320,
+        "y": 360,
+        "rot": 0,
+        "settings": {
+          "R": 1590.0
+        }
+      },
+      "C4": {
+        "type": "capacitor",
+        "x": 390,
+        "y": 450,
+        "rot": 0,
+        "settings": {
+          "C": 1e-11
+        }
+      },
+      "G4": {
+        "type": "ground",
+        "x": 390,
+        "y": 540,
+        "rot": 0,
+        "settings": {}
+      },
+      "OA2": {
+        "type": "opamp",
+        "x": 600,
+        "y": 380,
+        "rot": 0,
+        "settings": {
+          "A": 1000000.0
+        }
+      },
+      "GOA2": {
+        "type": "ground",
+        "x": 680,
+        "y": 480,
+        "rot": 0,
+        "settings": {}
+      }
+    },
+    "wires": [
+      {
+        "from": "VSK,p1",
+        "to": "RA0,p1"
+      },
+      {
+        "from": "RA0,p2",
+        "to": "R1,p1"
+      },
+      {
+        "from": "VSK,p2",
+        "to": "GSK,p1"
+      },
+      {
+        "from": "R1,p2",
+        "to": "R2,p1"
+      },
+      {
+        "from": "R2,p2",
+        "to": "OA,in_p"
+      },
+      {
+        "from": "R2,p2",
+        "to": "C2,p1"
+      },
+      {
+        "from": "C2,p2",
+        "to": "GC2,p1"
+      },
+      {
+        "from": "R1,p2",
+        "to": "C1,p1"
+      },
+      {
+        "from": "C1,p2",
+        "to": "OA,out_p"
+      },
+      {
+        "from": "OA,in_m",
+        "to": "OA,out_p"
+      },
+      {
+        "from": "OA,out_m",
+        "to": "GOA,p1"
+      },
+      {
+        "from": "VRC,p1",
+        "to": "RB0,p1"
+      },
+      {
+        "from": "RB0,p2",
+        "to": "R3,p1"
+      },
+      {
+        "from": "VRC,p2",
+        "to": "GRC,p1"
+      },
+      {
+        "from": "R3,p2",
+        "to": "C3,p1"
+      },
+      {
+        "from": "C3,p2",
+        "to": "G3,p1"
+      },
+      {
+        "from": "R3,p2",
+        "to": "R4,p1"
+      },
+      {
+        "from": "R4,p2",
+        "to": "C4,p1"
+      },
+      {
+        "from": "C4,p2",
+        "to": "G4,p1"
+      },
+      {
+        "from": "R4,p2",
+        "to": "OA2,in_p"
+      },
+      {
+        "from": "OA2,in_m",
+        "to": "OA2,out_p"
+      },
+      {
+        "from": "OA2,out_m",
+        "to": "GOA2,p1"
+      }
+    ],
+    "probes": [
+      {
+        "name": "in_sk",
+        "at": "R1,p1",
+        "color": "#6ecbf5"
+      },
+      {
+        "name": "out_sk",
+        "at": "OA,out_p",
+        "color": "#e6862c"
+      },
+      {
+        "name": "in_rc",
+        "at": "R3,p1",
+        "color": "#8fd18f"
+      },
+      {
+        "name": "out_rc",
+        "at": "OA2,out_p",
+        "color": "#f08fb0"
+      }
+    ]
   },
-  "wires": [
-   {
-    "from": "VSK,p1",
-    "to": "RA0,p1"
-   },
-   {
-    "from": "RA0,p2",
-    "to": "R1,p1"
-   },
-   {
-    "from": "VSK,p2",
-    "to": "GSK,p1"
-   },
-   {
-    "from": "R1,p2",
-    "to": "R2,p1"
-   },
-   {
-    "from": "R2,p2",
-    "to": "OA,in_p"
-   },
-   {
-    "from": "R2,p2",
-    "to": "C2,p1"
-   },
-   {
-    "from": "C2,p2",
-    "to": "GC2,p1"
-   },
-   {
-    "from": "R1,p2",
-    "to": "C1,p1"
-   },
-   {
-    "from": "C1,p2",
-    "to": "OA,out_p"
-   },
-   {
-    "from": "OA,in_m",
-    "to": "OA,out_p"
-   },
-   {
-    "from": "OA,out_m",
-    "to": "GOA,p1"
-   },
-   {
-    "from": "VRC,p1",
-    "to": "RB0,p1"
-   },
-   {
-    "from": "RB0,p2",
-    "to": "R3,p1"
-   },
-   {
-    "from": "VRC,p2",
-    "to": "GRC,p1"
-   },
-   {
-    "from": "R3,p2",
-    "to": "C3,p1"
-   },
-   {
-    "from": "C3,p2",
-    "to": "G3,p1"
-   },
-   {
-    "from": "R3,p2",
-    "to": "R4,p1"
-   },
-   {
-    "from": "R4,p2",
-    "to": "C4,p1"
-   },
-   {
-    "from": "C4,p2",
-    "to": "G4,p1"
-   },
-   {
-    "from": "R4,p2",
-    "to": "OA2,in_p"
-   },
-   {
-    "from": "OA2,in_m",
-    "to": "OA2,out_p"
-   },
-   {
-    "from": "OA2,out_m",
-    "to": "GOA2,p1"
-   }
-  ],
-  "probes": [
-   {
-    "name": "in_sk",
-    "at": "R1,p1",
-    "color": "#6ecbf5"
-   },
-   {
-    "name": "out_sk",
-    "at": "OA,out_p",
-    "color": "#e6862c"
-   },
-   {
-    "name": "in_rc",
-    "at": "R3,p1",
-    "color": "#8fd18f"
-   },
-   {
-    "name": "out_rc",
-    "at": "OA2,out_p",
-    "color": "#f08fb0"
-   }
-  ]
- },
- "analysis": {
-  "mode": "ac",
-  "f_start": 100000.0,
-  "f_stop": 1000000000.0,
-  "points": 201,
-  "z0": 50
- }
+  "analysis": {
+    "mode": "ac",
+    "f_start": 100000.0,
+    "f_stop": 1000000000.0,
+    "points": 201,
+    "z0": 50
+  }
 }

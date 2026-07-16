@@ -1,6 +1,7 @@
 {
-  "title": "09 \u2014 DML vs rate-equation laser: turn-on delay + relaxation oscillations",
+  "title": "DML vs rate-equation laser",
   "group": "Lasers & modulators",
+  "description": "DML vs rate-equation laser: turn-on delay + relaxation oscillations",
   "schematic": {
     "instances": {
       "VP1": {

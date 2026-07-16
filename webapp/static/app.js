@@ -197,16 +197,21 @@ function render() {
   for (const [id, inst] of Object.entries(state.instances)) {
     const sym = S[inst.type];
     if (!sym) continue;
+    const compClass = "comp" +
+      (selection?.kind === "inst" && selection.id === id ? " selected" : "");
     const g = document.createElementNS(svg.namespaceURI, "g");
-    g.setAttribute("class", "comp" +
-      (selection?.kind === "inst" && selection.id === id ? " selected" : ""));
+    g.setAttribute("class", compClass);
     g.setAttribute("transform", compTransform(inst, sym));
     g.innerHTML = sym.draw();
 
     // Text (refdes/value/pin labels) lives in a separate, un-transformed
     // overlay so it always renders upright and unmirrored, positioned by
-    // transforming its anchor through the same flip+rotate as the body.
+    // transforming its anchor through the same flip+rotate as the body. It
+    // carries the same `comp`/`selected` class as the body group so the
+    // `.comp text` / `.comp .refdes` fills apply — without it the labels fall
+    // back to SVG-default black and vanish against the dark canvas.
     const labels = document.createElementNS(svg.namespaceURI, "g");
+    labels.setAttribute("class", compClass);
     labels.style.pointerEvents = "none";
     let ltext = "";
     const [lx, ly] = sym.label || [0, -6];

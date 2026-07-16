@@ -11,14 +11,16 @@
         "lines": [
           "LAS1 (1 mW at 1309.9 nm) feeds RM1, a carrier-injection",
           "ring modulator (resonance 1309.95 nm). PAT1 sends a",
-          "1 Gb/s OOK PRBS; PD1 detects across RL1 (2 kohm).",
+          "1 Gb/s OOK PRBS onto the diode; TERM1 absorbs the",
+          "through port and popt is the optical output.",
           "",
           "The ring's carrier lifetime tau_c=1ns is comparable to",
-          "the 1ns bit, so injection edges lag and the eye slurs.",
-          "PAT1.ffe_post_db=5 pre-emphasizes edges to compensate;",
-          "popt/vout show optical and received eyes.",
+          "the 1ns bit, so injection edges lag and the optical",
+          "waveform slurs. PAT1.ffe_post_db=5 pre-emphasizes the",
+          "drive edges to sharpen the optical transitions -- fold",
+          "popt in the Eye tab to see it.",
           "Set PAT1.ffe_post_db = 0 and re-run to drop pre-emphasis",
-          "and watch the eye close."
+          "and watch the edges slur."
         ]
       }
     ],
@@ -79,52 +81,10 @@
         "rot": 0,
         "settings": {}
       },
-      "PD1": {
-        "type": "photodiode",
+      "TERM1": {
+        "type": "opt_term",
         "x": 460,
         "y": 180,
-        "rot": 0,
-        "settings": {
-          "R": 0.8,
-          "Cj": 5e-14
-        }
-      },
-      "GNDO": {
-        "type": "ground",
-        "x": 440,
-        "y": 280,
-        "rot": 0,
-        "settings": {}
-      },
-      "GNDA": {
-        "type": "ground",
-        "x": 500,
-        "y": 320,
-        "rot": 0,
-        "settings": {}
-      },
-      "RL1": {
-        "type": "resistor",
-        "x": 580,
-        "y": 190,
-        "rot": 0,
-        "settings": {
-          "R": 2000.0
-        }
-      },
-      "VB1": {
-        "type": "vdc",
-        "x": 680,
-        "y": 200,
-        "rot": 0,
-        "settings": {
-          "V": 1.8
-        }
-      },
-      "GNDB": {
-        "type": "ground",
-        "x": 680,
-        "y": 304,
         "rot": 0,
         "settings": {}
       }
@@ -156,27 +116,7 @@
       },
       {
         "from": "RM1,pout",
-        "to": "PD1,po_p"
-      },
-      {
-        "from": "PD1,po_n",
-        "to": "GNDO,p1"
-      },
-      {
-        "from": "PD1,an",
-        "to": "GNDA,p1"
-      },
-      {
-        "from": "PD1,cat",
-        "to": "RL1,p1"
-      },
-      {
-        "from": "RL1,p2",
-        "to": "VB1,p1"
-      },
-      {
-        "from": "VB1,p2",
-        "to": "GNDB,p1"
+        "to": "TERM1,p1"
       }
     ],
     "probes": [
@@ -184,22 +124,12 @@
         "name": "popt",
         "at": "RM1,pout",
         "color": "#e6862c"
-      },
-      {
-        "name": "vout",
-        "at": "PD1,cat",
-        "color": "#6ecbf5"
       }
     ]
   },
   "analysis": {
     "mode": "transient",
     "t_stop": 2.56e-07,
-    "points": 10000,
-    "link": {
-      "probe": "vout",
-      "ffe_taps": 0,
-      "dfe_taps": 0
-    }
+    "points": 10000
   }
 }

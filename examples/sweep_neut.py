@@ -39,7 +39,7 @@ def run_one(w_p, w_n, c_neut_fF, baud, nbits, design, mdl):
                        {"w_p": w_p, "w_n": w_n, "c_neut": c_neut_fF})
     R.build_driver = lambda d, k, c_neut=0.0: parts
     out = R.run_transient(mdl, design, baud, nbits, driver="single-neut",
-                          c_neut=c_neut_fF * 1e-15)
+                          c_neut=c_neut_fF * 1e-15, progress=False)
     t, vin, vdrv, p_rx, bits, t_bit, spu, t_edge, inverting = out
     ph, inner, z_lvl, o_lvl = scan_inner_eye(p_rx, bits, spu, inverting)
     return {

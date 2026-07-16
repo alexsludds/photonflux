@@ -69,6 +69,7 @@ from circulax.components.base_component import Signals, States, source
 from circulax.solvers.transient import BDF2VectorizedTransientSolver
 
 from _cavity import terminator
+from _progress import transient_progress_meter
 from photonflux import cx
 
 C0 = 2.99792458e8
@@ -267,7 +268,7 @@ def build_wg():
                            max_steps=300)
 
 
-def run(c, params: dict | None = None, dt: float = DT):
+def run(c, params: dict | None = None, dt: float = DT, progress: bool = True):
     """Transient to steady state; returns (f, amp) of the thru field over
     the last 2 ns (0.5 GHz bins, every line bin-exact). ``dt`` is the fixed
     BDF2 step; at the 6 GHz FSR beat one step is 0.6% of a cycle, so the
@@ -283,6 +284,7 @@ def run(c, params: dict | None = None, dt: float = DT):
             linear_solver=c.solver, newton_max_steps=40),
         max_steps=npt + 10, throw=False,
         stepsize_controller=diffrax.ConstantStepSize(),
+        progress_meter=transient_progress_meter(progress),
     )
     assert sol.result == diffrax.RESULTS.successful, f"transient failed: {sol.result}"
     e = (np.asarray(c.port(sol.ys, "po_re").real)
@@ -357,7 +359,7 @@ def main() -> int:
     p_i_pp = []
     for pp in pp_sweep:
         f2, a2 = (f, a) if pp == P_P0 else run(c, params={"SRC.p_p": float(pp)},
-                                               dt=DT_FINE)
+                                               dt=DT_FINE, progress=False)
         p_i_pp.append(abs(line(f2, a2, F_I)) ** 2)
     p_i_pp = np.array(p_i_pp)
     slope_pp = np.polyfit(np.log(pp_sweep), np.log(p_i_pp), 1)[0]

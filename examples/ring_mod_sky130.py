@@ -75,6 +75,7 @@ from _drivers import (
     two_stage_inverter,
 )
 
+from _progress import transient_progress_meter
 from photonflux import cx
 from photonflux.signals import prbs
 
@@ -326,7 +327,8 @@ def build_driver(design: dict, kind: str, c_neut: float = C_NEUT_F):
 
 def run_transient(mdl: dict, design: dict, baud: float, n_bits: int,
                   t_rise: float | None = None, t_fall: float | None = None,
-                  driver: str = DRIVER, c_neut: float = C_NEUT_F):
+                  driver: str = DRIVER, c_neut: float = C_NEUT_F,
+                  progress: bool = True):
     t_bit = 1.0 / baud
     # default drive edge ~UI/8 — the 4 ps floor keeps it physical (a 20 ps
     # floor would be a full UI at 50 Gbd)
@@ -392,6 +394,7 @@ def run_transient(mdl: dict, design: dict, baud: float, n_bits: int,
             linear_solver=c.solver, newton_max_steps=40),
         max_steps=int(t_max / dt) + 10, throw=False,
         stepsize_controller=diffrax.ConstantStepSize(),
+        progress_meter=transient_progress_meter(progress),
     )
     assert sol.result == diffrax.RESULTS.successful, f"transient failed: {sol.result}"
 

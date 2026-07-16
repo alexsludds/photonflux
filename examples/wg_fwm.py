@@ -75,6 +75,7 @@ from circulax.components.base_component import Signals, States, source
 from circulax.solvers.transient import BDF2VectorizedTransientSolver
 
 from _cavity import terminator
+from _progress import transient_progress_meter
 from photonflux import cx
 
 C0 = 2.99792458e8
@@ -198,7 +199,7 @@ def build(n_seg: int = 1, length_um: float = L_UM,
                            max_steps=300)
 
 
-def run(c, params: dict | None = None) -> tuple[np.ndarray, np.ndarray]:
+def run(c, params: dict | None = None, progress: bool = True) -> tuple[np.ndarray, np.ndarray]:
     """Fixed-step BDF2 over exactly NPT samples; returns (t, E_out(t))."""
     t_max = NPT * DT
     ts = jnp.arange(0.0, t_max, DT)
@@ -210,6 +211,7 @@ def run(c, params: dict | None = None) -> tuple[np.ndarray, np.ndarray]:
             linear_solver=c.solver, newton_max_steps=40),
         max_steps=NPT + 10, throw=False,
         stepsize_controller=diffrax.ConstantStepSize(),
+        progress_meter=transient_progress_meter(progress),
     )
     assert sol.result == diffrax.RESULTS.successful, f"transient failed: {sol.result}"
     e = (np.asarray(c.port(sol.ys, "po_re").real)
@@ -278,7 +280,7 @@ def main() -> int:
     pp_sweep = np.array([2e-3, 5e-3, 1e-2, 2e-2, 5e-2])
     p_i_pp, th_p, th_s = [], [], []
     for pp in pp_sweep:
-        _, e2 = run(c, params={"SRC.p_p": float(pp)})
+        _, e2 = run(c, params={"SRC.p_p": float(pp)}, progress=False)
         f2, a2 = spectrum(e2)
         p_i_pp.append(abs(line(f2, a2, f_i)) ** 2)
         th_p.append(np.angle(line(f2, a2, F_P)))
@@ -306,7 +308,7 @@ def main() -> int:
     ps_sweep = np.array([2e-5, 5e-5, 1e-4, 2e-4, 5e-4])
     p_i_ps = []
     for ps in ps_sweep:
-        _, e2 = run(c, params={"SRC.p_s": float(ps)})
+        _, e2 = run(c, params={"SRC.p_s": float(ps)}, progress=False)
         f2, a2 = spectrum(e2)
         p_i_ps.append(abs(line(f2, a2, f_i)) ** 2)
     p_i_ps = np.array(p_i_ps)

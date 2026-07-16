@@ -53,6 +53,8 @@ from circulax.components.photonic import OpticalWaveguide
 # the |E|^2 optical->electrical bridge shared by the circulax examples
 from photodiode_tia import Photodiode
 
+from _progress import transient_progress_meter
+
 from photonflux import cx
 
 # --- optics ------------------------------------------------------------------
@@ -184,6 +186,7 @@ def main() -> int:
             linear_solver=circuit.solver, newton_max_steps=40),
         max_steps=int(t_max / dt_fixed) + 10, throw=False,
         stepsize_controller=diffrax.ConstantStepSize(),
+        progress_meter=transient_progress_meter(),
     )
     if sol.result != diffrax.RESULTS.successful:
         print(f"transient FAILED: {sol.result}")

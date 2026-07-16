@@ -49,6 +49,8 @@ from circulax.components.photonic import OpticalWaveguide
 # reuse the optical->electrical bridge from the example-01 port
 from photodiode_tia import Photodiode
 
+from _progress import transient_progress_meter
+
 from photonflux import cx
 
 # --- optics ------------------------------------------------------------------
@@ -177,6 +179,7 @@ def main() -> int:
         # edges (without it, the smooth RC dynamics let it take ~2 ns steps and
         # miss the pulse entirely).
         stepsize_controller=diffrax.PIDController(rtol=1e-4, atol=1e-7, dtmax=20e-12),
+        progress_meter=transient_progress_meter(),
     )
     if sol.result != diffrax.RESULTS.successful:
         print(f"transient FAILED: {sol.result}")

@@ -3,6 +3,25 @@
   "group": "Passive photonics",
   "description": "all-pass microring through critical coupling: κ² = 0.02 / 0.088 / 0.30 vs the 0.4 dB round-trip loss — the notch only bottoms out at κ² = 1-a² = 0.088",
   "schematic": {
+    "notes": [
+      {
+        "x": 40,
+        "y": -153,
+        "title": "Ring all-pass coupling — what this testbench does",
+        "lines": [
+          "An all-pass microring: laser LAS feeds coupler CPL,",
+          "whose through port is probed (thru at CPL p3). The",
+          "ring loop is waveguide WG (~200 um, 20 dB/cm), giving",
+          "a round-trip amplitude a. On resonance the thru port",
+          "shows a notch.",
+          "The sweep steps CPL.coupling k^2 = 0.02 / 0.088 / 0.30.",
+          "The notch bottoms out only at critical coupling,",
+          "k^2 = 1 - a^2 = 0.088; off critical it stays shallow.",
+          "",
+          "Set WG.loss_dB_cm = 40 and re-run: critical k^2 shifts."
+        ]
+      }
+    ],
     "instances": {
       "LAS": {
         "type": "cw_laser",

@@ -3,6 +3,25 @@
   "group": "Passive photonics",
   "description": "Passive ring add-drop filter from two couplers + two waveguides",
   "schematic": {
+    "notes": [
+      {
+        "x": 120,
+        "y": -73,
+        "title": "Ring add-drop filter — what this testbench does",
+        "lines": [
+          "LAS1 enters CPL1 (a 0.2 directional coupler). WGA and",
+          "WGB (100 um each) form a ring closing CPL1 back to CPL2,",
+          "whose drop and add ports feed terminations.",
+          "",
+          "On resonance (round-trip phase = 2*pi*m) light builds",
+          "in the ring and couples out the drop port; probe drop",
+          "peaks while thru dips. The sweep 1308-1313 nm spans",
+          "~2 FSRs (ring length 200 um, n_g=4).",
+          "Set CPL1.coupling = 0.5 and re-run: stronger coupling",
+          "lowers Q and broadens the resonances."
+        ]
+      }
+    ],
     "instances": {
       "LAS1": {
         "type": "cw_laser",

@@ -3,6 +3,25 @@
   "group": "Channels & equalization",
   "description": "The same 25 Gb/s / 20 km link at 1311 nm: O-band (zero dispersion) re-opens the eye",
   "schematic": {
+    "notes": [
+      {
+        "x": 40,
+        "y": -43,
+        "title": "O-band fiber link — what this testbench does",
+        "lines": [
+          "Same 25 Gb/s / 20 km link as the C-band case, but LAS1",
+          "runs at 1311 nm. PAT1 -> MZM1 -> FIB1 (fiber) -> PD1",
+          "across RL1 (300 ohm).",
+          "",
+          "FIB1 sits near its zero-dispersion wavelength",
+          "(lambda0=1310 nm, slope S=0.092), so 1311 nm sees",
+          "almost no chromatic dispersion and the vout eye stays",
+          "open; probes ptx/prx show the optical waveform.",
+          "Set FIB1.lambda_nm = 1550 and re-run to leave the",
+          "O-band -> dispersion recloses the eye."
+        ]
+      }
+    ],
     "instances": {
       "LAS1": {
         "type": "cw_laser",

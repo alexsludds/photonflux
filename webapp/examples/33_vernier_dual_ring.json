@@ -3,6 +3,25 @@
   "group": "Passive photonics",
   "description": "Vernier dual-ring filter: FSR 2.15 nm x 2.38 nm rings cascade drop-to-input — only the coincident line at 1310 nm survives, neighbours suppressed by the Vernier effect",
   "schematic": {
+    "notes": [
+      {
+        "x": 40,
+        "y": -113,
+        "title": "Vernier dual-ring filter — what this testbench does",
+        "lines": [
+          "A Vernier dual-ring filter: laser LAS feeds two",
+          "add-drop rings in cascade (drop of ring 1 -> input of",
+          "ring 2). Ring 1 (couplers R1C1/R1C2, guides R1WA/R1WB)",
+          "has FSR 2.15 nm; ring 2 (R2C1/R2C2, R2WA/R2WB) has",
+          "FSR 2.38 nm -- slightly mismatched combs.",
+          "Only where both combs line up (1310 nm) does light",
+          "reach drop2; neighbouring lines miss and are",
+          "suppressed -- the Vernier effect. Probes drop1, drop2.",
+          "",
+          "Set R2WA.length_m = 9.98875e-05 to shift ring 2 comb."
+        ]
+      }
+    ],
     "instances": {
       "LAS": {
         "type": "cw_laser",

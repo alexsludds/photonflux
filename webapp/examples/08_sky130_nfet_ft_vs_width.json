@@ -3,6 +3,24 @@
   "group": "SKY130 transistors",
   "description": "SKY130 NFET f_T vs width (fixture-free AC parameter sweep)",
   "schematic": {
+    "notes": [
+      {
+        "x": 170,
+        "y": -118,
+        "title": "SKY130 NFET f_T vs width — what this testbench does",
+        "lines": [
+          "A single NFET MN1 is biased at Vgs = 1.2 V (VG1) and",
+          "Vds = 1.8 V (VD1), source grounded. The AC sweep",
+          "(10 MHz -> 1 THz) gives current gain h21; f_T is where",
+          "|h21| = 1. Here MN1.w_um is swept 0.5 -> 8 um.",
+          "f_T ~ gm / (2*pi*Cgg): gm and Cgg both scale with width,",
+          "so f_T stays nearly flat as the device gets wider.",
+          "",
+          "Set MN1.l_um = 0.5 and re-run to see f_T drop at every",
+          "width -- f_T falls steeply with channel length."
+        ]
+      }
+    ],
     "instances": {
       "MN1": {
         "type": "sky130_nfet",

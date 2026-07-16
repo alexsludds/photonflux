@@ -9,6 +9,25 @@
     "dtmax": 5e-13
   },
   "schematic": {
+    "notes": [
+      {
+        "x": 80,
+        "y": -93,
+        "title": "χ(3) four-wave mixing — what this testbench does",
+        "lines": [
+          "Pump laser LP (50 mW, 1310.1145 nm) and signal LS (1 mW,",
+          "1310.1718 nm) sit 10 GHz apart, stacked in series, and",
+          "co-propagate through 20 mm of chi(3) wire WG1 (Kerr only).",
+          "The Kerr phase exp(-j*gamma*L*|E|^2) acts on the envelope;",
+          "the pump-signal beat phase-modulates both tones and two",
+          "idlers EMERGE at 2f_p-f_s (-32 dB) and 2f_s-f_p (-49 dB).",
+          "p_out (spectrum) shows the idlers; p_in is the input,",
+          "and the time trace shows the 10 GHz envelope beat.",
+          "",
+          "Set WG1.n2_kerr = 0 and re-run: no Kerr, so no idlers."
+        ]
+      }
+    ],
     "instances": {
       "LP": {
         "type": "cw_laser",

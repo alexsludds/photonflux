@@ -3,6 +3,24 @@
   "group": "Lasers & modulators",
   "description": "Microring modulator DC tuning curve",
   "schematic": {
+    "notes": [
+      {
+        "x": 40,
+        "y": -188,
+        "title": "Microring modulator tuning — what this testbench does",
+        "lines": [
+          "Laser LAS1 sits at a fixed 1309.9772 nm and feeds the",
+          "microring RING1; the through port (prx) ends at TERM1.",
+          "Tuning voltage VT1 sweeps -3 to 3 V, shifting the ring's",
+          "resonance (electro-optic / carrier effect). As resonance",
+          "crosses the laser line, prx drops into a deep notch, then",
+          "recovers -- the classic ring tuning transmission curve.",
+          "",
+          "Set LAS1.wavelength_nm = 1310.5 and re-run to see the",
+          "notch shift to a different tuning voltage."
+        ]
+      }
+    ],
     "instances": {
       "LAS1": {
         "type": "cw_laser",

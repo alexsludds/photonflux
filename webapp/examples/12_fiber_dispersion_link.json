@@ -3,6 +3,25 @@
   "group": "Channels & equalization",
   "description": "25 Gb/s over 20 km fiber: dispersion closes the direct-detect eye",
   "schematic": {
+    "notes": [
+      {
+        "x": 40,
+        "y": -43,
+        "title": "Fiber dispersion link — what this testbench does",
+        "lines": [
+          "PAT1 sends a 25 Gb/s NRZ PRBS (ui=40ps) through MZM1,",
+          "then 20 km of fiber FIB1 (D=17 ps/nm/km at 1550nm)",
+          "to PD1 across RL1 (300 ohm).",
+          "",
+          "Chromatic dispersion spreads each pulse, so the",
+          "direct-detect eye at vout closes; probes ptx/prx show",
+          "the optical waveform before and after the fiber. The",
+          "link FFE (5 taps) + DFE (1 tap) tries to recover it.",
+          "Set FIB1.length_km = 0 and re-run to remove dispersion",
+          "and watch the eye snap open."
+        ]
+      }
+    ],
     "instances": {
       "LAS1": {
         "type": "cw_laser",

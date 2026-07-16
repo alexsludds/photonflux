@@ -3,6 +3,25 @@
   "group": "SKY130 transistors",
   "description": "SKY130 PFET flavors: output curves (Id–Vds, stepped Vgs, 3rd quadrant)",
   "schematic": {
+    "notes": [
+      {
+        "x": 100,
+        "y": -133,
+        "title": "SKY130 PFET output curves — what this testbench does",
+        "lines": [
+          "Four PFET flavors (MP1 pfet, MP2 lvt, MP3 hvt, MP4 5v)",
+          "share one drain supply VD1 and one gate supply VG1.",
+          "VD1 sweeps Vds -1.8 -> 0 V while VG1 steps Vgs through",
+          "-1.8 / -1.35 / -0.9 V: curves live in the 3rd quadrant",
+          "(both Vds and Id negative for a PMOS).",
+          "Each 1-ohm sense resistor RS reads source current as",
+          "probes id_01v8, id_lvt, id_hvt, id_5v (= drain Id).",
+          "",
+          "Set MP1.w_um = 4.0 and re-run to see |id_01v8| roughly",
+          "double -- drain current scales with device width."
+        ]
+      }
+    ],
     "instances": {
       "VD1": {
         "type": "vdc",

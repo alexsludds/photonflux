@@ -3,6 +3,25 @@
   "group": "Electronics — analog",
   "description": "common-source amplifier: gm·RD ≈ 5x inverting gain (β = 1 mA/V², Vov = 0.5 V, RD = 10 kΩ)",
   "schematic": {
+    "notes": [
+      {
+        "x": 40,
+        "y": -153,
+        "title": "Common-source amplifier — what this testbench does",
+        "lines": [
+          "NMOS MN in common-source: VDD = 5 V through drain",
+          "resistor RD = 10 kohm sets the operating point. The",
+          "gate is biased at VB = 1.5 V with a small 50 mV,",
+          "10 MHz sine VIN riding on top (Vov = 0.5 V).",
+          "Small-signal gain is -gm*RD ~ -5, so probe vout at",
+          "the drain is an inverted, ~5x copy of probe vin.",
+          "Source is grounded (GS); CL is the output load.",
+          "",
+          "Set RD.R = 20000 and re-run to roughly double the",
+          "gain (and watch the DC drain point drop)."
+        ]
+      }
+    ],
     "instances": {
       "VDD": {
         "type": "vdc",

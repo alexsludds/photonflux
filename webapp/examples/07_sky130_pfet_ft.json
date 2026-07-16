@@ -3,6 +3,24 @@
   "group": "SKY130 transistors",
   "description": "SKY130 PFET flavors: bandwidth / f_T (fixture-free |h21|)",
   "schematic": {
+    "notes": [
+      {
+        "x": 110,
+        "y": -118,
+        "title": "SKY130 PFET f_T — what this testbench does",
+        "lines": [
+          "Four PFET flavors (MP1 pfet, MP2 lvt, MP3 hvt, MP4 5v)",
+          "each sit at a fixed bias: source/body at VDD, drain VD",
+          "at 0 V, gate VG low (Vgs < 0). The AC sweep (10 MHz ->",
+          "1 THz) extracts current gain h21; f_T is where |h21| = 1.",
+          "Probes in_* / out_* mark each device's ports.",
+          "Short channels (MP1, l = 0.15 um) reach the highest f_T.",
+          "",
+          "Set MP1.l_um = 0.5 and re-run to see that device's f_T",
+          "drop -- f_T falls as channel length grows."
+        ]
+      }
+    ],
     "instances": {
       "MP1": {
         "type": "sky130_pfet",

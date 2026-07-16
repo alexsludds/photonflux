@@ -11,6 +11,25 @@
     "points": 1501
   },
   "schematic": {
+    "notes": [
+      {
+        "x": 60,
+        "y": -93,
+        "title": "TPA-limited high-Q ring — what this testbench does",
+        "lines": [
+          "Two 1 mW lasers LASA and LASB probe two identical high-Q",
+          "rings (loaded Q ~ 1.2e6) as wavelength_nm is swept.",
+          "Ring RGB has beta_tpa = 0: a linear reference with a deep,",
+          "narrow ~1.1 pm Lorentzian dip (probe t_linear).",
+          "Ring RGA keeps two-photon absorption + free-carrier loss;",
+          "at ~100 mW circulating its dip fills in and broadens ~6x",
+          "(probe t_tpa). Above ~0.1 mW, TPA+FCA sets the usable Q.",
+          "",
+          "Set LASA.power = 1e-6 and re-run: TPA switches off and",
+          "the hot ring's line matches the linear reference."
+        ]
+      }
+    ],
     "instances": {
       "LASA": {
         "type": "cw_laser",

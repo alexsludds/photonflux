@@ -8,6 +8,25 @@
     "points": 1600
   },
   "schematic": {
+    "notes": [
+      {
+        "x": 60,
+        "y": -173,
+        "title": "SOA Fabry-Perot laser — what this testbench does",
+        "lines": [
+          "Voltage pulse VP1 biases the SOA gain block SOA1 between",
+          "wave mirrors M1 (refl 0.9 back) and M2 (refl 0.3 output),",
+          "forming a Fabry-Perot laser cavity.",
+          "VP1 steps the bias 5 -> 40 mA through I_th = 18.2 mA;",
+          "round-trip gain then clamps to R1*R2*G^2 = 1.",
+          "p_out (M2,ro) shows turn-on with relaxation overshoot,",
+          "settling near 12.8 mW; p_cavity is the intracavity field.",
+          "",
+          "Set M2.refl = 0.1 and re-run to raise the threshold gain:",
+          "lasing is delayed or suppressed."
+        ]
+      }
+    ],
     "instances": {
       "VP1": {
         "type": "vpulse",

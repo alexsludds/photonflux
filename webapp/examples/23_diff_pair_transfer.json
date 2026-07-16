@@ -3,6 +3,25 @@
   "group": "Electronics — analog",
   "description": "differential pair: tanh transfer, sweep V(in+) with the tail current stepped 0.1/0.2/0.4 mA",
   "schematic": {
+    "notes": [
+      {
+        "x": 60,
+        "y": -173,
+        "title": "Differential pair — what this testbench does",
+        "lines": [
+          "A MOS differential pair: MN1 and MN2 share a tail",
+          "current IT and load resistors RD1 = RD2 = 7.5 kohm to",
+          "VDD = 5 V. VCM holds MN2's gate at 2.5 V while the",
+          "sweep ramps VIN (MN1's gate) from 1.7 to 3.3 V.",
+          "The pair steers IT between the two sides as a tanh of",
+          "the input difference, so probes voutp and voutn split",
+          "apart and cross at VIN = VCM. IT is stepped",
+          "0.1/0.2/0.4 mA to show steeper transfer at more tail.",
+          "",
+          "Set VCM.V = 2.0 and re-run to move the crossover point."
+        ]
+      }
+    ],
     "instances": {
       "VDD": {
         "type": "vdc",

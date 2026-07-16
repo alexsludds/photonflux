@@ -3,6 +3,24 @@
   "group": "Electronics — digital",
   "description": "5-stage CMOS ring oscillator: kicked off its metastable point at t = 1 ns, settles to a ~1 ns period set by the 30 fF stage loads",
   "schematic": {
+    "notes": [
+      {
+        "x": 60,
+        "y": -158,
+        "title": "Ring oscillator — what this testbench does",
+        "lines": [
+          "A 5-stage CMOS ring oscillator: inverters MP0/MN0",
+          "through MP4/MN4 in a loop, each driving a 30 fF stage",
+          "load (C0..C4). An odd number of inversions has no",
+          "stable DC point, so the ring oscillates.",
+          "VK injects a kick through CK at t = 1 ns to leave the",
+          "metastable point; the period (~1 ns) is set by how",
+          "fast each stage charges its load. Probes n1, n3.",
+          "",
+          "Set C0.C = 6e-14 and re-run to see the period grow."
+        ]
+      }
+    ],
     "instances": {
       "VDD": {
         "type": "vdc",

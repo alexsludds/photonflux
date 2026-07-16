@@ -3,6 +3,25 @@
   "group": "Electronics — analog",
   "description": "diode envelope detector on a two-tone beat: 100+110 MHz sum -> 10 MHz envelope, RC between carrier and beat",
   "schematic": {
+    "notes": [
+      {
+        "x": 40,
+        "y": -113,
+        "title": "Envelope detector — what this testbench does",
+        "lines": [
+          "Two series sine sources VS1 (100 MHz) and VS2",
+          "(110 MHz) add to a two-tone beat: a fast carrier",
+          "inside a 10 MHz envelope. It drives a diode detector",
+          "through RS: D1 rectifies, then CE = 30 pF and",
+          "RE = 2 kohm smooth the result (RC = 60 ns, between",
+          "the ~10 ns carrier and the 100 ns beat period).",
+          "Probe vin is the raw beat; venv follows its envelope.",
+          "",
+          "Set CE.C = 3e-10 and re-run to over-smooth the RC",
+          "and flatten out the 10 MHz envelope."
+        ]
+      }
+    ],
     "instances": {
       "VS1": {
         "type": "vsin",

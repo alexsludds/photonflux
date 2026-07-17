@@ -793,6 +793,9 @@ window.addEventListener("keydown", (ev) => {
       mode = { kind: "probe" };
       setHint("Probe mode — click a port to attach a probe. Esc exits.");
       break;
+    case "g": case "G":
+      if (CAT.ground) armPlacement("ground");
+      break;
   }
 });
 
@@ -1109,7 +1112,7 @@ function buildPalette() {
         <svg width="34" height="26" viewBox="0 0 34 26">
           <g class="comp" transform="translate(${17 - sym.w * scale / 2},${13 - sym.h * scale / 2}) scale(${scale})">
             ${sym.draw()}</g></svg>
-        <span class="pal-label">${entry.label}</span>`;
+        <span class="pal-label">${entry.label}${type === "ground" ? " <b>(G)</b>" : ""}</span>`;
       item.addEventListener("click", () => {
         if (mode.kind === "place" && mode.type === type) disarm();
         else armPlacement(type);

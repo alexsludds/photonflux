@@ -552,6 +552,57 @@ CATALOG: dict[str, dict] = {
             "port_map": {"pin": "tap,c", "pout": "join,c", "gnd": "ring,gnd"},
         },
     },
+    "ring_selfheat": {
+        "label": "Self-Heating Ring (VA)",
+        "category": "Photonic Passives",
+        "stiff": True,   # ps photon + us thermal scales: default to BDF2
+        "doc": "models/optical_field/ring_selfheat.va — high-Q all-pass ring "
+               "with OPTICAL SELF-HEATING (thermo-optic bistability): the "
+               "fraction heat_frac of the intrinsic loss that is absorbed "
+               "heats a one-pole thermal reservoir (R_th, tau_th), silicon's "
+               "dn/dT > 0 red-shifts the resonance by dl_dt_pm per kelvin, "
+               "and that shift changes the stored power — a nonlinear "
+               "feedback loop. The laser wavelength is the ELECTRICAL node "
+               "`lam` (V(lam) = wavelength in nm), so a PWL/ramp source can "
+               "sweep it as a waveform. Ramp it slowly across the cold "
+               "resonance and back (a transient) and the through-port traces "
+               "a HYSTERESIS loop: to the red the heated resonance is dragged "
+               "along with the laser (locked, high circulating power, a "
+               "triangular thermal-locking line) then snaps back; to the blue "
+               "the ring stays cold until the cold resonance. The bistable "
+               "window widens with power (~90 pm at 50 uW). Held at a fixed "
+               "lam it reduces to the all-pass Lorentzian. Directed 2-port; "
+               "lam and gnd are electrical. (Pinned physics study: "
+               "examples/ring_selfheat.py — example 41.)",
+        "ports": _ports("pin:o pout:o lam:e gnd:e"),
+        "params": [
+            _p("lambda_res_nm", 1310.0, "nm", "Cold resonance"),
+            _p("radius_um", 8.0, "um", "Ring radius"),
+            _p("n_g", 4.0, "", "Group index"),
+            _p("n_eff", 2.4, "", "Effective index"),
+            _p("loss_db_m", 300.0, "dB/m", "Intrinsic loss"),
+            _p("kappa2", 0.004, "", "Bus coupling k^2"),
+            _p("heat_frac", 1.0, "", "Absorbed fraction of loss"),
+            _p("rth_k_w", 3.0e4, "K/W", "Thermal resistance"),
+            _p("tau_th_s", 1.0e-6, "s", "Thermal time constant"),
+            _p("dl_dt_pm", 80.0, "pm/K", "Thermo-optic shift"),
+        ],
+        "expand": {
+            "instances": {
+                "tap": {"component": "_f2ri"},
+                "ring": {"component": "_ringselfheat_va", "settings": "ALL"},
+                "join": {"component": "_ri2f"},
+            },
+            "connections": [
+                ("tap,re", "ring,in_re"), ("tap,im", "ring,in_im"),
+                ("ring,out_re", "join,re"), ("ring,out_im", "join,im"),
+            ],
+            "port_map": {
+                "pin": "tap,c", "pout": "join,c",
+                "lam": "ring,lam_nm", "gnd": "ring,gnd",
+            },
+        },
+    },
     "wg_nl": {
         "label": "Nonlinear Waveguide (VA)",
         "category": "Photonic Passives",
@@ -1923,6 +1974,7 @@ def build_models(sky130_geoms: dict[str, tuple[str, float, float]] | None = None
         "_ringcomb_va": cx.va("ring_filter"),
         "_ringnl_va": cx.va("ring_nl"),
         "_ringkerr_va": cx.va("ring_kerr"),
+        "_ringselfheat_va": cx.va("ring_selfheat"),
         "_wgnl_va": cx.va("waveguide_nl"),
         "vdc": VoltageSource,
         "vpulse": PulseVoltageSource,

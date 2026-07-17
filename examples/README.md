@@ -25,9 +25,11 @@ modulation happens in modulators (`cx.mzm()`, or the ideal `PulseModulator` in
 | [`mzm_tw_transient.py`](mzm_tw_transient.py) | **electro-optic bandwidth** of the traveling-wave MZM (`mzm_tw.va`): step-response rise time and a full-swing NRZ eye, velocity-matched vs walk-off electrode | `mzm_tw` |
 | [`mzm_tw_eo_bw.py`](mzm_tw_eo_bw.py) | **electro-optic frequency response** of the traveling-wave MZM — a network-analyser-style tone sweep pins |H(f)|, phase, the -3 dB EO bandwidth, velocity-match / walk-off (`f_w ∝ 1/ℓ`) and pole-count roll-off against the model's pole cascade | — |
 
-The last five have a browser twin (the named web-app examples 36–40): the
+The last six have a browser twin (the named web-app examples 36–41): the
 script is the pinned physics study, the web-app example is the same circuit to
-click through.
+click through. Example 41 drives the ring's wavelength node with a PWL source
+so the transient sweeps forward then back — the through-port hysteresis loop is
+the same one this script plots.
 
 ```bash
 .venv-circulax/bin/python examples/photodiode_tia.py    # -> out/photodiode_tia.png

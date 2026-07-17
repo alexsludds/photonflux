@@ -1352,6 +1352,7 @@ function applyAnalysis(a) {
 let progressGen = 0;
 function startProgressPoll() {
   const bar = $("run-progress"), fill = $("run-progress-fill");
+  const label = $("run-progress-label");
   if (!bar || !fill) return { stop() {} };
   // Each poll owns a generation; a stale hide-timeout from a previous run must
   // not hide the bar a newer run has just shown (rapid re-run via Cmd+Enter).
@@ -1360,6 +1361,10 @@ function startProgressPoll() {
   bar.hidden = false;
   bar.classList.add("indeterminate");
   fill.style.width = "";
+  // Text beside the bar: a short phase word while the run isn't yet stepping
+  // (compile dominates the first run and reports no fraction), then a live
+  // percentage once the transient solver starts advancing through sim time.
+  if (label) { label.hidden = false; label.textContent = "Compiling…"; }
   const timer = setInterval(async () => {
     let p;
     try { p = await (await fetch("/api/progress")).json(); }
@@ -1368,7 +1373,11 @@ function startProgressPoll() {
     if (p.frac > 0 || p.phase === "solving") {
       seenFrac = true;
       bar.classList.remove("indeterminate");
-      fill.style.width = `${Math.min(100, Math.max(0, p.frac * 100)).toFixed(1)}%`;
+      const pct = Math.min(100, Math.max(0, p.frac * 100));
+      fill.style.width = `${pct.toFixed(1)}%`;
+      if (label) label.textContent = `${pct.toFixed(0)}%`;
+    } else if (label) {
+      label.textContent = "Compiling…";
     }
   }, 200);
   return {
@@ -1376,12 +1385,13 @@ function startProgressPoll() {
       stopped = true;
       clearInterval(timer);
       // A finished solve briefly shows a full bar before it disappears.
-      if (seenFrac) fill.style.width = "100%";
+      if (seenFrac) { fill.style.width = "100%"; if (label) label.textContent = "100%"; }
       setTimeout(() => {
         if (gen !== progressGen) return;  // a newer run now owns the bar
         bar.hidden = true;
         bar.classList.remove("indeterminate");
         fill.style.width = "0";
+        if (label) { label.hidden = true; label.textContent = ""; }
       }, seenFrac ? 220 : 0);
     },
   };

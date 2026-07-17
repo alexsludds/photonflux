@@ -112,6 +112,24 @@ S.pulse_mod = {
     <line class="${OPT}" x1="70" y1="20" x2="80" y2="20"/>`,
 };
 
+S.phase_shifter = {
+  // straight waveguide through an electrode box: voltage rotates the field
+  // phase (phi), magnitude untouched. vp electrode on top, vn on bottom,
+  // gnd stub top-right.
+  w: 100, h: 60,
+  pins: { pin: [0, 30], pout: [100, 30], vp: [40, 0], vn: [40, 60], gnd: [70, 0] },
+  label: [0, -6], pinLabels: true,
+  draw: () => `
+    <line class="${OPT}" x1="0" y1="30" x2="100" y2="30"/>
+    <rect class="${OPT} body-fill" x="28" y="18" width="44" height="24"/>
+    <text x="42" y="36" style="font-size:14px">&#966;</text>
+    <rect class="${EL}" x="30" y="13" width="20" height="5"/>
+    <rect class="${EL}" x="30" y="42" width="20" height="5"/>
+    <line class="${EL}" x1="40" y1="0" x2="40" y2="13"/>
+    <line class="${EL}" x1="40" y1="47" x2="40" y2="60"/>
+    <line class="${EL}" x1="70" y1="0" x2="70" y2="18"/>`,
+};
+
 S.ring_mod = {
   w: 100, h: 80,
   pins: { pin: [0, 70], pout: [100, 70], vp: [20, 0], vn: [50, 0], gnd: [80, 0] },
@@ -695,6 +713,7 @@ const HEADLINE_PARAM = {
   cw_laser: "power", mzm: "vpi", pulse_mod: "p_on", ring_mod: "kappa2",
   laser_dml: "Ith", laser_rate: "taup", mzm_tw: "vpi",
   ring_mod_inj: "tau_c", mzm_seg: "vpi", ring_selfheat: "rth_k_w",
+  phase_shifter: "vpi",
   waveguide: "length_m", splitter: "split_ratio", dir_coupler: "coupling",
   grating: "center_wavelength_nm", opt_filter: "center_nm", opt_mirror: "R",
   circulator: "iso_db",

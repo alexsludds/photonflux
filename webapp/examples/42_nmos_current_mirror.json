@@ -1,0 +1,207 @@
+{
+  "title": "NMOS current mirror",
+  "group": "Electronics — analog",
+  "description": "NMOS current mirror: diode-connected MN1 sets ~0.2 mA reference, MN2 mirrors it; sweep the output voltage to see the flat current-source characteristic, stepped mirror ratio W2/W1 = 0.5/1/2",
+  "schematic": {
+    "notes": [
+      {
+        "x": 40,
+        "y": -173,
+        "title": "NMOS current mirror — what this testbench does",
+        "lines": [
+          "Diode-connected MN1 (gate tied to drain) sinks the",
+          "reference current set by RREF = 18 kohm from VDD = 5 V,",
+          "so IREF ~ (VDD - VGS)/RREF ~ 0.2 mA. MN1 and MN2 share",
+          "the same gate and grounded source, so MN2 copies MN1's",
+          "VGS and mirrors that current.",
+          "",
+          "VOUT sweeps MN2's drain 0 -> 5 V. iout is flat once MN2",
+          "saturates (VOUT > Vov) -- that flat level is the mirrored",
+          "current, and its slight upward slope is the finite output",
+          "resistance from lambda. iref (probe on MN1's source) stays",
+          "put as a reference. 1-ohm sense resistors turn each branch",
+          "current into a probe voltage (iout ~ V/1ohm).",
+          "",
+          "MN2.W is stepped 0.5x / 1x / 2x of MN1.W, so iout lands at",
+          "~0.1 / 0.2 / 0.4 mA -- the mirror ratio is W2/W1.",
+          "",
+          "Set RREF.R = 9000 and re-run to double IREF (~0.4 mA)."
+        ]
+      }
+    ],
+    "instances": {
+      "VDD": {
+        "type": "vdc",
+        "x": 120,
+        "y": 80,
+        "rot": 0,
+        "settings": {
+          "V": 5.0
+        }
+      },
+      "GDD": {
+        "type": "ground",
+        "x": 200,
+        "y": 80,
+        "rot": 0,
+        "settings": {}
+      },
+      "RREF": {
+        "type": "resistor",
+        "x": 300,
+        "y": 160,
+        "rot": 0,
+        "settings": {
+          "R": 18000.0
+        }
+      },
+      "MN1": {
+        "type": "nmos",
+        "x": 300,
+        "y": 300,
+        "rot": 0,
+        "settings": {
+          "Kp": 2e-05,
+          "W": 0.0001,
+          "L": 1e-06,
+          "Vth": 1.0,
+          "lam": 0.05
+        }
+      },
+      "RS1": {
+        "type": "resistor",
+        "x": 300,
+        "y": 440,
+        "rot": 0,
+        "settings": {
+          "R": 1.0
+        }
+      },
+      "GS1": {
+        "type": "ground",
+        "x": 380,
+        "y": 440,
+        "rot": 0,
+        "settings": {}
+      },
+      "VOUT": {
+        "type": "vdc",
+        "x": 620,
+        "y": 140,
+        "rot": 0,
+        "settings": {
+          "V": 2.5
+        }
+      },
+      "GOUT": {
+        "type": "ground",
+        "x": 700,
+        "y": 140,
+        "rot": 0,
+        "settings": {}
+      },
+      "MN2": {
+        "type": "nmos",
+        "x": 620,
+        "y": 300,
+        "rot": 0,
+        "settings": {
+          "Kp": 2e-05,
+          "W": 0.0001,
+          "L": 1e-06,
+          "Vth": 1.0,
+          "lam": 0.05
+        }
+      },
+      "RS2": {
+        "type": "resistor",
+        "x": 620,
+        "y": 440,
+        "rot": 0,
+        "settings": {
+          "R": 1.0
+        }
+      },
+      "GS2": {
+        "type": "ground",
+        "x": 700,
+        "y": 440,
+        "rot": 0,
+        "settings": {}
+      }
+    },
+    "wires": [
+      {
+        "from": "VDD,p1",
+        "to": "RREF,p1"
+      },
+      {
+        "from": "VDD,p2",
+        "to": "GDD,p1"
+      },
+      {
+        "from": "RREF,p2",
+        "to": "MN1,d"
+      },
+      {
+        "from": "MN1,g",
+        "to": "MN1,d"
+      },
+      {
+        "from": "MN1,g",
+        "to": "MN2,g"
+      },
+      {
+        "from": "MN1,s",
+        "to": "RS1,p1"
+      },
+      {
+        "from": "RS1,p2",
+        "to": "GS1,p1"
+      },
+      {
+        "from": "VOUT,p1",
+        "to": "MN2,d"
+      },
+      {
+        "from": "VOUT,p2",
+        "to": "GOUT,p1"
+      },
+      {
+        "from": "MN2,s",
+        "to": "RS2,p1"
+      },
+      {
+        "from": "RS2,p2",
+        "to": "GS2,p1"
+      }
+    ],
+    "probes": [
+      {
+        "name": "iref",
+        "at": "MN1,s",
+        "color": "#6ecbf5"
+      },
+      {
+        "name": "iout",
+        "at": "MN2,s",
+        "color": "#e6862c"
+      }
+    ]
+  },
+  "analysis": {
+    "mode": "dcsweep",
+    "instance": "VOUT",
+    "param": "V",
+    "start": 0,
+    "stop": 5,
+    "points": 101,
+    "step_instance": "MN2",
+    "step_param": "W",
+    "step_values": [
+      5e-05,
+      0.0001,
+      0.0002
+    ]
+  }
+}

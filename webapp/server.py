@@ -57,6 +57,13 @@ def _load_engine() -> None:
 
     simulate = _simulate
     CATALOG = _CATALOG
+
+    # Opt this (server) process in to live per-step transient progress, which
+    # the browser polls via /api/progress. Library/CLI callers don't call this,
+    # so they skip the solver's per-save-point host callback entirely.
+    import progress
+    progress.PROGRESS.enable()
+
     loaded_va = load_user_va()
     if loaded_va:
         print(f"user VA models: {', '.join(loaded_va)}")
@@ -119,6 +126,14 @@ class Handler(BaseHTTPRequestHandler):
             return
         if path == "/api/examples":
             self._json(_examples_index())
+            return
+        if path == "/api/progress":
+            # Live transient-solve progress, polled by the browser while an
+            # /api/run is in flight. Deliberately lock-free (it never touches
+            # _RUN_LOCK), so it answers on its own handler thread while the run
+            # worker holds the lock and updates the shared state.
+            import progress
+            self._json(progress.PROGRESS.snapshot())
             return
         if path == "/api/veriloga":
             import catalog

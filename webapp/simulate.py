@@ -653,7 +653,30 @@ def _run_transient(circuit, meta, analysis, log) -> dict:
         dtmax = min(dtmax or 1e9, dt_n)
 
     ts = jnp.linspace(0.0, t_stop, points)
-    saveat = diffrax.SaveAt(ts=ts)
+    # Live progress for the web UI: the solver saves at each of these `points`
+    # timestamps inside the compiled loop, so a jax.debug.callback hung off the
+    # SaveAt fn fires on the host as the solve steps through simulated time,
+    # reporting t/t_stop in [0, 1]. The fn otherwise returns y unchanged, so the
+    # saved series is identical to the default SaveAt(ts=ts). (diffrax's own
+    # progress_meter= is a no-op here — circulax's circuit_diffeqsolve drops it.)
+    #
+    # Only wire the callback when the web server has opted in (PROGRESS.enabled):
+    # a per-save-point host round-trip is pure overhead for batch callers that
+    # loop over simulate.run (warmup, the optimiser, tests), so they keep the
+    # plain SaveAt and run exactly as before.
+    from progress import PROGRESS
+
+    if PROGRESS.enabled:
+        import jax
+
+        def _save_fn(t, y, args):
+            jax.debug.callback(PROGRESS.report, t / t_stop)
+            return y
+
+        saveat = diffrax.SaveAt(ts=ts, fn=_save_fn)
+        PROGRESS.set_seeds(seeds)
+    else:
+        saveat = diffrax.SaveAt(ts=ts)
 
     def solve_one(seed_params):
         y0 = _dc_solve(circuit, meta, None, params=seed_params)
@@ -683,6 +706,7 @@ def _run_transient(circuit, meta, analysis, log) -> dict:
     t0c = time.perf_counter()
     sols = []
     for k in range(seeds):
+        PROGRESS.set_seed(k)
         seed_params = (
             {f"{i}.seed_idx": float(k) for i in meta.get("noise_insts", [])}
             or None)
@@ -1439,9 +1463,13 @@ def _run_sweep_overlay(payload: dict) -> dict:
            + " x ".join(f"{ax['instance']}.{ax['param']}" for ax in axes)]
     _prewarm_sky130_for_sweep(copy.deepcopy(sch), axes, log)
 
+    from progress import PROGRESS
+    PROGRESS.set_runs(n)  # spread the web-UI bar across all sweep points
+
     merged = None
     t0 = time.perf_counter()
     for i, point in enumerate(grid):
+        PROGRESS.set_run(i)
         frac = i / max(1, n - 1)
         label = ", ".join(f"{inst}.{param}={_fmt_si(val)}"
                           for inst, param, val in point)
@@ -1480,6 +1508,18 @@ def _run_sweep_overlay(payload: dict) -> dict:
 # ---------------------------------------------------------------------------
 
 def run(payload: dict) -> dict:
+    # Bracket the whole run so the web UI's /api/progress poll sees a live
+    # bar appear on Run and clear when the result lands. Re-entrancy safe: the
+    # recursive run() calls a parameter sweep makes nest without resetting.
+    from progress import PROGRESS
+    PROGRESS.enter()
+    try:
+        return _run_inner(payload)
+    finally:
+        PROGRESS.leave()
+
+
+def _run_inner(payload: dict) -> dict:
     try:
         sch = payload.get("schematic") or {}
         analysis = payload.get("analysis") or {"mode": "dc"}

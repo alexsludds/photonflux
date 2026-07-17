@@ -1,24 +1,45 @@
 #!/usr/bin/env python3
-"""Ring-modulator electro-optic frequency comb (``models/optical_field/ring_mod.va``).
+"""Ring-modulator electro-optic frequency comb, built from optical sub-components.
 
 Drive the depletion electrode of a silicon **microring modulator** with a strong
 single RF tone and the through port sprouts a *frequency comb* — a fan of optical
-lines spaced by the drive frequency ``f_RF``. It is the same coupled-mode-theory
-ring used by ``ring_mod_sky130.py`` and ``ring_eo_response.py`` (R = 7.5 um,
-k^2 = 10 %, 45 pm/V depletion tuning), here pushed hard instead of small-signal.
+lines spaced by the drive frequency ``f_RF``. This bench builds the ring the way
+a photonics engineer draws it: from three physical **sub-components** wired into
+a loop, rather than one monolithic coupled-mode equation. The pieces are
 
-How the comb forms. The electrode voltage moves the resonance,
-``lambda_res(V) = lambda_res + 45 pm/V * V``, so a tone ``V(t) = V_ac sin(2*pi*f_RF t)``
-sweeps the resonance back and forth across a CW laser parked on its slope. The
-intracavity field obeys the ring CMT (exactly the ``ring_mod.va`` equations)
+  * **directional coupler** — the point coupler between the bus and the ring:
+    it couples the input field into the circulating cavity mode (at the external
+    rate ``2/tau_e`` set by the power coupling ``kappa^2``) and taps the through
+    port ``s_out = s_in + j*a``;
+  * **EO phase shifter** — the depletion phase shifter *inside* the ring: the
+    electrode voltage shifts the resonance (``45 pm/V``), i.e. it sets the cavity
+    detuning ``delta(V)``. This is the electro-optic drive;
+  * **cavity mode** — the ring loop itself: the circulating field's energy
+    storage (``d/dt``) plus its round-trip propagation loss (rate ``1/tau_i``).
+    This is where the **photon lifetime** lives.
+
+Their Kirchhoff sum on the shared cavity node ``a`` is exactly the ring CMT
 
     dA/dt = (-1/tau + j*delta(t)) A + j*kappa^2 s_in ,   s_out = s_in + j*A,
 
-a *linear time-varying* system (the drive enters only through ``delta(t)``), so
-its periodic response is a comb at every harmonic ``n*f_RF``. Unlike a plain
-phase modulator's flat Jacobi-Anger (Bessel) comb, this comb is **shaped by the
-cavity**: the finite photon lifetime ``tau`` low-passes the modulation, so
-sidebands beyond the cavity linewidth are rolled off. Two regimes fall out:
+with ``1/tau = 1/tau_i + 1/tau_e``. So the monolithic ``models/optical_field/
+ring_mod.va`` used by ``ring_mod_sky130.py`` / ``ring_eo_response.py`` is
+reproduced here as a block diagram — and the bench asserts the two agree to
+machine precision (part 1 below). Building it from parts is not just cosmetic:
+the field primitives are memoryless (an optical S-matrix has no delay), so a
+literal coupler + waveguide *feedback loop* would be algebraic and would model
+only the adiabatic, lifetime-free ring; localising the round trip into the
+cavity-mode storage element is what keeps the photon-lifetime dynamics.
+
+How the comb forms. The EO phase shifter moves the resonance,
+``lambda_res(V) = lambda_res + 45 pm/V * V``, so a tone
+``V(t) = V_ac sin(2*pi*f_RF t)`` sweeps it back and forth across a CW laser
+parked on its slope. The cavity is a *linear time-varying* system (the drive
+enters only through ``delta(t)``), so its periodic response is a comb at every
+harmonic ``n*f_RF``. Unlike a plain phase modulator's flat Jacobi-Anger (Bessel)
+comb, this comb is **shaped by the cavity**: the finite photon lifetime
+low-passes the modulation, so sidebands beyond the cavity linewidth roll off.
+Two regimes fall out:
 
   * **adiabatic** (f_RF << f_cav): the ring follows the drive quasi-statically,
     so the through-port field just traces the swept Lorentzian ``s(delta(t))`` —
@@ -27,23 +48,24 @@ sidebands beyond the cavity linewidth are rolled off. Two regimes fall out:
   * **photon-lifetime limited** (f_RF ~ f_cav): the cavity can no longer charge
     and discharge within a period, the waveform lags and rounds, and the comb
     bandwidth **saturates** near the cavity bandwidth ``f_cav = 1/(2*pi*(tau/2))``
-    (~44 GHz here) — the same photon-lifetime rolloff ``ring_eo_response.py``
-    measures small-signal.
+    (~44 GHz here) — the photon-lifetime rolloff ``ring_eo_response.py`` measures
+    small-signal.
 
-The whole thing is one JAX system (CW laser -> ring_mod.va -> through field)
-solved by Newton DC + fixed-step BDF2, then a leak-free rectangular FFT reads the
-teeth. Every line is pinned against an **independent integration of the CMT
-ODE** (scipy, high accuracy) — the compiled Verilog-A -> OSDI -> JAX -> BDF2
-pipeline reproduces the ring dynamics and adds nothing.
+The whole thing is one JAX system (CW laser -> coupler/phase-shifter/cavity ring
+-> through field) solved by Newton DC + fixed-step BDF2, then a leak-free
+rectangular FFT reads the teeth. Every line is pinned against an **independent
+integration of the CMT ODE** (scipy, high accuracy).
 
 Self-checks (all asserted):
-  1. golden ODE   — each comb line matches the independently integrated CMT to
-                    <0.5 dB across the whole comb
-  2. line spacing — all comb power sits on the f_RF harmonic grid
-  3. passivity    — the ring is passive and lossy, so the *cycle-averaged*
+  1. sub-components == ring_mod.va — the coupler+phase-shifter+cavity ring
+     reproduces the monolithic Verilog-A model to machine precision
+  2. golden CMT   — each comb line matches an independent high-accuracy
+                    integration of the CMT ODE (scipy) to <1 dB
+  3. line spacing — all comb power sits on the f_RF harmonic grid
+  4. passivity    — the ring is passive and lossy, so the *cycle-averaged*
                     through-port power is <= the laser power (it may overshoot
                     instantaneously as the overcoupled cavity dumps stored energy)
-  4. cavity limit — sweeping f_RF, the comb bandwidth tracks the adiabatic
+  5. cavity limit — sweeping f_RF, the comb bandwidth tracks the adiabatic
                     (Fourier-series) growth at low f_RF but saturates near f_cav
                     once the photon lifetime can't follow
 
@@ -75,7 +97,9 @@ from circulax import compile_circuit
 from circulax.components.base_component import Signals, States, component, source
 from circulax.solvers.transient import BDF2VectorizedTransientSolver
 
-# the physical device + optics chain, shared with the ring eye-diagram testbench
+from photonflux import cx
+
+# the physical device + the monolithic ring, shared with the eye-diagram bench
 from ring_mod_sky130 import (
     C0,
     DL_DV_PM,
@@ -113,7 +137,13 @@ VOLT_TO_DELTA = 2 * np.pi * C0 / (WAVELENGTH_NM * 1e-9) ** 2 * DL_DV_PM * 1e-12
 
 
 def comb_device(kappa2: float | None = None) -> dict:
-    """The CMT ring parked at its maximum-slope bias (steepest dT/dlambda)."""
+    """The CMT ring parked at its maximum-slope bias, split into CMT rates.
+
+    ``tau`` (loaded) and ``tk2`` come from the physical device (``design_ring``);
+    the coupler/cavity split follows ``ring_mod.va``'s derivation:
+    ``1/tau_e = tk2/(2*tau)`` (bus coupling), ``1/tau_i = 1/tau - 1/tau_e``
+    (round-trip loss), and the drive/output rate ``kappa^2 = tk2/tau``.
+    """
     d = dict(design_ring(0.0, kappa2=kappa2))
     hwhm_pm = d["fwhm_pm"] / 2
     detune_pm = hwhm_pm / np.sqrt(3.0)              # Lorentzian max-slope point
@@ -121,7 +151,9 @@ def comb_device(kappa2: float | None = None) -> dict:
     d["lambda_light_nm"] = WAVELENGTH_NM - detune_pm * 1e-3
     lam_l, lam_res = d["lambda_light_nm"] * 1e-9, WAVELENGTH_NM * 1e-9
     d["delta0"] = 2 * np.pi * C0 * (1 / lam_l - 1 / lam_res)
-    d["krate"] = d["tk2"] / d["tau"]               # kappa^2 bus-coupling rate
+    d["krate"] = d["tk2"] / d["tau"]               # kappa^2: drive/output rate
+    d["inv_tau_e"] = d["tk2"] / (2 * d["tau"])     # bus coupling rate
+    d["inv_tau_i"] = 1.0 / d["tau"] - d["inv_tau_e"]  # round-trip loss rate
     return d
 
 
@@ -130,8 +162,68 @@ def vac_for_swing(design: dict, swing_hwhm: float) -> float:
 
 
 # ===========================================================================
-# Inline components: RF electrode drive + a field-node terminator
+# The ring, built from optical sub-components (temporal coupled-mode blocks)
 # ===========================================================================
+# The three blocks share one internal complex node — the circulating cavity
+# field ``a`` — and their Kirchhoff sum there IS the ring CMT (see module
+# docstring). Each is an ordinary circulax coherent-field component.
+def directional_coupler(inv_tau_e: float, krate: float):
+    """Bus <-> ring point coupler.
+
+    Couples the input field into the cavity mode at the external (amplitude)
+    rate ``1/tau_e`` and taps the through port ``s_out = s_in + j*a``. Contributes
+    ``a/tau_e - j*kappa^2 s_in`` to the cavity node (coupling loss + drive) and
+    draws nothing from the bus input (an ideal directional tap)."""
+
+    @component(ports=("sin", "sout", "a"), states=("i_out",))
+    def Coupler(signals: Signals, s: States) -> tuple[dict, dict]:
+        return {
+            "sin": 0.0,                                    # ideal input tap
+            "a": inv_tau_e * signals.a - 1j * krate * signals.sin,
+            "sout": s.i_out,
+            "i_out": signals.sout - (signals.sin + 1j * signals.a),
+        }, {}
+
+    return Coupler
+
+
+def eo_phase_shifter(design: dict, cj: float = 0.0):
+    """Depletion phase shifter in the ring: electrode voltage -> cavity detuning.
+
+    ``lambda_res(V) = lambda_res + dl_dv_pm*V`` moves the resonance, so the
+    electrode sets the CMT detuning ``delta(V) = 2*pi*c*(1/lambda_light -
+    1/lambda_res(V))`` — the same electro-optic map as ``ring_mod.va``. It
+    contributes ``-j*delta(V)*a`` to the cavity node. ``cj`` is the junction
+    capacitance a real driver would load (0 = ideal drive; harmless here since
+    the drive is an ideal voltage source)."""
+    lam_l = design["lambda_light_nm"] * 1e-9
+    lam_res0 = WAVELENGTH_NM * 1e-9
+
+    @component(ports=("a", "vp", "vn"))
+    def PhaseShifter(signals: Signals, s: States) -> tuple[dict, dict]:
+        v = (signals.vp - signals.vn).real
+        lam_res = lam_res0 + DL_DV_PM * 1e-12 * v
+        delta = 2 * np.pi * C0 * (1.0 / lam_l - 1.0 / lam_res)
+        f = {"a": -1j * delta * signals.a, "vp": 0.0, "vn": 0.0}
+        q_el = cj * (signals.vp - signals.vn)
+        return f, {"vp": q_el, "vn": -q_el}
+
+    return PhaseShifter
+
+
+def cavity_mode(inv_tau_i: float):
+    """The ring loop: circulating-field energy storage + round-trip loss.
+
+    Contributes ``dA/dt + a/tau_i`` to the cavity node — the ``d/dt`` (photon
+    storage, i.e. the photon lifetime) plus the intrinsic round-trip loss."""
+
+    @component(ports=("a",))
+    def Cavity(signals: Signals, s: States) -> tuple[dict, dict]:
+        return {"a": inv_tau_i * signals.a}, {"a": signals.a}
+
+    return Cavity
+
+
 def sine_source():
     """Ideal RF voltage source V = v_ac*sin(2*pi*freq*t) (starts at 0)."""
 
@@ -156,32 +248,60 @@ def field_terminator():
 
 
 # ===========================================================================
-# Circuit: CW laser -> ring_mod.va (RF electrode) -> through field
+# Circuits: the sub-component ring, and the monolithic ring_mod.va twin
 # ===========================================================================
 def build(design: dict):
+    """CW laser -> [coupler | EO phase shifter | cavity mode] ring -> through."""
     inst = {
         "GND": {"component": "ground"},
         "LAS": {"component": "laser",
                 "settings": {"wavelength_nm": design["lambda_light_nm"],
                              "power": P_LASER}},
-        "TAP": {"component": "f2ri"},          # complex field -> (re, im) pair
+        "CPL": {"component": "coupler"},        # bus <-> ring coupler + tap
+        "PS": {"component": "phaseshifter"},    # EO detuning drive
+        "CAV": {"component": "cavity"},         # ring loop storage + loss
+        "VS": {"component": "sine"},
+        "TO": {"component": "term"},
+    }
+    conn = {
+        "LAS,p1": "CPL,sin",
+        "CPL,sout": "TO,c",
+        "CPL,a": ("PS,a", "CAV,a"),             # shared circulating-field node
+        "VS,p1": "PS,vp",
+        "GND,p1": ("LAS,p2", "PS,vn", "VS,p2"),
+    }
+    net = {"instances": inst, "connections": conn, "ports": {"pout": "CPL,sout"}}
+    models = {"ground": lambda: 0, "laser": cx.cw_laser(),
+              "coupler": directional_coupler(design["inv_tau_e"], design["krate"]),
+              "phaseshifter": eo_phase_shifter(design, cj=design["cj"]),
+              "cavity": cavity_mode(design["inv_tau_i"]),
+              "sine": sine_source(), "term": field_terminator()}
+    return compile_circuit(net, models, backend="dense", is_complex=True,
+                           max_steps=400)
+
+
+def build_monolithic(design: dict):
+    """The same ring as the single ``ring_mod.va`` block — the reference twin."""
+    inst = {
+        "GND": {"component": "ground"},
+        "LAS": {"component": "laser",
+                "settings": {"wavelength_nm": design["lambda_light_nm"],
+                             "power": P_LASER}},
+        "TAP": {"component": "f2ri"},
         "RING": {"component": "ring", "settings": ring_settings(design)},
-        "JOIN": {"component": "ri2f"},         # (re, im) pair -> complex field
+        "JOIN": {"component": "ri2f"},
         "VS": {"component": "sine"},
         "TO": {"component": "term"},
     }
     conn = {
         "LAS,p1": "TAP,c",
-        "TAP,re": "RING,in_re",
-        "TAP,im": "RING,in_im",
-        "RING,out_re": "JOIN,re",
-        "RING,out_im": "JOIN,im",
+        "TAP,re": "RING,in_re", "TAP,im": "RING,in_im",
+        "RING,out_re": "JOIN,re", "RING,out_im": "JOIN,im",
         "JOIN,c": "TO,c",
         "VS,p1": "RING,vp",
         "GND,p1": ("LAS,p2", "RING,vn", "RING,gnd", "VS,p2"),
     }
     net = {"instances": inst, "connections": conn, "ports": {"pout": "JOIN,c"}}
-    from photonflux import cx
     models = {"ground": lambda: 0, "laser": cx.cw_laser(),
               "f2ri": cx.field_to_ri(), "ring": cx.va("ring_mod"),
               "ri2f": cx.ri_to_field(), "sine": sine_source(),
@@ -295,30 +415,37 @@ def main(frf: float = F_RF, swing: float = SWING_HWHM,
     design = comb_device(kappa2)
     v_ac = vac_for_swing(design, swing)
     f_cav = design["f_bw"]
-    print(f"ring EO comb: R = {RADIUS_UM} um, k^2 = {design['kappa2']:.3f}, "
-          f"tau = {design['tau']*1e12:.2f} ps, linewidth = {design['fwhm_pm']:.0f} pm, "
-          f"f_cav = {f_cav/1e9:.1f} GHz")
+    print(f"ring EO comb (coupler + EO phase shifter + cavity): R = {RADIUS_UM} um, "
+          f"k^2 = {design['kappa2']:.3f}, tau = {design['tau']*1e12:.2f} ps, "
+          f"linewidth = {design['fwhm_pm']:.0f} pm, f_cav = {f_cav/1e9:.1f} GHz")
     print(f"bias: laser blue-detuned {design['detune_pm']:.0f} pm to max slope; "
           f"drive f_RF = {frf/1e9:.0f} GHz, V_ac = {v_ac:.2f} V "
           f"(resonance swings +-{swing:.1f} HWHM = +-{DL_DV_PM*v_ac:.0f} pm)")
 
     c = build(design)
 
-    # ---- part 1: the comb spectrum vs the golden CMT integration ----------
+    # ---- part 1: sub-components == ring_mod.va, and both == the CMT golden --
     t, e = run(c, design, v_ac, frf)
     f, a = spectrum(e)
     ns, p_n = comb_lines(f, a, frf)
 
-    eg = golden(design, v_ac, frf, t)
+    _, e_mono = run(build_monolithic(design), design, v_ac, frf)   # VA twin
+    err_mono = float(np.max(np.abs(e - e_mono)))
+    n_teeth = int(np.sum(p_n > 10 ** (-2.0) * p_n.max()))   # within 20 dB of peak
+    check("sub-components == ring_mod.va  (block diagram == VA model)",
+          err_mono < 1e-9,
+          f"max |coupler+PS+cavity - ring_mod.va| = {err_mono:.1e} "
+          f"(~{n_teeth} teeth within 20 dB of the peak)")
+
+    # each tooth also matches an *independent* high-accuracy CMT integration;
+    # residual is the fixed-step BDF2 vs scipy RK45 difference on the weak lines
+    eg = golden(design, v_ac, frf, t)                              # CMT ODE
     _, ag = spectrum(eg)
     _, p_g = comb_lines(f, ag, frf)
-
     big = p_g > 10 ** (-6.0) * P_LASER          # lines above -60 dBc
     err_db = float(np.max(np.abs(dbc(p_n[big]) - dbc(p_g[big]))))
-    n_teeth = int(np.sum(p_n > 10 ** (-2.0) * p_n.max()))   # within 20 dB of peak
-    check("golden CMT ODE  (line-by-line)", err_db < 0.5,
-          f"{int(big.sum())} lines, max |dB - CMT| = {err_db:.3f} dB "
-          f"(~{n_teeth} teeth within 20 dB of the peak)")
+    check("comb == independent CMT ODE  (line-by-line)", err_db < 1.0,
+          f"{int(big.sum())} lines match the CMT integration to {err_db:.3f} dB")
 
     # ---- part 2: line spacing = f_RF exactly ------------------------------
     total_power = float(np.mean(np.abs(e) ** 2))
@@ -346,8 +473,8 @@ def main(frf: float = F_RF, swing: float = SWING_HWHM,
     # adiabatic rms order is f_RF-independent: measure it once, deep in the
     # adiabatic regime, from the quasi-static waveform.
     t_lo, _ = run(c, design, v_ac, 2e9)
-    _, a_qs = spectrum(quasi_static(design, v_ac, 2e9, t_lo))
-    ns_qs, p_qs = comb_lines(f, a_qs, 2e9)
+    f_qs, a_qs = spectrum(quasi_static(design, v_ac, 2e9, t_lo))
+    ns_qs, p_qs = comb_lines(f_qs, a_qs, 2e9)
     rms_adia = rms_order(ns_qs, p_qs)
     for fr in frf_sweep:
         _, ef = run(c, design, v_ac, float(fr))
@@ -367,7 +494,8 @@ def main(frf: float = F_RF, swing: float = SWING_HWHM,
     # --- figure ------------------------------------------------------------
     fig, ax = plt.subplots(2, 2, figsize=(13, 9))
     fig.suptitle("Ring-modulator electro-optic frequency comb "
-                 "(models/optical_field/ring_mod.va)", fontsize=13)
+                 "(directional coupler + EO phase shifter + cavity mode)",
+                 fontsize=13)
 
     # (A) the driven resonance: laser on the slope, resonance swept +-swing
     axA = ax[0, 0]
@@ -382,15 +510,15 @@ def main(frf: float = F_RF, swing: float = SWING_HWHM,
              c="tab:red", label="laser bias (max slope)")
     axA.set(xlabel="laser–resonance detuning  [HWHM]",
             ylabel="through-port |H|²",
-            title="the drive sweeps the resonance across the laser")
+            title="the EO phase shifter sweeps the resonance across the laser")
     axA.legend(fontsize=8)
     axA.grid(alpha=0.3)
 
-    # (B) the comb spectrum vs the golden CMT integration
+    # (B) the comb spectrum: sub-component ring vs the golden CMT integration
     axB = ax[0, 1]
     sel = p_n > 1e-9 * P_LASER
     axB.vlines(ns[sel] * frf / 1e9, -90, dbc(p_n[sel]), color="#2c7fb8", lw=2.0,
-               label="ring_mod.va (circulax)")
+               label="coupler+PS+cavity ring")
     axB.plot(ns[big] * frf / 1e9, dbc(p_g[big]), "x", color="#d95f02", ms=6,
              label="independent CMT ODE")
     axB.axvline(f_cav / 1e9, color="0.6", ls=":", lw=0.9)
@@ -408,7 +536,7 @@ def main(frf: float = F_RF, swing: float = SWING_HWHM,
     tt = (t[:n_show] - t[0]) * 1e12
     p_qs_t = np.abs(quasi_static(design, v_ac, frf, t[:n_show])) ** 2
     axC.plot(tt, np.abs(e[:n_show]) ** 2 / P_LASER, color="#2c7fb8", lw=1.6,
-             label="ring_mod.va (with photon lifetime)")
+             label="cavity mode (with photon lifetime)")
     axC.plot(tt, p_qs_t / P_LASER, "--", color="tab:green", lw=1.4,
              label="adiabatic (instantaneous Lorentzian)")
     axC.axhline(1.0, color="0.7", lw=0.6, ls=":")
@@ -422,7 +550,7 @@ def main(frf: float = F_RF, swing: float = SWING_HWHM,
     axD.plot(frf_sweep / 1e9, bw_adia / 1e9, "--", color="tab:green", lw=1.3,
              label=r"adiabatic  ($\propto f_{RF}$)")
     axD.plot(frf_sweep / 1e9, bw_sim / 1e9, "o-", color="#2c7fb8", ms=4,
-             label="ring_mod.va (cavity-limited)")
+             label="cavity-limited (sub-component ring)")
     axD.axhline(f_cav / 1e9, color="0.6", ls=":", lw=0.9,
                 label=f"f_cav = {f_cav/1e9:.0f} GHz")
     axD.set(xlabel="drive frequency f_RF  [GHz]",

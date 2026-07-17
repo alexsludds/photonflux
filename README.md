@@ -135,7 +135,7 @@ as named examples 36–42 in the web app. One-line index:
 | `wg_fwm.py` | χ(3) four-wave mixing in a waveguide, pinned to every textbook scaling | `out/wg_fwm.png` |
 | `ring_fwm.py` | four-wave mixing **inside** a Kerr ring resonator | `out/ring_fwm.png` |
 | `ring_selfheat.py` | **thermo-optic bistability** of a self-heating microring (`models/optical_field/ring_selfheat.va`) — absorbed circulating power heats a high-Q ring and red-shifts its resonance (dn/dT>0); one transient ramps the laser wavelength up then down and the through-port traces a **hysteresis loop** (thermal-locking triangle to the red, sharp cold dip to the blue), pinned to the analytic three-root self-consistency | `out/ring_selfheat.png` |
-| `eo_comb.py` | **electro-optic frequency comb** from one hard-driven microring modulator (`models/optical_field/ring_mod.va`) — a strong RF tone sweeps the resonance across a slope-parked laser to grow a comb spaced by `f_RF`, pinned line-by-line to an independent CMT integration; the comb is cavity-shaped and its bandwidth saturates at the photon-lifetime limit (browser twin: example 42) | `out/eo_comb.png` |
+| `eo_comb.py` | **electro-optic frequency comb** from a microring modulator built out of **sub-components** (directional coupler + EO phase shifter + cavity-mode loop, asserted identical to `models/optical_field/ring_mod.va`) — a strong RF tone sweeps the resonance across a slope-parked laser to grow a comb spaced by `f_RF`, pinned to an independent CMT integration; the comb is cavity-shaped and its bandwidth saturates at the photon-lifetime limit (browser twin: example 42) | `out/eo_comb.png` |
 
 ## How the SKY130 flow works
 

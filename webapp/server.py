@@ -166,6 +166,15 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:  # noqa: N802
         route = self.path.split("?", 1)[0]
+        if route == "/api/cancel":
+            # Stop the in-flight run. Deliberately lock-free (like /api/progress)
+            # so it lands on its own handler thread while the run worker holds
+            # _RUN_LOCK; the solver's next per-step callback sees the flag and
+            # aborts the transient loop (see webapp/progress.py).
+            import progress
+            progress.PROGRESS.request_cancel()
+            self._json({"ok": True})
+            return
         if route not in ("/api/run", "/api/upload", "/api/upload_va"):
             self._json({"error": "not found"}, 404)
             return

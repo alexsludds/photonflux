@@ -10,13 +10,13 @@
         "lines": [
           "CW laser LAS1 (1310 nm) is on/off-keyed by pulse mod MOD1,",
           "sent down waveguide FIB1, and caught by photodiode PD1.",
-          "PD1 turns optical power into a current; opamp OA1 with",
-          "feedback resistor RF1 forms a transimpedance amp (TIA):",
-          "vout ~= -Iph * RF1.R. Probe popt_rx shows the received",
+          "PD1 turns optical power into a current; TIA1 is a dedicated",
+          "transimpedance amp whose inp is a virtual ground summing node:",
+          "vout ~= -Iph * TIA1.gain_ohm. Probe popt_rx shows the received",
           "optical pulse; probe vout shows the recovered voltage.",
           "",
-          "Set RF1.R = 1000 and re-run to see the vout swing grow ~5x",
-          "(gain scales with the feedback resistor)."
+          "Set TIA1.gain_ohm = 1000 and re-run to see the vout swing grow ~5x",
+          "(gain scales with the transimpedance)."
         ]
       }
     ],
@@ -58,20 +58,13 @@
         "rot": 0,
         "settings": {}
       },
-      "OA1": {
-        "type": "opamp",
+      "TIA1": {
+        "type": "tia",
         "x": 620,
         "y": 180,
         "rot": 0,
-        "settings": {}
-      },
-      "RF1": {
-        "type": "resistor",
-        "x": 600,
-        "y": 120,
-        "rot": 0,
         "settings": {
-          "R": 200.0
+          "gain_ohm": 200.0
         }
       },
       "GND1": {
@@ -85,13 +78,6 @@
         "type": "ground",
         "x": 510,
         "y": 290,
-        "rot": 0,
-        "settings": {}
-      },
-      "GND3": {
-        "type": "ground",
-        "x": 620,
-        "y": 300,
         "rot": 0,
         "settings": {}
       }
@@ -111,15 +97,7 @@
       },
       {
         "from": "PD1,cat",
-        "to": "OA1,in_m"
-      },
-      {
-        "from": "PD1,cat",
-        "to": "RF1,p1"
-      },
-      {
-        "from": "OA1,out_p",
-        "to": "RF1,p2"
+        "to": "TIA1,inp"
       },
       {
         "from": "LAS1,p2",
@@ -132,14 +110,6 @@
       {
         "from": "PD1,an",
         "to": "GND2,p1"
-      },
-      {
-        "from": "OA1,in_p",
-        "to": "GND3,p1"
-      },
-      {
-        "from": "OA1,out_m",
-        "to": "GND3,p1"
       }
     ],
     "probes": [
@@ -150,7 +120,7 @@
       },
       {
         "name": "vout",
-        "at": "OA1,out_p",
+        "at": "TIA1,out",
         "color": "#6ecbf5"
       }
     ]

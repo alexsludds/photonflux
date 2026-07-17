@@ -1027,6 +1027,16 @@ function renderInspector() {
     const p = state.probes[selection.id];
     const [pi, pp] = (p.at || "").split(",");
     const isOptical = portDomain(state.instances[pi]?.type, pp) === "optical";
+    const winRow = isOptical && p.spectrum ? `
+      <div class="insp-row"><label for="insp-pspec-start">Window start</label>
+        <input id="insp-pspec-start" placeholder="0"
+          value="${p.specStart != null ? fmtSI(p.specStart) : ""}"></div>
+      <div class="insp-row"><label for="insp-pspec-stop">Window stop</label>
+        <input id="insp-pspec-stop" placeholder="t_stop"
+          value="${p.specStop != null ? fmtSI(p.specStop) : ""}"></div>
+      <div class="insp-doc">Time span the FFT is taken over. Leave blank for the
+        full simulation; shorten it to isolate a settled window (e.g. skip the
+        turn-on transient). SI suffixes are accepted (e.g. 10n, 5u).</div>` : "";
     const specRow = isOptical ? `
       <div class="insp-row"><label for="insp-pspec">Optical spectrum</label>
         <input type="checkbox" id="insp-pspec" style="width:auto"
@@ -1034,7 +1044,8 @@ function renderInspector() {
       <div class="insp-doc">Adds an OSA-style plot of this node — |FFT(E)|&sup2;
         (dB) vs wavelength, centred on the laser carrier — beside the
         transient traces. One coherent carrier per node, so it shows that
-        wavelength's carrier and its modulation sidebands.</div>` : "";
+        wavelength's carrier and its modulation sidebands.</div>
+      ${winRow}` : "";
     body.innerHTML = `
       <div class="insp-title" style="color:${p.color}">&#9873; Probe</div>
       <div class="insp-row"><label>Name</label><input id="insp-pname" value="${p.name}"></div>
@@ -1057,9 +1068,35 @@ function renderInspector() {
     });
     if (isOptical) $("insp-pspec").addEventListener("change", () => {
       commit(() => {
-        if ($("insp-pspec").checked) p.spectrum = true; else delete p.spectrum;
+        if ($("insp-pspec").checked) {
+          p.spectrum = true;
+        } else {
+          delete p.spectrum;
+          delete p.specStart;   // drop the window when the plot is turned off
+          delete p.specStop;
+        }
       });
+      renderInspector();   // show/hide the window inputs
     });
+    if (isOptical && p.spectrum) {
+      // ok(v, other): reject a non-numeric/negative bound, or one that would
+      // invert the window (start past stop, or stop before start).
+      const bindWin = (elId, key, otherKey, ok) =>
+        $(elId).addEventListener("change", () => {
+          const raw = $(elId).value.trim();
+          if (raw === "") { commit(() => { delete p[key]; }); return; }
+          const v = parseSI(raw);
+          if (isNaN(v) || v < 0 || !ok(v, p[otherKey])) {   // restore prior value
+            $(elId).value = p[key] != null ? fmtSI(p[key]) : ""; return;
+          }
+          commit(() => { p[key] = v; });
+          $(elId).value = fmtSI(v);          // echo back canonicalised
+        });
+      bindWin("insp-pspec-start", "specStart", "specStop",
+              (v, stop) => stop == null || v < stop);
+      bindWin("insp-pspec-stop", "specStop", "specStart",
+              (v, start) => start == null || v > start);
+    }
     $("insp-del").onclick = deleteSelection;
   }
 }
@@ -1641,7 +1678,9 @@ async function runSim() {
           ? { ...(i.settings || {}), ui: globalUI() } : (i.settings || {}) }])),
       wires: state.wires.map((w) => [w.from, w.to]),
       probes: state.probes.map((p) => ({ name: p.name, at: p.at,
-        ...(p.spectrum ? { spectrum: true } : {}) })),
+        ...(p.spectrum ? { spectrum: true,
+          ...(p.specStart != null ? { spec_start: p.specStart } : {}),
+          ...(p.specStop != null ? { spec_stop: p.specStop } : {}) } : {}) })),
     },
     analysis: collectAnalysis(),
   };

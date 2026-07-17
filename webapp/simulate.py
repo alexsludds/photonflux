@@ -298,6 +298,7 @@ def schematic_to_netlist(sch: dict, wave_span: float = DEFAULT_WAVE_SPAN,
     ports: dict[str, str] = {}
     probe_domains: dict[str, str] = {}
     spectrum_probes: list[str] = []       # optical probes wanting an OSA plot
+    spectrum_windows: dict[str, tuple] = {}   # pname -> (start, stop) in seconds
     for probe in probes:
         pname = probe["name"]
         if not _NAME_RE.match(pname):
@@ -307,6 +308,11 @@ def schematic_to_netlist(sch: dict, wave_span: float = DEFAULT_WAVE_SPAN,
         probe_domains[pname] = _port_domain(probe["at"], instances)
         if probe.get("spectrum") and probe_domains[pname] == "optical":
             spectrum_probes.append(pname)
+            start, stop = probe.get("spec_start"), probe.get("spec_stop")
+            spectrum_windows[pname] = (
+                float(start) if start is not None else None,
+                float(stop) if stop is not None else None,
+            )
     if not ports:
         raise NetlistError("no probes — attach at least one probe to a net "
                            "so there is something to record")
@@ -366,6 +372,7 @@ def schematic_to_netlist(sch: dict, wave_span: float = DEFAULT_WAVE_SPAN,
     net = {"instances": cx_instances, "connections": connections, "ports": ports}
     meta = {"probe_domains": probe_domains, "has_osdi": has_osdi,
             "spectrum_probes": spectrum_probes, "carrier_nm": carrier_nm,
+            "spectrum_windows": spectrum_windows,
             "wdm_max_offset_hz": max_off,
             "param_root": param_root, "sky130_geoms": geoms,
             "types": {n: i["type"] for n, i in instances.items()},
@@ -778,32 +785,54 @@ def _run_transient(circuit, meta, analysis, log) -> dict:
                     f"inward. Raise 'points' to >= {need} (or shorten t_stop) "
                     f"for an unaliased spectrum.")
         eps = _optical_spectra(circuit, sols[0], t, spec_names,
-                               meta.get("carrier_nm", 1310.0), log)
+                               meta.get("carrier_nm", 1310.0), log,
+                               meta.get("spectrum_windows") or {})
         if eps:
             out.setdefault("extra_plots", []).extend(eps)
     return out
 
 
-def _optical_spectra(circuit, sol, t, names, carrier_nm, log):
+def _optical_spectra(circuit, sol, t, names, carrier_nm, log, windows=None):
     """One OSA plot per flagged optical probe: |FFT(E)|^2 (dB) vs wavelength,
     centred on the CW-laser carrier.
 
-    A single FULL-LENGTH FFT (resolution fs/N, ~250 MHz for the usual record)
-    with a 4-term Blackman-Harris window: the window's ~-92 dB sidelobes keep
-    the floor between the lines clean (true spectrum, not leakage), and the
-    fine resolution renders each tone as a sharp peak. The trace is trimmed to
-    the contiguous wavelength window that holds the signal but keeps EVERY bin
+    A single FFT (resolution fs/N, ~250 MHz over the usual full record) with a
+    4-term Blackman-Harris window: the window's ~-92 dB sidelobes keep the
+    floor between the lines clean (true spectrum, not leakage), and the fine
+    resolution renders each tone as a sharp peak. The trace is trimmed to the
+    contiguous wavelength window that holds the signal but keeps EVERY bin
     inside, so it reads as a real OSA sweep (dense floor + lines) rather than a
     handful of decimated peak samples.
+
+    Each probe may carry a (start, stop) time window; when set, the FFT runs
+    over only that slice of the transient (either bound may be None for open).
+    A shorter window trades resolution for the ability to isolate a settled
+    span (e.g. skipping the turn-on transient).
     """
     import numpy as np
 
+    t = np.asarray(t)
     dt = float(t[1] - t[0]) if len(t) > 1 else 1.0
     f0 = _C_LIGHT / (carrier_nm * 1e-9)          # carrier optical frequency
     floor_db = -90.0                             # display floor (dB below peak)
+    windows = windows or {}
     plots = []
     for name in names:
         E = np.asarray(circuit.port(sol.ys, name)).astype(complex)
+        win_t = windows.get(name)
+        if win_t and (win_t[0] is not None or win_t[1] is not None):
+            lo_t = win_t[0] if win_t[0] is not None else -np.inf
+            hi_t = win_t[1] if win_t[1] is not None else np.inf
+            if lo_t >= hi_t:
+                log.append(f"WARNING optical spectrum {name}: window start "
+                           f"{win_t[0]} >= stop {win_t[1]} — using the full "
+                           f"record instead")
+            elif int(((t >= lo_t) & (t <= hi_t)).sum()) >= 16:
+                E = E[(t >= lo_t) & (t <= hi_t)]
+            else:
+                log.append(f"WARNING optical spectrum {name}: time window "
+                           f"[{win_t[0]}, {win_t[1]}] s holds < 16 samples — "
+                           f"using the full record instead")
         n = len(E)
         if n < 16:
             continue

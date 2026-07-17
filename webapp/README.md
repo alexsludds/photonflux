@@ -53,6 +53,10 @@ container image does this, so production runs exactly one process.
   ones). A coherent envelope carries a full baseband band, so several
   wavelengths coexist as distinct tones — see **multi-carrier WDM** below.
   Example 18's bus probe has it on and shows all four DWDM carriers at once.
+  With the toggle on, two **Window start** / **Window stop** fields set the
+  time span the FFT runs over (SI suffixes like `10n` accepted). They default
+  to the full simulation; shorten the window to isolate a settled span (e.g.
+  skip the turn-on transient) at the cost of coarser resolution.
 * **Multi-carrier WDM**: a CW laser has a **WDM reference** field
   (`ref_wavelength_nm`). Leave it 0 for an ordinary single-carrier bus
   (constant envelope at the laser wavelength). Set it to a shared reference

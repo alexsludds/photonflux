@@ -21,6 +21,7 @@ modulation happens in modulators (`cx.mzm()`, or the ideal `PulseModulator` in
 | [`wg_fwm.py`](wg_fwm.py) | χ(3) four-wave mixing in a waveguide, pinned to every textbook scaling | "χ(3) four-wave mixing" |
 | [`ring_fwm.py`](ring_fwm.py) | four-wave mixing **inside** a Kerr ring resonator | "Kerr ring four-wave mixing" |
 | [`ring_selfheat.py`](ring_selfheat.py) | **thermo-optic bistability** of a self-heating ring — the laser wavelength ramped up then down traces a hysteresis loop | — |
+| [`mzm_tw_eo_bw.py`](mzm_tw_eo_bw.py) | **electro-optic frequency response** of the traveling-wave MZM — a network-analyser-style tone sweep pins |H(f)|, phase, the -3 dB EO bandwidth, velocity-match / walk-off (`f_w ∝ 1/ℓ`) and pole-count roll-off against the model's pole cascade | — |
 
 The last five have a browser twin (the named web-app examples 36–40): the
 script is the pinned physics study, the web-app example is the same circuit to
@@ -30,6 +31,7 @@ click through.
 .venv-circulax/bin/python examples/photodiode_tia.py    # -> out/photodiode_tia.png
 .venv-circulax/bin/python examples/soa_fp_laser.py      # -> out/soa_fp_laser.png
 .venv-circulax/bin/python examples/ring_selfheat.py     # -> out/ring_selfheat.png
+.venv-circulax/bin/python examples/mzm_tw_eo_bw.py      # -> out/mzm_tw_eo_bw.png
 # ...each script prints its own output path
 ```
 

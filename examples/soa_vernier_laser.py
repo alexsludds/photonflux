@@ -278,16 +278,21 @@ def spectrum(e: np.ndarray, dt: float) -> tuple[np.ndarray, np.ndarray]:
     return f, np.abs(x) ** 2
 
 
-def line_and_smsr(t, e, t_from: float, guard_hz: float = 12e9):
-    """Winning line (as an OPTICAL offset from 1310 nm) + SMSR of the
-    settled tail. Envelope +f rotation = optical nu0 - f (red)."""
-    m = t >= t_from
+def line_and_smsr(t, e, t_from: float, t_to: float | None = None,
+                  guard_hz: float = 12e9):
+    """Winning line (as an OPTICAL offset from 1310 nm), its SMSR, and the mean
+    power over the window (t_from, t_to]. Envelope +f rotation = optical
+    nu0 - f (red)."""
+    m = t > t_from
+    if t_to is not None:
+        m &= t < t_to
     f, s = spectrum(e[m], float(t[1] - t[0]))
     k = np.argmax(s)
     nu_opt = -f[k]                       # optical offset from the frame
     away = np.abs(f - f[k]) > guard_hz
     smsr_db = 10 * np.log10(s[k] / s[away].max())
-    return nu_opt, smsr_db
+    power = float(np.mean(np.abs(e[m]) ** 2))
+    return nu_opt, smsr_db, power, m
 
 
 def spectrogram(t, e, t_win: float = 0.4e-9, hop: float = 0.1e-9):
@@ -319,7 +324,11 @@ def candidate_powers(t, e, cands_hz: np.ndarray, t_win: float = 0.4e-9,
 
 
 # ===========================================================================
-def main() -> int:
+# the testbench: report the design, measure the run, check every claim, plot
+# ===========================================================================
+def report_design() -> dict:
+    """Print the comb geometry, the ASE seed, and the turn-on candidate gains;
+    assert the competition is real; return the derived run parameters."""
     _, _, fsr_a = ring_rates(RING_A)
     _, _, fsr_b = ring_rates(RING_B)
     d_fsr = fsr_a - fsr_b
@@ -342,54 +351,36 @@ def main() -> int:
     assert (l0 > 1).sum() >= 3, "want >= 3 candidates above threshold"
 
     # heater power that re-aligns the combs on the (-1,-1) pair
-    p_hop = -heater_shift_hz(1e-3, RING_B) / 1e-3   # Hz shift per W
-    p_hop = d_fsr / p_hop
+    hz_per_w = -heater_shift_hz(1e-3, RING_B) / 1e-3
+    p_hop = d_fsr / hz_per_w
     print(f"heater for one Vernier hop: {p_hop*1e3:.3f} mW "
           f"({np.sqrt(p_hop*RING_B['r_heater']):.3f} V)")
 
-    # ---- THE experiment: one continuous run --------------------------------
-    t, e = run_experiment(p_hop)
-    pred0, pred1 = predict(0.0), predict(p_hop)
+    return {"fsr_a": fsr_a, "d_fsr": d_fsr, "g0": g0, "cands": cands,
+            "p_hop": p_hop}
 
-    # act 1 (before the heater step): the competition winner at 1310 nm
-    w1 = (t > T_HOP - 1.5e-9) & (t < T_HOP - 0.05e-9)
-    f1, s1 = spectrum(e[w1], DT_SAVE)
-    nu1 = -f1[np.argmax(s1)]
-    away = np.abs(f1 - f1[np.argmax(s1)]) > 12e9
-    smsr1 = 10 * np.log10(s1.max() / s1[away].max())
-    p1 = float(np.mean(np.abs(e[w1]) ** 2))
-    print(f"act 1 (heater off):  line {nu1/1e9:+7.2f} GHz "
-          f"(predicted {pred0['nu_off']/1e9:+.2f}), SMSR {smsr1:.1f} dB, "
-          f"P = {p1*1e3:.3f} mW (reservoir {analytic_p_out(pred0['t1t2'])*1e3:.3f})")
 
-    # act 2 (after the hop): the same laser, one FSR_A to the red
-    nu2, smsr2 = line_and_smsr(t, e, T_STOP - 1.5e-9)
-    w2 = t > T_STOP - 1.5e-9
-    p2 = float(np.mean(np.abs(e[w2]) ** 2))
-    print(f"act 2 (heater {p_hop*1e3:.3f} mW): line {nu2/1e9:+7.2f} GHz "
-          f"(predicted {pred1['nu_off']/1e9:+.2f}), SMSR {smsr2:.1f} dB, "
-          f"P = {p2*1e3:.3f} mW (reservoir {analytic_p_out(pred1['t1t2'])*1e3:.3f})")
+def measure(t, e, geom: dict) -> dict:
+    """Reduce one transient to the numbers the checks and the plot need: the
+    two settled acts, the hop-dip depth, the spectrogram, and the per-candidate
+    buildup that shows the mode competition."""
+    cands = geom["cands"]
+    pred0, pred1 = predict(0.0), predict(geom["p_hop"])
+
+    # act 1 (before the heater step): the competition winner at 1310 nm.
+    # act 2 (after the hop): the same laser, one FSR_A to the red.
+    nu1, smsr1, p1, w1 = line_and_smsr(t, e, T_HOP - 1.5e-9, T_HOP - 0.05e-9)
+    nu2, smsr2, p2, w2 = line_and_smsr(t, e, T_STOP - 1.5e-9)
 
     # the hop transient: power dips while the reservoir refills and the new
     # line grows out of the ASE floor
     p_tot = np.abs(e) ** 2
-    dip = t > T_HOP
-    p_dip = float(p_tot[dip & (t < T_HOP + 2e-9)].min())
-    print(f"mode hop: P_out dips to {p_dip*1e3:.3f} mW "
-          f"({p_dip/p1:.1%} of act 1) while the modes swap")
+    p_dip = float(p_tot[(t > T_HOP) & (t < T_HOP + 2e-9)].min())
 
     # spectrogram + per-candidate powers over the whole story
     tc, fsp, sdb = spectrogram(t, e)
     tcp, pc = candidate_powers(t, e, -cands)   # envelope f = -optical offset
 
-    # checks -----------------------------------------------------------------
-    assert abs(nu1 - pred0["nu_off"]) < 2e9
-    assert abs(nu2 - (-fsr_a)) < 2.5e9, "did not hop one FSR_A"
-    assert abs(nu2 - pred1["nu_off"]) < 2.5e9
-    assert smsr1 > 18.0 and smsr2 > 18.0, "winner not dominant"
-    assert abs(p1 - analytic_p_out(pred0["t1t2"])) < 0.12 * p1
-    assert abs(p2 - analytic_p_out(pred1["t1t2"])) < 0.12 * p2
-    assert p_dip < 0.5 * p1, "no visible power dip during the mode hop"
     # mode competition: a candidate "competed" if its line rose >= 20 dB out
     # of its own pre-bias ASE floor during the act-1 buildup (the losers rise
     # ~20-25 dB below the leader — they cross threshold later in the bias
@@ -397,23 +388,59 @@ def main() -> int:
     floor = pc[:, tcp < T_ON].mean(axis=1)
     grow = (tcp > T_ON) & (tcp < T_HOP)
     rise_db = 10 * np.log10(pc[:, grow].max(axis=1) / floor)
-    n_early = int((rise_db > 20.0).sum())
-    k_end1 = np.argmin(np.abs(tcp - (T_HOP - 0.3e-9)))
+    k_end1 = int(np.argmin(np.abs(tcp - (T_HOP - 0.3e-9))))
     n_end1 = int((pc[:, k_end1] > pc[:, k_end1].max() * 1e-2).sum())
+
+    return {"pred0": pred0, "pred1": pred1,
+            "nu1": nu1, "smsr1": smsr1, "p1": p1, "w1": w1,
+            "nu2": nu2, "smsr2": smsr2, "p2": p2, "w2": w2,
+            "p_tot": p_tot, "p_dip": p_dip,
+            "tc": tc, "fsp": fsp, "sdb": sdb, "tcp": tcp, "pc": pc,
+            "rise_db": rise_db, "k_end1": k_end1, "n_end1": n_end1}
+
+
+def check(m: dict, geom: dict) -> None:
+    """Print the story and assert every claim the docstring makes."""
+    fsr_a, cands = geom["fsr_a"], geom["cands"]
+    pred0, pred1 = m["pred0"], m["pred1"]
+    p1 = m["p1"]
+
+    print(f"act 1 (heater off):  line {m['nu1']/1e9:+7.2f} GHz "
+          f"(predicted {pred0['nu_off']/1e9:+.2f}), SMSR {m['smsr1']:.1f} dB, "
+          f"P = {p1*1e3:.3f} mW (reservoir {analytic_p_out(pred0['t1t2'])*1e3:.3f})")
+    print(f"act 2 (heater {geom['p_hop']*1e3:.3f} mW): line {m['nu2']/1e9:+7.2f} GHz "
+          f"(predicted {pred1['nu_off']/1e9:+.2f}), SMSR {m['smsr2']:.1f} dB, "
+          f"P = {m['p2']*1e3:.3f} mW (reservoir {analytic_p_out(pred1['t1t2'])*1e3:.3f})")
+    print(f"mode hop: P_out dips to {m['p_dip']*1e3:.3f} mW "
+          f"({m['p_dip']/p1:.1%} of act 1) while the modes swap")
     print("competition: candidate rises out of their ASE floors = "
           + ", ".join(f"{c/1e9:+.0f} GHz: {r:.0f} dB"
-                      for c, r in zip(cands, rise_db))
-          + f" -> {n_end1} line within 20 dB at t = {tcp[k_end1]*1e9:.2f} ns")
-    assert n_early >= 3, "no visible mode competition during buildup"
-    assert n_end1 == 1, "competition did not resolve to one line"
+                      for c, r in zip(cands, m["rise_db"]))
+          + f" -> {m['n_end1']} line within 20 dB at "
+          f"t = {m['tcp'][m['k_end1']]*1e9:.2f} ns")
+
+    assert abs(m["nu1"] - pred0["nu_off"]) < 2e9
+    assert abs(m["nu2"] - (-fsr_a)) < 2.5e9, "did not hop one FSR_A"
+    assert abs(m["nu2"] - pred1["nu_off"]) < 2.5e9
+    assert m["smsr1"] > 18.0 and m["smsr2"] > 18.0, "winner not dominant"
+    assert abs(p1 - analytic_p_out(pred0["t1t2"])) < 0.12 * p1
+    assert abs(m["p2"] - analytic_p_out(pred1["t1t2"])) < 0.12 * m["p2"]
+    assert m["p_dip"] < 0.5 * p1, "no visible power dip during the mode hop"
+    assert int((m["rise_db"] > 20.0).sum()) >= 3, \
+        "no visible mode competition during buildup"
+    assert m["n_end1"] == 1, "competition did not resolve to one line"
     print("ALL TESTBENCH CHECKS PASSED")
 
-    # ---- plot ---------------------------------------------------------------
+
+def plot(t, e, geom: dict, m: dict) -> None:
+    fsr_a, d_fsr, g0 = geom["fsr_a"], geom["d_fsr"], geom["g0"]
+    p_hop, cands = geom["p_hop"], geom["cands"]
+
     fig = plt.figure(figsize=(12.5, 10))
     gs = fig.add_gridspec(3, 2, height_ratios=[1, 1.25, 1])
 
     ax = fig.add_subplot(gs[0, 0])
-    dnu = pred0["dnu"]
+    dnu = m["pred0"]["dnu"]
     ax.plot(dnu / 1e9, comb_product(dnu, 0.0), c="tab:blue", lw=0.9,
             label="comb product, heater off")
     ax.plot(dnu / 1e9, comb_product(dnu, p_hop), c="tab:red", lw=0.9,
@@ -428,6 +455,7 @@ def main() -> int:
     ax.legend(fontsize=7); ax.grid(alpha=0.3)
 
     ax = fig.add_subplot(gs[0, 1])
+    p_tot = m["p_tot"]
     ax.plot(t * 1e9, p_tot * 1e3, c="tab:orange", lw=0.8)
     ax.axvline(T_ON * 1e9, c="gray", lw=0.8, ls=":")
     ax.axvline(T_HOP * 1e9, c="tab:red", lw=0.8, ls="--")
@@ -439,7 +467,7 @@ def main() -> int:
     ax.grid(alpha=0.3)
 
     ax = fig.add_subplot(gs[1, :])
-    pm = ax.pcolormesh(tc * 1e9, -fsp / 1e9, sdb.T, cmap="magma",
+    pm = ax.pcolormesh(m["tc"] * 1e9, -m["fsp"] / 1e9, m["sdb"].T, cmap="magma",
                        vmin=-55, vmax=0, shading="auto")
     ax.axvline(T_HOP * 1e9, c="w", lw=0.8, ls="--", alpha=0.7)
     ax.set_ylim(-85, 85)
@@ -451,6 +479,7 @@ def main() -> int:
     fig.colorbar(pm, ax=ax, label="PSD [dB]", pad=0.01)
 
     ax = fig.add_subplot(gs[2, 0])
+    tcp, pc = m["tcp"], m["pc"]
     for i, (fc, c_) in enumerate(zip(cands, ("tab:blue", "tab:orange",
                                              "tab:green", "tab:red",
                                              "tab:purple"))):
@@ -463,8 +492,8 @@ def main() -> int:
     ax.legend(fontsize=7, ncol=2); ax.grid(alpha=0.3)
 
     ax = fig.add_subplot(gs[2, 1])
-    for w, c_, lbl in ((w1, "tab:blue", "act 1 (heater off)"),
-                       (w2, "tab:red", f"act 2 ({p_hop*1e3:.2f} mW)")):
+    for w, c_, lbl in ((m["w1"], "tab:blue", "act 1 (heater off)"),
+                       (m["w2"], "tab:red", f"act 2 ({p_hop*1e3:.2f} mW)")):
         f, s = spectrum(e[w], DT_SAVE)
         ax.plot(-f / 1e9, 10 * np.log10(s / s.max() + 1e-16), c=c_, lw=0.9,
                 label=lbl)
@@ -482,6 +511,14 @@ def main() -> int:
     OUT.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(OUT, dpi=120)
     print(f"wrote {OUT}")
+
+
+def main() -> int:
+    geom = report_design()
+    t, e = run_experiment(geom["p_hop"])   # one continuous run: turn-on, lase, hop
+    m = measure(t, e, geom)
+    check(m, geom)
+    plot(t, e, geom, m)
     return 0
 
 

@@ -345,7 +345,14 @@ strength in the other.
   nonlinearity, the modal Lugiato-Lefever equations) pumped by two lasers
   exactly one FSR apart: the idler emerges in the next resonance over,
   ~1000x the conversion of the same length of straight waveguide, and the
-  comb spreads to modes +-2 (`examples/ring_fwm.py` pins the physics).
+  comb spreads to modes +-2 (`examples/ring_fwm.py` pins the physics);
+  example 41 is `ring_selfheat` (models/optical_field/ring_selfheat.va, an
+  all-pass ring with a one-pole thermal reservoir) driven by a `vpwl` source
+  that ramps the ring's electrical `lam` node — the laser wavelength — across
+  the cold resonance and back in one transient: the through-port traces a
+  thermo-optic HYSTERESIS loop (the heated resonance locks to the laser on the
+  way to the red, then snaps back; cold on the way to the blue), the classic
+  bistability fingerprint (`examples/ring_selfheat.py` pins the physics).
 * **Bring your own .va**: the palette's "Upload .va" button compiles any
   Verilog-A file through openvaf/bosdi into a placeable JAX component
   (ports from the module, parameters with their defaults). Uploads persist

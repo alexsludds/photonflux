@@ -20,11 +20,13 @@ modulation happens in modulators (`cx.mzm()`, or the ideal `PulseModulator` in
 | [`ring_tpa_q.py`](ring_tpa_q.py) | TPA + free-carrier absorption capping a high-Q ring | "TPA-limited high-Q ring" |
 | [`wg_fwm.py`](wg_fwm.py) | χ(3) four-wave mixing in a waveguide, pinned to every textbook scaling | "χ(3) four-wave mixing" |
 | [`ring_fwm.py`](ring_fwm.py) | four-wave mixing **inside** a Kerr ring resonator | "Kerr ring four-wave mixing" |
-| [`ring_selfheat.py`](ring_selfheat.py) | **thermo-optic bistability** of a self-heating ring — the laser wavelength ramped up then down traces a hysteresis loop | — |
+| [`ring_selfheat.py`](ring_selfheat.py) | **thermo-optic bistability** of a self-heating ring — the laser wavelength ramped up then down traces a hysteresis loop | example 41 |
 
-The last five have a browser twin (the named web-app examples 36–40): the
+The last six have a browser twin (the named web-app examples 36–41): the
 script is the pinned physics study, the web-app example is the same circuit to
-click through.
+click through. Example 41 drives the ring's wavelength node with a PWL source
+so the transient sweeps forward then back — the through-port hysteresis loop is
+the same one this script plots.
 
 ```bash
 .venv-circulax/bin/python examples/photodiode_tia.py    # -> out/photodiode_tia.png

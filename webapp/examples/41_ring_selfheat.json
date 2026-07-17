@@ -1,0 +1,139 @@
+{
+  "title": "Self-heating ring bistability",
+  "group": "Passive photonics",
+  "description": "Thermo-optic bistability of a self-heating microring (models/optical_field/ring_selfheat.va): a 50 uW CW laser drives a high-Q ring whose absorbed circulating power heats it, and silicon's dn/dT > 0 red-shifts the resonance — a nonlinear feedback loop. A PWL source (LAM) ramps the laser wavelength across the cold resonance and back in one transient. The through-port traces a HYSTERESIS loop: sweeping to the red the heated resonance locks to the laser (extended, triangular thermal-locking dip) then snaps back; sweeping back to the blue the ring stays cold until the cold resonance (sharp Lorentzian dip). Forward and backward switch at different wavelengths — the classic fingerprint of optical thermal bistability. The pinned physics study is examples/ring_selfheat.py.",
+  "schematic": {
+    "notes": [
+      {
+        "x": 40,
+        "y": -150,
+        "title": "Self-heating ring — thermo-optic bistability",
+        "lines": [
+          "A 50 uW CW laser (LAS) drives the all-pass ring RG",
+          "(ring_selfheat). The fraction heat_frac of the intrinsic",
+          "loss that is absorbed heats a one-pole thermal reservoir",
+          "(R_th = 30 kK/W, tau_th = 1 us); dl_dt_pm = 80 pm/K",
+          "red-shifts the resonance, closing a feedback loop.",
+          "",
+          "RG reads the laser wavelength from its electrical node",
+          "`lam` (V(lam) = wavelength in nm). The PWL source LAM",
+          "ramps it 1309.980 -> 1310.250 -> 1309.980 nm over 80 us",
+          "(>> tau_th, so quasi-static). Probe thru = through-port",
+          "power; probe lam = the wavelength ramp (in 'volts' = nm).",
+          "",
+          "Forward (blue->red, 0-40 us) the hot resonance locks to",
+          "the laser: an extended triangular dip, dragged red, that",
+          "snaps back. Backward (red->blue, 40-80 us) the ring is",
+          "cold: through ~ 1 until the sharp cold-cavity dip near",
+          "1310.000 nm. The two directions dip at different times =",
+          "hysteresis. Raise LAS.power to 100e-6 to widen the loop;",
+          "set RG.heat_frac = 0 to kill self-heating (symmetric)."
+        ]
+      }
+    ],
+    "instances": {
+      "LAS": {
+        "type": "cw_laser",
+        "x": 40,
+        "y": 220,
+        "rot": 0,
+        "settings": {
+          "power": 5e-05,
+          "wavelength_nm": 1310.0
+        }
+      },
+      "GND": {
+        "type": "ground",
+        "x": 60,
+        "y": 320,
+        "rot": 0,
+        "settings": {}
+      },
+      "RG": {
+        "type": "ring_selfheat",
+        "x": 240,
+        "y": 200,
+        "rot": 0,
+        "settings": {
+          "lambda_res_nm": 1310.0,
+          "radius_um": 8.0,
+          "n_g": 4.0,
+          "n_eff": 2.4,
+          "loss_db_m": 300.0,
+          "kappa2": 0.004,
+          "heat_frac": 1.0,
+          "rth_k_w": 30000.0,
+          "tau_th_s": 1e-06,
+          "dl_dt_pm": 80.0
+        }
+      },
+      "LAM": {
+        "type": "vpwl",
+        "x": 240,
+        "y": 70,
+        "rot": 180,
+        "settings": {
+          "data": "0 1309.980\n40e-6 1310.250\n80e-6 1309.980"
+        }
+      },
+      "GL": {
+        "type": "ground",
+        "x": 240,
+        "y": 0,
+        "rot": 0,
+        "settings": {}
+      },
+      "TT": {
+        "type": "opt_term",
+        "x": 420,
+        "y": 240,
+        "rot": 0,
+        "settings": {}
+      }
+    },
+    "wires": [
+      {
+        "from": "LAS,p1",
+        "to": "RG,pin"
+      },
+      {
+        "from": "LAS,p2",
+        "to": "GND,p1"
+      },
+      {
+        "from": "RG,gnd",
+        "to": "GND,p1"
+      },
+      {
+        "from": "RG,pout",
+        "to": "TT,p1"
+      },
+      {
+        "from": "LAM,p1",
+        "to": "RG,lam"
+      },
+      {
+        "from": "LAM,p2",
+        "to": "GL,p1"
+      }
+    ],
+    "probes": [
+      {
+        "name": "thru",
+        "at": "RG,pout",
+        "color": "#e6862c"
+      },
+      {
+        "name": "lam",
+        "at": "RG,lam",
+        "color": "#9aa0a6"
+      }
+    ]
+  },
+  "analysis": {
+    "mode": "transient",
+    "t_stop": 8e-05,
+    "points": 2000,
+    "dtmax": 1e-08
+  }
+}

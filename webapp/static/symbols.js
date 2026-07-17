@@ -359,6 +359,22 @@ S.ring_nl = {
     <text x="33" y="30" style="font-size:7px">TPA</text>`,
 };
 
+S.ring_selfheat = {
+  // all-pass self-heating ring (thermo-optic bistability): single bus + ring,
+  // a wavelength-drive electrical pin `lam` and the thermal-reference `gnd` on
+  // top, with a little heat-wave glyph marking the self-heating loop
+  w: 84, h: 72, pins: { pin: [0, 52], pout: [84, 52], lam: [30, 0], gnd: [54, 0] },
+  label: [0, -6], pinLabels: true,
+  draw: () => `
+    <line class="${OPT}" x1="0" y1="52" x2="84" y2="52"/>
+    <circle class="${OPT}" cx="42" cy="32" r="18"/>
+    <line class="${EL}" x1="30" y1="0" x2="30" y2="14"/>
+    <line class="${EL}" x1="54" y1="0" x2="54" y2="14"/>
+    <path class="${OPT}" d="M36 34 q3 -5 6 0 q3 5 6 0" fill="none" stroke-width="1"/>
+    <path class="${OPT}" d="M36 40 q3 -5 6 0 q3 5 6 0" fill="none" stroke-width="1"/>
+    <text x="31" y="30" style="font-size:7px">&#916;T</text>`,
+};
+
 S.wg_nl = {
   // nonlinear waveguide segment (Kerr + TPA/FCA): the strip-ridge of the
   // linear waveguide, marked chi(3), with the carrier-reference gnd stub
@@ -617,7 +633,7 @@ S.opamp = {
 const HEADLINE_PARAM = {
   cw_laser: "power", mzm: "vpi", pulse_mod: "p_on", ring_mod: "kappa2",
   laser_dml: "Ith", laser_rate: "taup", mzm_tw: "vpi",
-  ring_mod_inj: "tau_c", mzm_seg: "vpi",
+  ring_mod_inj: "tau_c", mzm_seg: "vpi", ring_selfheat: "rth_k_w",
   waveguide: "length_m", splitter: "split_ratio", dir_coupler: "coupling",
   grating: "center_wavelength_nm", opt_filter: "center_nm", opt_mirror: "R",
   photodiode: "R", vdc: "V", vpulse: "v2", vsin: "V", idc: "I",

@@ -1,24 +1,26 @@
 {
   "title": "Common-source amplifier",
   "group": "Electronics — analog",
-  "description": "common-source amplifier: gm·RD ≈ 5x inverting gain (β = 1 mA/V², Vov = 0.5 V, RD = 10 kΩ)",
+  "description": "SKY130 NFET common-source: gm·RD inverting gain (nfet_01v8, W = 10 µm, VDD = 1.8 V, RD = 12 kΩ)",
   "schematic": {
     "notes": [
       {
         "x": 40,
-        "y": -153,
+        "y": -173,
         "title": "Common-source amplifier — what this testbench does",
         "lines": [
-          "NMOS MN in common-source: VDD = 5 V through drain",
-          "resistor RD = 10 kohm sets the operating point. The",
-          "gate is biased at VB = 1.5 V with a small 50 mV,",
-          "10 MHz sine VIN riding on top (Vov = 0.5 V).",
-          "Small-signal gain is -gm*RD ~ -5, so probe vout at",
-          "the drain is an inverted, ~5x copy of probe vin.",
-          "Source is grounded (GS); CL is the output load.",
+          "A real SKY130 nfet_01v8 (MN, W = 10 um, L = 0.15 um) in",
+          "common-source: VDD = 1.8 V feeds the drain through load",
+          "resistor RD = 12 kohm, which sets the DC operating point.",
+          "The gate is biased at VB = 0.72 V (drain near mid-rail)",
+          "with a small 20 mV, 10 MHz sine VIN riding on top. In",
+          "saturation the small-signal gain is -gm*RD (~8x here),",
+          "so probe vout at the drain is an inverted, amplified",
+          "copy of probe vin. Source and",
+          "bulk are grounded (GS, GBK); CL is the output load.",
           "",
-          "Set RD.R = 20000 and re-run to roughly double the",
-          "gain (and watch the DC drain point drop)."
+          "Set RD.R = 24000 and re-run to roughly double the gain",
+          "(and watch the DC drain point drop toward the rail)."
         ]
       }
     ],
@@ -29,7 +31,7 @@
         "y": 60,
         "rot": 0,
         "settings": {
-          "V": 5.0
+          "V": 1.8
         }
       },
       "GDD": {
@@ -45,7 +47,7 @@
         "y": 300,
         "rot": 0,
         "settings": {
-          "V": 1.5
+          "V": 0.72
         }
       },
       "GB": {
@@ -61,7 +63,7 @@
         "y": 180,
         "rot": 0,
         "settings": {
-          "V": 0.05,
+          "V": 0.02,
           "freq": 10000000.0
         }
       },
@@ -71,21 +73,25 @@
         "y": 120,
         "rot": 0,
         "settings": {
-          "R": 10000.0
+          "R": 12000.0
         }
       },
       "MN": {
-        "type": "nmos",
+        "type": "sky130_nfet",
         "x": 360,
         "y": 260,
         "rot": 0,
         "settings": {
-          "Kp": 2e-05,
-          "W": 5e-05,
-          "L": 1e-06,
-          "Vth": 1.0,
-          "lam": 0.0
+          "w_um": 10.0,
+          "l_um": 0.15
         }
+      },
+      "GBK": {
+        "type": "ground",
+        "x": 460,
+        "y": 300,
+        "rot": 0,
+        "settings": {}
       },
       "CL": {
         "type": "capacitor",
@@ -139,6 +145,10 @@
       {
         "from": "MN,s",
         "to": "GS,p1"
+      },
+      {
+        "from": "MN,b",
+        "to": "GBK,p1"
       },
       {
         "from": "MN,d",

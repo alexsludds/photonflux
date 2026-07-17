@@ -758,14 +758,14 @@ CATALOG: dict[str, dict] = {
         "category": "Photonic Passives",
         "doc": "Optical absorber terminating a port. Real terminations are "
                "not perfectly matched: return_loss_db sets the residual "
-               "reflection (40 dB default — a good index-matched absorber; "
+               "reflection (50 dB default — a good index-matched absorber; "
                "raise it to 60+ dB for an ideal load). Terminate unused "
                "splitter/coupler ports and probe transmission at its node — "
                "an open optical port reflects like an open transmission "
                "line.",
         "ports": _ports("p1:o"),
         "params": [
-            _p("return_loss_db", 40.0, "dB", "Return loss"),
+            _p("return_loss_db", 50.0, "dB", "Return loss"),
         ],
     },
     "opt_filter": {
@@ -1348,14 +1348,14 @@ def _opt_term():
 
     One-port with S11 = r = 10^(-RL/20): the equivalent nodal admittance is
     Y = (1-r)/(1+r) (r = 0 recovers the matched absorber i = E). Real
-    absorbers reflect a little; 40 dB is a good index-matched load.
+    absorbers reflect a little; 50 dB is a good index-matched load.
     """
     import jax.numpy as jnp
     from circulax.components.base_component import Signals, States, component
 
     @component(ports=("p1",))
     def OptTerm(signals: Signals, s: States,
-                return_loss_db: float = 40.0) -> tuple[dict, dict]:
+                return_loss_db: float = 50.0) -> tuple[dict, dict]:
         r = 10.0 ** (-jnp.abs(return_loss_db) / 20.0)
         return {"p1": (1.0 - r) / (1.0 + r) * signals.p1}, {}
 

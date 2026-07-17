@@ -278,6 +278,14 @@ body { display: flex; flex-direction: column; }
 .u-legend { font-size: 11px !important; color: var(--text) !important; }
 .u-legend .u-value { color: var(--text-dim) !important; }
 
+/* drag-zoom selection box: uPlot's default (rgba(0,0,0,.07)) is invisible on
+   the dark theme, so tint it with the accent and add a border to preview the
+   region that will be zoomed into before the mouse is released. */
+.u-select {
+  background: rgba(124, 108, 242, 0.18);
+  border: 1px solid var(--accent2);
+}
+
 #tab-op table { border-collapse: collapse; font-size: 12px; }
 #tab-op th, #tab-op td { padding: 4px 14px 4px 0; text-align: left; border-bottom: 1px solid var(--border); }
 #tab-op th { color: var(--text-dim); font-weight: 600; }

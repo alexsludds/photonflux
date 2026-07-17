@@ -35,7 +35,7 @@
       },
       "GND": {
         "type": "ground",
-        "x": 40,
+        "x": 60,
         "y": 250,
         "rot": 0,
         "settings": {}
@@ -51,8 +51,8 @@
       },
       "WG": {
         "type": "waveguide",
-        "x": 320,
-        "y": 60,
+        "x": 240,
+        "y": 300,
         "rot": 0,
         "settings": {
           "length_m": 0.000199775,
@@ -66,7 +66,7 @@
       "TT": {
         "type": "opt_term",
         "x": 460,
-        "y": 200,
+        "y": 168,
         "rot": 0,
         "settings": {}
       }
@@ -82,10 +82,10 @@
       },
       {
         "from": "CPL,p4",
-        "to": "WG,p1"
+        "to": "WG,p2"
       },
       {
-        "from": "WG,p2",
+        "from": "WG,p1",
         "to": "CPL,p2"
       },
       {

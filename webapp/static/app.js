@@ -2390,7 +2390,9 @@ async function loadExamples() {
     try {
       const doc = await (await fetch("/api/examples/" + sel.value)).json();
       loadDocument(doc);
-      if (doc.description) setHint(doc.description);   // info panel on load
+      // The full write-up already lives in the on-schematic notes textbox, so
+      // don't also echo the one-line description into the bottom hint bar —
+      // that duplicated the same information in two places (ALE-43).
     } catch (e) { setHint(`could not load example: ${e}`, true); }
     sel.value = "";
   });

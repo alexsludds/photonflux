@@ -1,0 +1,71 @@
+`include "discipline.h"
+`include "constants.h"
+
+// Ideal 3-port optical circulator for coherent fields (non-reciprocal).
+//
+// A circulator routes light in one rotational sense only: a wave entering
+// port 1 leaves at port 2, one entering port 2 leaves at port 3, one entering
+// port 3 leaves at port 1 (1 -> 2 -> 3 -> 1). Because the routing is
+// non-reciprocal, a circulator is the element that lets forward and backward
+// waves share one bidirectional fibre yet be separated at each end: transmit
+// into port 1, send/receive the line on port 2, drop the returning wave at
+// port 3.
+//
+//   p2o = s*e^{j*phi}*p1i + g*p3i     (forward 1->2, reverse leak 3->2)
+//   p3o = s*e^{j*phi}*p2i + g*p1i     (forward 2->3, reverse leak 1->3)
+//   p1o = s*e^{j*phi}*p3i + g*p2i     (forward 3->1, reverse leak 2->1)
+//
+// with s = 10^(-il_db/20) the insertion loss of the routed path, phi a common
+// transmission phase, and g = 10^(-iso_db/20) the finite isolation: the small
+// leakage into the port the light is NOT meant to reach (iso_db -> inf is the
+// ideal circulator). Each of the three physical ports carries a directed input
+// wave (read at infinite impedance) and a directed output wave (driven) as an
+// Ereal/Eimag node pair, |E|^2 = power [W]; never tie two driven outputs to
+// one node.
+module circulator(p1i_re, p1i_im, p1o_re, p1o_im,
+                  p2i_re, p2i_im, p2o_re, p2o_im,
+                  p3i_re, p3i_im, p3o_re, p3o_im, gnd);
+    inout p1i_re, p1i_im, p1o_re, p1o_im,
+          p2i_re, p2i_im, p2o_re, p2o_im,
+          p3i_re, p3i_im, p3o_re, p3o_im, gnd;
+    electrical p1i_re, p1i_im, p1o_re, p1o_im,
+               p2i_re, p2i_im, p2o_re, p2o_im,
+               p3i_re, p3i_im, p3o_re, p3o_im, gnd;
+
+    // reactive dummy: with NO ddt() anywhere in a module, bosdi's emitted
+    // custom-JVP returns a float64 reactive primal with a complex tangent
+    // and the circulax complex assembly rejects it. One always-zero RC state
+    // keeps the reactive side dtype-honest; it never couples to the optics.
+    electrical dmy;
+
+    parameter real il_db  = 0.6 from [0:inf);   // routed-path insertion loss [dB]
+    parameter real iso_db = 40.0 from [0:inf);  // isolation (reverse leakage) [dB]
+    parameter real phi_deg = 0.0;               // transmission phase [deg]
+
+    real s, g, ph, c, d;
+
+    analog begin
+        I(dmy, gnd) <+ 1e-12 * ddt(V(dmy, gnd)) + V(dmy, gnd);
+        s  = pow(10.0, -il_db / 20.0);
+        g  = pow(10.0, -iso_db / 20.0);
+        ph = phi_deg * `M_PI / 180.0;
+        c  = s * cos(ph);
+        d  = s * sin(ph);
+
+        // 1 -> 2 (routed), 3 -> 2 (leak)
+        V(p2o_re, gnd) <+ c * V(p1i_re, gnd) - d * V(p1i_im, gnd)
+                          + g * V(p3i_re, gnd);
+        V(p2o_im, gnd) <+ d * V(p1i_re, gnd) + c * V(p1i_im, gnd)
+                          + g * V(p3i_im, gnd);
+        // 2 -> 3 (routed), 1 -> 3 (leak)
+        V(p3o_re, gnd) <+ c * V(p2i_re, gnd) - d * V(p2i_im, gnd)
+                          + g * V(p1i_re, gnd);
+        V(p3o_im, gnd) <+ d * V(p2i_re, gnd) + c * V(p2i_im, gnd)
+                          + g * V(p1i_im, gnd);
+        // 3 -> 1 (routed), 2 -> 1 (leak)
+        V(p1o_re, gnd) <+ c * V(p3i_re, gnd) - d * V(p3i_im, gnd)
+                          + g * V(p2i_re, gnd);
+        V(p1o_im, gnd) <+ d * V(p3i_re, gnd) + c * V(p3i_im, gnd)
+                          + g * V(p2i_im, gnd);
+    end
+endmodule

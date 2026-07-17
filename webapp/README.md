@@ -361,7 +361,14 @@ strength in the other.
   the cold resonance and back in one transient: the through-port traces a
   thermo-optic HYSTERESIS loop (the heated resonance locks to the laser on the
   way to the red, then snaps back; cold on the way to the blue), the classic
-  bistability fingerprint (`examples/ring_selfheat.py` pins the physics).
+  bistability fingerprint (`examples/ring_selfheat.py` pins the physics);
+  example 42 is the ring-modulator **EO frequency comb** — `ring_mod`
+  (models/optical_field/ring_mod.va) with a CW laser parked on its resonance
+  slope while a strong 10 GHz `vsin` drives the depletion electrode: sweeping
+  the resonance across the laser grows a comb on the through-port spectrum
+  probe, spaced by the drive and shaped (bandwidth-limited) by the ring's
+  photon lifetime (`examples/eo_comb.py` pins every tooth to the ring CMT and
+  plots the bandwidth-vs-f_RF rolloff).
 * **Bring your own .va**: the palette's "Upload .va" button compiles any
   Verilog-A file through openvaf/bosdi into a placeable JAX component
   (ports from the module, parameters with their defaults). Uploads persist

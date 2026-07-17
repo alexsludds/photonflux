@@ -1,30 +1,33 @@
 {
   "title": "SKY130 NFET f_T",
   "group": "SKY130 transistors",
-  "description": "SKY130 NFET flavors: bandwidth / f_T (fixture-free |h21|)",
+  "description": "SKY130 NFET bandwidth / f_T (fixture-free |h21|), with an optional width sweep",
   "schematic": {
     "notes": [
       {
-        "x": 110,
+        "x": 170,
         "y": -118,
         "title": "SKY130 NFET f_T — what this testbench does",
         "lines": [
-          "Four NFET flavors (MN1 nfet, MN2 lvt, MN3 nvt, MN4 5v)",
-          "each sit at a fixed bias: gate VG, drain VD, source",
-          "grounded. The AC sweep (10 MHz -> 1 THz) extracts the",
-          "small-signal current gain h21; f_T is where |h21| = 1.",
-          "Probes in_* / out_* mark each device's ports.",
-          "Short channels (MN1, l = 0.15 um) reach the highest f_T.",
+          "A single NFET MN1 is biased at Vgs = 1.2 V (VG1) and",
+          "Vds = 1.8 V (VD1), source grounded. The AC sweep",
+          "(10 MHz -> 1 THz) gives current gain h21; f_T is where",
+          "|h21| = 1.",
           "",
-          "Set MN1.l_um = 0.5 and re-run to see that device's f_T",
-          "drop -- f_T falls as channel length grows."
+          "A width sweep (MN1.w_um 0.5 -> 8 um) ships pre-configured",
+          "in the sweep-parameters pane but starts OFF. Enable it to",
+          "plot f_T vs width: f_T ~ gm / (2*pi*Cgg), and gm and Cgg",
+          "both scale with width, so f_T stays nearly flat.",
+          "",
+          "Set MN1.l_um = 0.5 and re-run to see f_T drop -- f_T falls",
+          "steeply with channel length, at every width."
         ]
       }
     ],
     "instances": {
       "MN1": {
         "type": "sky130_nfet",
-        "x": 160,
+        "x": 220,
         "y": 170,
         "rot": 0,
         "settings": {
@@ -34,7 +37,7 @@
       },
       "VG1": {
         "type": "vdc",
-        "x": 110,
+        "x": 170,
         "y": 170,
         "rot": 270,
         "settings": {
@@ -43,14 +46,14 @@
       },
       "GNDG1": {
         "type": "ground",
-        "x": 140,
+        "x": 200,
         "y": 244,
         "rot": 0,
         "settings": {}
       },
       "VD1": {
         "type": "vdc",
-        "x": 180,
+        "x": 240,
         "y": 80,
         "rot": 0,
         "settings": {
@@ -59,161 +62,14 @@
       },
       "GNDD1": {
         "type": "ground",
-        "x": 180,
+        "x": 240,
         "y": 184,
         "rot": 0,
         "settings": {}
       },
       "GNDS1": {
         "type": "ground",
-        "x": 180,
-        "y": 274,
-        "rot": 0,
-        "settings": {}
-      },
-      "MN2": {
-        "type": "sky130_nfet_lvt",
-        "x": 360,
-        "y": 170,
-        "rot": 0,
-        "settings": {
-          "w_um": 1.0,
-          "l_um": 0.35
-        }
-      },
-      "VG2": {
-        "type": "vdc",
-        "x": 310,
-        "y": 170,
-        "rot": 270,
-        "settings": {
-          "V": 1.2
-        }
-      },
-      "GNDG2": {
-        "type": "ground",
-        "x": 340,
-        "y": 244,
-        "rot": 0,
-        "settings": {}
-      },
-      "VD2": {
-        "type": "vdc",
-        "x": 380,
-        "y": 80,
-        "rot": 0,
-        "settings": {
-          "V": 1.8
-        }
-      },
-      "GNDD2": {
-        "type": "ground",
-        "x": 380,
-        "y": 184,
-        "rot": 0,
-        "settings": {}
-      },
-      "GNDS2": {
-        "type": "ground",
-        "x": 380,
-        "y": 274,
-        "rot": 0,
-        "settings": {}
-      },
-      "MN3": {
-        "type": "sky130_nfet_nvt",
-        "x": 560,
-        "y": 170,
-        "rot": 0,
-        "settings": {
-          "w_um": 1.0,
-          "l_um": 0.9
-        }
-      },
-      "VG3": {
-        "type": "vdc",
-        "x": 510,
-        "y": 170,
-        "rot": 270,
-        "settings": {
-          "V": 1.2
-        }
-      },
-      "GNDG3": {
-        "type": "ground",
-        "x": 540,
-        "y": 244,
-        "rot": 0,
-        "settings": {}
-      },
-      "VD3": {
-        "type": "vdc",
-        "x": 580,
-        "y": 80,
-        "rot": 0,
-        "settings": {
-          "V": 1.8
-        }
-      },
-      "GNDD3": {
-        "type": "ground",
-        "x": 580,
-        "y": 184,
-        "rot": 0,
-        "settings": {}
-      },
-      "GNDS3": {
-        "type": "ground",
-        "x": 580,
-        "y": 274,
-        "rot": 0,
-        "settings": {}
-      },
-      "MN4": {
-        "type": "sky130_nfet_5v",
-        "x": 760,
-        "y": 170,
-        "rot": 0,
-        "settings": {
-          "w_um": 1.0,
-          "l_um": 0.5
-        }
-      },
-      "VG4": {
-        "type": "vdc",
-        "x": 710,
-        "y": 170,
-        "rot": 270,
-        "settings": {
-          "V": 2.5
-        }
-      },
-      "GNDG4": {
-        "type": "ground",
-        "x": 740,
-        "y": 244,
-        "rot": 0,
-        "settings": {}
-      },
-      "VD4": {
-        "type": "vdc",
-        "x": 780,
-        "y": 80,
-        "rot": 0,
-        "settings": {
-          "V": 5.0
-        }
-      },
-      "GNDD4": {
-        "type": "ground",
-        "x": 780,
-        "y": 184,
-        "rot": 0,
-        "settings": {}
-      },
-      "GNDS4": {
-        "type": "ground",
-        "x": 780,
+        "x": 240,
         "y": 274,
         "rot": 0,
         "settings": {}
@@ -243,120 +99,18 @@
       {
         "from": "MN1,b",
         "to": "GNDS1,p1"
-      },
-      {
-        "from": "VG2,p1",
-        "to": "MN2,g"
-      },
-      {
-        "from": "VG2,p2",
-        "to": "GNDG2,p1"
-      },
-      {
-        "from": "VD2,p1",
-        "to": "MN2,d"
-      },
-      {
-        "from": "VD2,p2",
-        "to": "GNDD2,p1"
-      },
-      {
-        "from": "MN2,s",
-        "to": "GNDS2,p1"
-      },
-      {
-        "from": "MN2,b",
-        "to": "GNDS2,p1"
-      },
-      {
-        "from": "VG3,p1",
-        "to": "MN3,g"
-      },
-      {
-        "from": "VG3,p2",
-        "to": "GNDG3,p1"
-      },
-      {
-        "from": "VD3,p1",
-        "to": "MN3,d"
-      },
-      {
-        "from": "VD3,p2",
-        "to": "GNDD3,p1"
-      },
-      {
-        "from": "MN3,s",
-        "to": "GNDS3,p1"
-      },
-      {
-        "from": "MN3,b",
-        "to": "GNDS3,p1"
-      },
-      {
-        "from": "VG4,p1",
-        "to": "MN4,g"
-      },
-      {
-        "from": "VG4,p2",
-        "to": "GNDG4,p1"
-      },
-      {
-        "from": "VD4,p1",
-        "to": "MN4,d"
-      },
-      {
-        "from": "VD4,p2",
-        "to": "GNDD4,p1"
-      },
-      {
-        "from": "MN4,s",
-        "to": "GNDS4,p1"
-      },
-      {
-        "from": "MN4,b",
-        "to": "GNDS4,p1"
       }
     ],
     "probes": [
       {
-        "name": "in_01v8",
+        "name": "in_n",
         "at": "VG1,p1",
         "color": "#8a8aa3"
       },
       {
-        "name": "out_01v8",
+        "name": "out_n",
         "at": "VD1,p1",
         "color": "#6ecbf5"
-      },
-      {
-        "name": "in_lvt",
-        "at": "VG2,p1",
-        "color": "#8a8aa3"
-      },
-      {
-        "name": "out_lvt",
-        "at": "VD2,p1",
-        "color": "#4ade80"
-      },
-      {
-        "name": "in_nvt",
-        "at": "VG3,p1",
-        "color": "#8a8aa3"
-      },
-      {
-        "name": "out_nvt",
-        "at": "VD3,p1",
-        "color": "#f472d0"
-      },
-      {
-        "name": "in_5v",
-        "at": "VG4,p1",
-        "color": "#8a8aa3"
-      },
-      {
-        "name": "out_5v",
-        "at": "VD4,p1",
-        "color": "#fb923c"
       }
     ]
   },
@@ -364,7 +118,17 @@
     "mode": "ac",
     "f_start": 10000000.0,
     "f_stop": 1000000000000.0,
-    "points": 121,
-    "z0": 50
+    "points": 101,
+    "z0": 50,
+    "sweep_instance": "MN1",
+    "sweep_param": "w_um",
+    "sweep_values": [
+      0.5,
+      1,
+      2,
+      4,
+      8
+    ],
+    "sweep_enabled": false
   }
 }

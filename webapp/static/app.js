@@ -1099,7 +1099,7 @@ function restoreRunCfg() {
 // mapping the legacy dcsweep / ac-sweep payloads and the new run_config alike
 function restorePaneFromAnalysis(a) {
   refreshRunCfgSelectors();
-  let axes = null, colorMode = "shaded";
+  let axes = null, colorMode = "shaded", enabled = null;
   const rc = a.run_config;
   if (rc && rc.sweep && rc.sweep.length) {
     axes = rc.sweep.map((ax) => ({ instance: ax.instance, param: ax.param,
@@ -1116,12 +1116,18 @@ function restorePaneFromAnalysis(a) {
   } else if (a.mode === "ac" && a.sweep_instance) {
     axes = [{ instance: a.sweep_instance, param: a.sweep_param,
       values: (a.sweep_values || []).map(fmtSI).join(", ") }];
+    // a testbench may ship the sweep pre-configured but off (sweep_enabled: false),
+    // so it sits ready in the pane for the user to enable with one click
+    enabled = a.sweep_enabled !== false;
   }
-  const on = !!(axes && axes.length);
-  $("rc-enable").checked = on;
+  // "shipped" -> the pane should be filled in; "enabled" -> the checkbox is on.
+  // Legacy paths (dcsweep / run_config) enable whenever a sweep is present.
+  const shipped = !!(axes && axes.length);
+  if (enabled === null) enabled = shipped;
+  $("rc-enable").checked = enabled;
   $("rc-colormode").value = colorMode;
-  $("rc-2nd-on").checked = on && axes.length > 1;
-  if (on) {
+  $("rc-2nd-on").checked = shipped && axes.length > 1;
+  if (shipped) {
     $("rc-inst").value = axes[0].instance; fillParamOptions("rc-inst", "rc-param");
     $("rc-param").value = axes[0].param; $("rc-values").value = axes[0].values;
     if (axes.length > 1) {
@@ -1131,7 +1137,7 @@ function restorePaneFromAnalysis(a) {
   }
   syncRunCfgDisabled(); updateRunCount(); persistRunCfg();
   // opening a testbench that ships a sweep -> reveal the pane so it's not hidden
-  setRunCfgPanel(on);
+  setRunCfgPanel(shipped);
 }
 
 // translate the pane + current analysis type into the run payload
@@ -1346,6 +1352,7 @@ function applyAnalysis(a) {
 let progressGen = 0;
 function startProgressPoll() {
   const bar = $("run-progress"), fill = $("run-progress-fill");
+  const label = $("run-progress-label");
   if (!bar || !fill) return { stop() {} };
   // Each poll owns a generation; a stale hide-timeout from a previous run must
   // not hide the bar a newer run has just shown (rapid re-run via Cmd+Enter).
@@ -1354,6 +1361,10 @@ function startProgressPoll() {
   bar.hidden = false;
   bar.classList.add("indeterminate");
   fill.style.width = "";
+  // Text beside the bar: a short phase word while the run isn't yet stepping
+  // (compile dominates the first run and reports no fraction), then a live
+  // percentage once the transient solver starts advancing through sim time.
+  if (label) { label.hidden = false; label.textContent = "Compiling…"; }
   const timer = setInterval(async () => {
     let p;
     try { p = await (await fetch("/api/progress")).json(); }
@@ -1362,7 +1373,11 @@ function startProgressPoll() {
     if (p.frac > 0 || p.phase === "solving") {
       seenFrac = true;
       bar.classList.remove("indeterminate");
-      fill.style.width = `${Math.min(100, Math.max(0, p.frac * 100)).toFixed(1)}%`;
+      const pct = Math.min(100, Math.max(0, p.frac * 100));
+      fill.style.width = `${pct.toFixed(1)}%`;
+      if (label) label.textContent = `${pct.toFixed(0)}%`;
+    } else if (label) {
+      label.textContent = "Compiling…";
     }
   }, 200);
   return {
@@ -1370,12 +1385,13 @@ function startProgressPoll() {
       stopped = true;
       clearInterval(timer);
       // A finished solve briefly shows a full bar before it disappears.
-      if (seenFrac) fill.style.width = "100%";
+      if (seenFrac) { fill.style.width = "100%"; if (label) label.textContent = "100%"; }
       setTimeout(() => {
         if (gen !== progressGen) return;  // a newer run now owns the bar
         bar.hidden = true;
         bar.classList.remove("indeterminate");
         fill.style.width = "0";
+        if (label) { label.hidden = true; label.textContent = ""; }
       }, seenFrac ? 220 : 0);
     },
   };

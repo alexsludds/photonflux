@@ -76,6 +76,13 @@ body { display: flex; flex-direction: column; }
   width: 35%; transition: none;
   animation: run-progress-indet 1.1s ease-in-out infinite;
 }
+/* short phase word ("Compiling…") or percentage complete, beside the bar */
+#run-progress-label {
+  display: inline-block; vertical-align: middle; margin-left: 6px;
+  color: var(--text-dim); font-size: 11px;
+  font-variant-numeric: tabular-nums; min-width: 68px;
+}
+#run-progress-label[hidden] { display: none; }
 @keyframes run-progress-indet {
   0%   { margin-left: -35%; }
   100% { margin-left: 100%; }

@@ -418,6 +418,52 @@ CATALOG: dict[str, dict] = {
             },
         },
     },
+    "circulator": {
+        "label": "Circulator (VA)",
+        "category": "Photonic Passives",
+        "doc": "models/optical_field/circulator.va — non-reciprocal 3-port optical "
+               "circulator: light routes 1 -> 2 -> 3 -> 1 only. The element "
+               "that separates counter-propagating waves on one bidirectional "
+               "fibre — transmit into p1i, put the shared line on p2 (p2o out, "
+               "p2i the returning wave), drop the received wave at p3o. Each "
+               "physical port is split into a directed input (p*i, a matched "
+               "receiver) and a directed output (p*o, driven — never tie two "
+               "outputs to one node). il_db is the routed-path loss, iso_db the "
+               "finite isolation (reverse leakage into the wrong port; raise it "
+               "for a more ideal circulator). Terminate any unused input with "
+               "the optical terminator. gnd must be grounded.",
+        "ports": _ports("p1i:o p1o:o p2i:o p2o:o p3i:o p3o:o gnd:e"),
+        "params": [
+            _p("il_db", 0.6, "dB", "Insertion loss"),
+            _p("iso_db", 40.0, "dB", "Isolation"),
+            _p("phi_deg", 0.0, "deg", "Transmission phase"),
+        ],
+        "expand": {
+            "instances": {
+                "i1": {"component": "_f2ri_m"},
+                "i2": {"component": "_f2ri_m"},
+                "i3": {"component": "_f2ri_m"},
+                "circ": {"component": "_circ_va", "settings": "ALL"},
+                "o1": {"component": "_ri2f"},
+                "o2": {"component": "_ri2f"},
+                "o3": {"component": "_ri2f"},
+            },
+            "connections": [
+                ("i1,re", "circ,p1i_re"), ("i1,im", "circ,p1i_im"),
+                ("i2,re", "circ,p2i_re"), ("i2,im", "circ,p2i_im"),
+                ("i3,re", "circ,p3i_re"), ("i3,im", "circ,p3i_im"),
+                ("circ,p1o_re", "o1,re"), ("circ,p1o_im", "o1,im"),
+                ("circ,p2o_re", "o2,re"), ("circ,p2o_im", "o2,im"),
+                ("circ,p3o_re", "o3,re"), ("circ,p3o_im", "o3,im"),
+            ],
+            "port_map": {
+                "p1i": "i1,c", "p1o": "o1,c",
+                "p2i": "i2,c", "p2o": "o2,c",
+                "p3i": "i3,c", "p3o": "o3,c",
+                "gnd": "circ,gnd",
+            },
+        },
+    },
     "ring_comb": {
         "label": "Ring Filter Comb (VA)",
         "category": "Photonic Passives",
@@ -1395,6 +1441,34 @@ def _field_to_power():
     return FieldToPower
 
 
+def _field_to_ri_matched():
+    """Adapter: complex field node -> (re, im) pair, MATCHED absorber.
+
+    Like :func:`cx.field_to_ri`, but the field side is a matched load
+    (``i = E``, Yopt = 1, the photodiode/terminator convention) instead of a
+    zero-current tap. A directed-wave VA model's *input* port is a receiver:
+    fed from a nodal reciprocal element (a waveguide/modulator output), a
+    high-Z tap leaves that port open and the S-matrix reflects, doubling the
+    field; the matched absorber terminates it so ``V(re)/V(im)`` read the true
+    transmitted field. Fed from another directed output (an ideal ``ri_to_field``
+    source) the extra load is harmless — the source fixes the node either way.
+    """
+    from circulax.components.base_component import Signals, States, component
+
+    @component(ports=("c", "re", "im"), states=("i_re", "i_im"))
+    def FieldToRIMatched(signals: Signals, s: States) -> tuple[dict, dict]:
+        e = signals.c
+        return {
+            "c": e,                       # matched absorber: no reflection
+            "re": s.i_re,
+            "im": s.i_im,
+            "i_re": signals.re - e.real,
+            "i_im": signals.im - e.imag,
+        }, {}
+
+    return FieldToRIMatched
+
+
 def _opt_term():
     """Optical terminator with finite return loss.
 
@@ -1961,6 +2035,7 @@ def build_models(sky130_geoms: dict[str, tuple[str, float, float]] | None = None
         "opt_term": _opt_term(),
         "photodiode": _photodiode(),
         "_f2ri": cx.field_to_ri(),
+        "_f2ri_m": _field_to_ri_matched(),
         "_ri2f": cx.ri_to_field(),
         "_ring_va": cx.va("ring_mod"),
         "_p2f": _power_to_field(),
@@ -1972,6 +2047,7 @@ def build_models(sky130_geoms: dict[str, tuple[str, float, float]] | None = None
         "_seg_va": cx.va("mzm_seg"),
         "_soa_va": cx.va("soa"),
         "_mirror_va": cx.va("mirror"),
+        "_circ_va": cx.va("circulator"),
         "_ringcomb_va": cx.va("ring_filter"),
         "_ringnl_va": cx.va("ring_nl"),
         "_ringkerr_va": cx.va("ring_kerr"),

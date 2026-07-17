@@ -15,6 +15,7 @@ modulation happens in modulators (`cx.mzm()`, or the ideal `PulseModulator` in
 | [`link_cmos.py`](link_cmos.py) | full CW + MZM link, transistor driver + CMOS-inverter TIA (no PDK needed) | example 02 |
 | [`link_sky130.py`](link_sky130.py) | the same link with **real SKY130 BSIM4 FETs** (`cx.sky130_fet`) | — |
 | [`ring_mod_sky130.py`](ring_mod_sky130.py) | Verilog-A microring modulator driven by a SKY130 inverter; DC tuning + optical eye (`--baud`, `--kappa2`) | example 03 |
+| [`ring_eo_response.py`](ring_eo_response.py) | small-signal **electro-optic frequency response** of the same ring — swept-tone lock-in vs the analytic photon-lifetime rolloff, f_3dB ~ 44 GHz (`--kappa2`, `--rs`) | — |
 | [`soa_fp_laser.py`](soa_fp_laser.py) | Fabry-Perot laser from an SOA between two mirrors — lasing emerges from the loop | "SOA Fabry-Perot laser" |
 | [`soa_vernier_laser.py`](soa_vernier_laser.py) | Vernier laser seeded by ASE noise, with a live one-FSR mode hop | "Vernier laser mode hop" |
 | [`ring_tpa_q.py`](ring_tpa_q.py) | TPA + free-carrier absorption capping a high-Q ring | "TPA-limited high-Q ring" |
@@ -22,6 +23,7 @@ modulation happens in modulators (`cx.mzm()`, or the ideal `PulseModulator` in
 | [`ring_fwm.py`](ring_fwm.py) | four-wave mixing **inside** a Kerr ring resonator | "Kerr ring four-wave mixing" |
 | [`ring_selfheat.py`](ring_selfheat.py) | **thermo-optic bistability** of a self-heating ring — the laser wavelength ramped up then down traces a hysteresis loop | — |
 | [`mzm_tw_transient.py`](mzm_tw_transient.py) | **electro-optic bandwidth** of the traveling-wave MZM (`mzm_tw.va`): step-response rise time and a full-swing NRZ eye, velocity-matched vs walk-off electrode | `mzm_tw` |
+| [`mzm_tw_eo_bw.py`](mzm_tw_eo_bw.py) | **electro-optic frequency response** of the traveling-wave MZM — a network-analyser-style tone sweep pins |H(f)|, phase, the -3 dB EO bandwidth, velocity-match / walk-off (`f_w ∝ 1/ℓ`) and pole-count roll-off against the model's pole cascade | — |
 
 The last five have a browser twin (the named web-app examples 36–40): the
 script is the pinned physics study, the web-app example is the same circuit to
@@ -32,6 +34,7 @@ click through.
 .venv-circulax/bin/python examples/soa_fp_laser.py      # -> out/soa_fp_laser.png
 .venv-circulax/bin/python examples/ring_selfheat.py     # -> out/ring_selfheat.png
 .venv-circulax/bin/python examples/mzm_tw_transient.py  # -> out/mzm_tw_transient.png
+.venv-circulax/bin/python examples/mzm_tw_eo_bw.py      # -> out/mzm_tw_eo_bw.png
 # ...each script prints its own output path
 ```
 

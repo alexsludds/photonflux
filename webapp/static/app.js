@@ -557,7 +557,7 @@ window.addEventListener("keydown", (ev) => {
   if (mod && ev.key === "s") { ev.preventDefault(); saveJSON(); return; }
   if (mod && ev.key === "Enter") { ev.preventDefault(); runSim(); return; }
   switch (ev.key) {
-    case "Escape": disarm(); render(); break;
+    case "Escape": if (runAbort) { stopSim(); } else { disarm(); render(); } break;
     case "Delete": case "Backspace": ev.preventDefault(); deleteSelection(); break;
     case "r": case "R":
       if (mode.kind === "place") { mode.rot = (mode.rot + 90) % 360; }
@@ -1130,6 +1130,8 @@ function restorePaneFromAnalysis(a) {
     } else { $("rc-values2").value = ""; }
   }
   syncRunCfgDisabled(); updateRunCount(); persistRunCfg();
+  // opening a testbench that ships a sweep -> reveal the pane so it's not hidden
+  setRunCfgPanel(on);
 }
 
 // translate the pane + current analysis type into the run payload
@@ -1166,12 +1168,16 @@ function withRunCfg(a) {
   return a;
 }
 
-$("btn-runcfg").addEventListener("click", () => {
+// show/hide the sweep-parameters pane, keeping the caret button in sync
+function setRunCfgPanel(open) {
   const p = $("runcfg-panel");
-  p.hidden = !p.hidden;
-  $("btn-runcfg").classList.toggle("active", !p.hidden);
-  $("btn-runcfg").setAttribute("aria-expanded", String(!p.hidden));
-  if (!p.hidden) { refreshRunCfgSelectors(); syncRunCfgDisabled(); updateRunCount(); }
+  p.hidden = !open;
+  $("btn-runcfg").classList.toggle("active", open);
+  $("btn-runcfg").setAttribute("aria-expanded", String(open));
+  if (open) { refreshRunCfgSelectors(); syncRunCfgDisabled(); updateRunCount(); }
+}
+$("btn-runcfg").addEventListener("click", () => {
+  setRunCfgPanel($("runcfg-panel").hidden);
 });
 $("rc-inst").addEventListener("change", () => {
   fillParamOptions("rc-inst", "rc-param"); updateRunCount(); persistRunCfg();
@@ -1375,8 +1381,24 @@ function startProgressPoll() {
   };
 }
 
+// Holds the in-flight run's AbortController so the Stop button can abort the
+// fetch. Null when no run is active.
+let runAbort = null;
+
+// Stop the current run: ask the backend to abort the solve cooperatively
+// (POST /api/cancel — the transient solver checks this at its next step) and
+// abort the fetch so the UI is freed immediately even if a DC/AC solve, which
+// has no interruptible step loop, keeps running to completion in the background.
+function stopSim() {
+  if (!runAbort) return;
+  const status = $("run-status");
+  status.textContent = "stopping…";
+  fetch("/api/cancel", { method: "POST" }).catch(() => {});
+  runAbort.abort();
+}
+
 async function runSim() {
-  const btn = $("btn-run"), status = $("run-status");
+  const btn = $("btn-run"), stopBtn = $("btn-stop"), status = $("run-status");
   const payload = {
     schematic: {
       // PRBS sources pull their unit interval from the global baud rate: inject
@@ -1391,8 +1413,11 @@ async function runSim() {
     },
     analysis: collectAnalysis(),
   };
-  btn.disabled = true;
+  // Swap Run for Stop while the solve is in flight so the user can abort it.
+  btn.hidden = true;
+  stopBtn.hidden = false;
   status.className = "";
+  runAbort = new AbortController();
   const t0 = performance.now();
   // AC sweeps over a SKY130 w_um/l_um recompile per value and may extract a
   // BSIM4 card the first time (tens of seconds each) — set expectations so a
@@ -1422,20 +1447,31 @@ async function runSim() {
   // this covers them too, while excluding e.g. a 2-axis AC sweep.
   const timeDomain = a.mode === "transient" || a.mode === "pulse";
   const progPoll = timeDomain ? startProgressPoll() : { stop() {} };
-  let res;
+  let res, aborted = false;
   try {
     const resp = await fetch("/api/run", {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
+      body: JSON.stringify(payload), signal: runAbort.signal,
     });
     res = await resp.json();
   } catch (e) {
-    res = { ok: false, error: `server unreachable: ${e}` };
+    if (e && e.name === "AbortError") { aborted = true; res = { ok: false, cancelled: true }; }
+    else res = { ok: false, error: `server unreachable: ${e}` };
   }
   clearInterval(tick);
   progPoll.stop();
-  btn.disabled = false;
+  runAbort = null;
+  btn.hidden = false;
+  stopBtn.hidden = true;
   const dt = ((performance.now() - t0) / 1000).toFixed(1);
+  // Run stopped by the user (fetch aborted, or the backend returned a
+  // cooperatively-cancelled result): show a neutral "stopped" state, not a
+  // red failure, and leave the previous results untouched.
+  if (aborted || res.cancelled) {
+    status.textContent = `stopped (${dt}s)`;
+    status.className = "";
+    return;
+  }
   lastResult = res;
   showLog(res);
   if (!res.ok) {
@@ -1459,6 +1495,7 @@ async function runSim() {
   }
 }
 $("btn-run").addEventListener("click", runSim);
+$("btn-stop").addEventListener("click", stopSim);
 
 function probeColor(name) {
   const p = state.probes.find((q) => q.name === name);

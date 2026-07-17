@@ -31,6 +31,7 @@ import traceback
 from typing import Any
 
 from catalog import CATALOG, build_models
+from progress import RunCancelled
 
 _NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
@@ -1477,6 +1478,12 @@ def _run_sweep_overlay(payload: dict) -> dict:
         for inst, param, val in point:
             _patch_point(sch_i, inst, param, float(val))
         res = run({"schematic": sch_i, "analysis": inner})
+        if res.get("cancelled"):
+            # User hit Stop mid-sweep: abort the whole fan-out instead of
+            # churning through the remaining points (the cancel flag stays set,
+            # so each would just re-raise). _run_inner turns this into a clean
+            # cancelled result.
+            raise RunCancelled("run stopped by user")
         if not res.get("ok"):
             log.append(f"  [{i + 1}/{n}] {label}: FAILED — {res.get('error')}")
             continue
@@ -1598,6 +1605,10 @@ def _run_inner(payload: dict) -> dict:
             exprs.apply(result, str(analysis["expressions"]), log)
         result.update({"ok": True, "log": log})
         return result
+    except RunCancelled:
+        # User hit Stop: not a failure, just an aborted solve. The header shows
+        # "stopped" rather than a red error.
+        return {"ok": False, "cancelled": True, "error": "run stopped by user"}
     except NetlistError as exc:
         return {"ok": False, "error": str(exc)}
     except Exception as exc:  # solver/compile blow-ups -> readable message

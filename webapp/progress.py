@@ -21,6 +21,14 @@ from __future__ import annotations
 import threading
 
 
+class RunCancelled(Exception):
+    """Raised from inside the transient solve when the user hits Stop.
+
+    The per-save-point host callback checks the cancel flag and raises this to
+    abort the compiled diffrax loop cooperatively; ``simulate.run`` turns it
+    into a clean ``{"ok": False, "cancelled": True}`` result."""
+
+
 class _Progress:
     """Thread-safe progress for one in-flight simulation.
 
@@ -41,6 +49,7 @@ class _Progress:
         self._seeds = 1       # transient-noise seeds (inner)
         self._seed = 0
         self._depth = 0       # nested run() re-entrancy guard
+        self._cancel = False  # set by request_cancel(); the solve callback raises
 
     def enable(self) -> None:
         """Opt this process in to per-step progress reporting. The web server
@@ -61,6 +70,7 @@ class _Progress:
             self._depth += 1
             if self._depth == 1:  # outermost run(): start fresh
                 self._active = True
+                self._cancel = False  # a stale Stop must not kill the next run
                 self._frac = 0.0
                 self._phase = "compiling"
                 self._runs = 1
@@ -75,6 +85,23 @@ class _Progress:
                 self._active = False
                 self._frac = 1.0
                 self._phase = ""
+
+    # --- cooperative cancellation (the web UI's Stop button) --------------
+    def request_cancel(self) -> None:
+        """Ask the in-flight run to stop. Honoured only while a run is active
+        (the flag is cleared when the next run starts), and only at a following
+        save point of a time-domain solve — the callback is async, so a few more
+        steps may run before it lands. DC/AC/op emit no per-step callback, so
+        Stop can't interrupt them mid-solve; the frontend still frees the UI by
+        aborting the request."""
+        with self._lock:
+            if self._active:
+                self._cancel = True
+
+    @property
+    def cancelled(self) -> bool:
+        with self._lock:
+            return self._cancel
 
     # --- structure: sweeps (outer) and noise seeds (inner) ----------------
     def set_runs(self, n: int) -> None:
@@ -99,7 +126,11 @@ class _Progress:
     def report(self, local) -> None:
         """Record ``local`` in ``[0, 1]`` — position within the current seed's
         solve — folding it into the run-wide fraction. Called from inside the
-        compiled solve, so it must never raise."""
+        compiled solve. It raises :class:`RunCancelled` only when the user has
+        hit Stop (that is how the solve is aborted); otherwise it never raises."""
+        with self._lock:
+            if self._active and self._cancel:
+                raise RunCancelled("run stopped by user")
         try:
             lf = float(local)
         except (TypeError, ValueError):

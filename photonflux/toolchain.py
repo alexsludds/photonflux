@@ -95,7 +95,8 @@ def doctor() -> list[Check]:
         except Exception as e:  # binary exists but does not run
             checks.append(Check("openvaf-ir", False, f"{p} exists but failed: {e}"))
     else:
-        checks.append(Check("openvaf-ir", False, f"missing {p}; build it (see README)"))
+        checks.append(Check("openvaf-ir", False,
+                            f"missing {p}; build it with scripts/build-openvaf.sh"))
 
     inc = include_dir()
     have = {f.name for f in inc.glob("*.h")} if inc.is_dir() else set()

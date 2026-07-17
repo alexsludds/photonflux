@@ -226,10 +226,12 @@ function render() {
     const dom = portDomain(state.instances[w.from.split(",")[0]].type, w.from.split(",")[1]);
     const d = wirePath(x1, y1, x2, y2, dom);
     const g = document.createElementNS(svg.namespaceURI, "g");
+    g.dataset.wire = i;
     g.innerHTML = `
       <path class="wire-hit" d="${d}"/>
       <path class="wire ${dom} ${selection?.kind === "wire" && selection.id === i ? "selected" : ""}" d="${d}"/>`;
     g.addEventListener("mousedown", (ev) => {
+      if (ev.button !== 0) return;       // right/middle click: leave for contextmenu
       ev.stopPropagation();
       selection = { kind: "wire", id: i };
       renderInspector(); render();
@@ -245,6 +247,7 @@ function render() {
       (selection?.kind === "inst" && selection.id === id ? " selected" : "");
     const g = document.createElementNS(svg.namespaceURI, "g");
     g.setAttribute("class", compClass);
+    g.dataset.id = id;
     g.setAttribute("transform", compTransform(inst, sym));
     g.innerHTML = sym.draw();
 
@@ -301,6 +304,7 @@ function render() {
       c.setAttribute("class", `port ${dom}${wired ? " wired" : ""}`);
       c.dataset.ep = `${id},${pn}`;
       c.addEventListener("mousedown", (ev) => {
+        if (ev.button !== 0) return;     // right/middle click: leave for contextmenu
         ev.stopPropagation();
         onPortMouseDown(`${id},${pn}`);
       });
@@ -314,6 +318,7 @@ function render() {
     }
 
     g.addEventListener("mousedown", (ev) => {
+      if (ev.button !== 0) return;       // right/middle click: leave for contextmenu
       if (ev.target.classList.contains("port")) return;
       ev.stopPropagation();
       if (mode.kind === "probe" || mode.kind === "wire" || mode.kind === "place") return;
@@ -349,6 +354,7 @@ function render() {
     if (!inst) return;
     const [x, y] = pinPos(inst, pin);
     const g = document.createElementNS(svg.namespaceURI, "g");
+    g.dataset.probe = i;
     g.setAttribute("class", "probe-flag" +
       (selection?.kind === "probe" && selection.id === i ? " selected" : "") +
       (p.hide ? " hidden-probe" : ""));
@@ -361,6 +367,7 @@ function render() {
       ${dot}
       <text x="${x + 26}" y="${y - 14}" fill="${p.color}">${p.name}${p.hide ? " (hidden)" : ""}</text>`;
     g.addEventListener("mousedown", (ev) => {
+      if (ev.button !== 0) return;       // right/middle click: leave for contextmenu
       ev.stopPropagation();
       selection = { kind: "probe", id: i };
       renderInspector(); render();
@@ -466,6 +473,7 @@ function setHint(msg, isErr) {
 
 // --- svg-level mouse handling -----------------------------------------------
 svg.addEventListener("mousedown", (ev) => {
+  if (ev.button !== 0) return;           // right/middle click: leave for contextmenu
   if (mode.kind === "place") {
     const [wx, wy] = toWorld(ev);
     const type = mode.type, rot = mode.rot, flip = !!mode.flip;
@@ -548,8 +556,216 @@ svg.addEventListener("wheel", (ev) => {
     `translate(${view.x},${view.y}) scale(${view.k})`);
 }, { passive: false });
 
+// ---------------------------------------------------------------------------
+// custom right-click context menu
+//
+// Replaces the browser's default menu over the schematic canvas with an
+// application menu whose entries depend on what sits under the cursor
+// (component / wire / probe / port / empty canvas). The native menu is left
+// intact everywhere else (toolbar, inspector, text inputs) so ordinary
+// copy/paste still works. render() tags each element with a data-* attribute
+// (data-id / data-wire / data-probe / a port's data-ep) which is how we map a
+// click back to a schematic object.
+// ---------------------------------------------------------------------------
+let ctxMenuEl = null;
+
+function closeContextMenu() {
+  if (ctxMenuEl) { ctxMenuEl.remove(); ctxMenuEl = null; }
+  window.removeEventListener("mousedown", onCtxOutside, true);
+  window.removeEventListener("wheel", closeContextMenu, true);
+  window.removeEventListener("blur", closeContextMenu);
+}
+function onCtxOutside(ev) {
+  if (ctxMenuEl && !ctxMenuEl.contains(ev.target)) closeContextMenu();
+}
+
+function showContextMenu(clientX, clientY, items) {
+  closeContextMenu();
+  const menu = document.createElement("div");
+  menu.className = "ctx-menu";
+  for (const it of items) {
+    if (it.sep) { menu.appendChild(Object.assign(
+      document.createElement("div"), { className: "ctx-sep" })); continue; }
+    if (it.header) {
+      const h = document.createElement("div");
+      h.className = "ctx-header";
+      h.textContent = it.header;
+      menu.appendChild(h);
+      continue;
+    }
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "ctx-item" + (it.danger ? " danger" : "");
+    b.disabled = !!it.disabled;
+    b.innerHTML = `<span>${escapeHtml(it.label)}</span>` +
+      (it.hint ? `<span class="ctx-key">${escapeHtml(it.hint)}</span>` : "");
+    if (!it.disabled) b.addEventListener("click", () => {
+      closeContextMenu();
+      it.action();
+    });
+    menu.appendChild(b);
+  }
+  // measure off-screen, then clamp so the menu stays inside the viewport
+  menu.style.visibility = "hidden";
+  document.body.appendChild(menu);
+  const r = menu.getBoundingClientRect();
+  const x = Math.max(4, Math.min(clientX, window.innerWidth - r.width - 4));
+  const y = Math.max(4, Math.min(clientY, window.innerHeight - r.height - 4));
+  menu.style.left = x + "px";
+  menu.style.top = y + "px";
+  menu.style.visibility = "visible";
+  ctxMenuEl = menu;
+  window.addEventListener("mousedown", onCtxOutside, true);
+  window.addEventListener("wheel", closeContextMenu, true);
+  window.addEventListener("blur", closeContextMenu);
+}
+
+$("canvas-wrap").addEventListener("contextmenu", (ev) => {
+  ev.preventDefault();
+  // right-click during an in-progress gesture just cancels it
+  if (mode.kind === "place" || mode.kind === "wire" || mode.kind === "probe") {
+    disarm();
+    setHint("");
+    render();
+    return;
+  }
+  const t = ev.target;
+  const portEl = t.closest?.(".port");
+  if (portEl?.dataset.ep) return showContextMenu(ev.clientX, ev.clientY, portMenu(portEl.dataset.ep));
+  const probeEl = t.closest?.("[data-probe]");
+  if (probeEl) return showContextMenu(ev.clientX, ev.clientY, probeMenu(+probeEl.dataset.probe));
+  const compEl = t.closest?.("[data-id]");
+  if (compEl) return showContextMenu(ev.clientX, ev.clientY, compMenu(compEl.dataset.id));
+  const wireEl = t.closest?.("[data-wire]");
+  if (wireEl) return showContextMenu(ev.clientX, ev.clientY, wireMenu(+wireEl.dataset.wire));
+  showContextMenu(ev.clientX, ev.clientY, canvasMenu());
+});
+
+function compMenu(id) {
+  const inst = state.instances[id];
+  if (!inst) return canvasMenu();
+  return [
+    { header: `${id} — ${CAT[inst.type]?.label || inst.type}` },
+    { label: "Rotate 90°", hint: "R",
+      action: () => { selection = { kind: "inst", id }; rotateSelected(90); } },
+    { label: "Flip horizontal", hint: "F",
+      action: () => { selection = { kind: "inst", id }; flipSelected(false); } },
+    { label: "Flip vertical", hint: "⇧F",
+      action: () => { selection = { kind: "inst", id }; flipSelected(true); } },
+    { label: "Duplicate", action: () => duplicateInstance(id) },
+    { sep: true },
+    { label: "Edit parameters…",
+      action: () => { selection = { kind: "inst", id }; renderInspector(); render(); } },
+    { sep: true },
+    { label: "Delete", hint: "Del", danger: true,
+      action: () => { selection = { kind: "inst", id }; deleteSelection(); } },
+  ];
+}
+
+function wireMenu(i) {
+  return [
+    { header: "Wire" },
+    { label: "Delete wire", hint: "Del", danger: true,
+      action: () => { selection = { kind: "wire", id: i }; deleteSelection(); } },
+  ];
+}
+
+function probeMenu(i) {
+  const p = state.probes[i];
+  if (!p) return canvasMenu();
+  return [
+    { header: `probe: ${p.name}` },
+    { label: p.hide ? "Show in plots" : "Hide from plots",
+      action: () => commit(() => { p.hide = !p.hide; if (!p.hide) delete p.hide; }) },
+    { label: "Rename…",
+      action: () => { selection = { kind: "probe", id: i }; renderInspector(); render(); } },
+    { sep: true },
+    { label: "Delete probe", hint: "Del", danger: true,
+      action: () => { selection = { kind: "probe", id: i }; deleteSelection(); } },
+  ];
+}
+
+function portMenu(ep) {
+  const [id, pin] = ep.split(",");
+  const probed = state.probes.some((p) => p.at === ep);
+  return [
+    { header: `port: ${id}.${pin}` },
+    { label: "Start wire from here",
+      action: () => { mode = { kind: "wire", from: ep };
+        setHint("Click a destination port to finish the wire — Esc cancels."); } },
+    { label: probed ? "Already probed" : "Add probe here", disabled: probed,
+      action: () => addProbeAt(ep) },
+  ];
+}
+
+function canvasMenu() {
+  const empty = !Object.keys(state.instances).length;
+  return [
+    { label: "Run simulation", hint: "⌘⏎", disabled: !!runAbort, action: () => runSim() },
+    { sep: true },
+    { label: "Fit to view", disabled: empty, action: () => fitView() },
+    { label: "Reset zoom", action: () => { view = { x: 60, y: 40, k: 1 }; render(); } },
+    { sep: true },
+    { label: "Undo", hint: "⌘Z", disabled: !undoStack.length, action: () => undo() },
+    { label: "Redo", hint: "⇧⌘Z", disabled: !redoStack.length, action: () => redo() },
+    { sep: true },
+    { label: "New schematic", danger: true, disabled: empty,
+      action: () => $("btn-new").click() },
+  ];
+}
+
+// clone an instance offset slightly down-right and select the copy
+function duplicateInstance(id) {
+  const src = state.instances[id];
+  if (!src) return;
+  const nid = newId(src.type);
+  commit(() => {
+    const copy = JSON.parse(JSON.stringify(src));
+    copy.x = snap(src.x + 20);
+    copy.y = snap(src.y + 20);
+    state.instances[nid] = copy;
+  });
+  selection = { kind: "inst", id: nid };
+  renderInspector(); render();
+}
+
+// place a probe at a specific endpoint (mirrors probe-mode placement)
+function addProbeAt(ep) {
+  if (state.probes.some((p) => p.at === ep)) return;
+  const name = freshProbeName();
+  const color = PROBE_COLORS[state.probes.length % PROBE_COLORS.length];
+  commit(() => state.probes.push({ name, at: ep, color }));
+}
+
+// zoom/pan so every instance fits within the canvas viewport
+function fitView() {
+  const ids = Object.keys(state.instances);
+  if (!ids.length) return;
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const id of ids) {
+    const inst = state.instances[id], sym = S[inst.type];
+    if (!sym) continue;
+    for (const [cx, cy] of [[0, 0], [sym.w, 0], [0, sym.h], [sym.w, sym.h]]) {
+      const [wx, wy] = localToWorld(inst, sym, cx, cy);
+      minX = Math.min(minX, wx); minY = Math.min(minY, wy);
+      maxX = Math.max(maxX, wx); maxY = Math.max(maxY, wy);
+    }
+  }
+  if (!isFinite(minX)) return;
+  const rect = svg.getBoundingClientRect();
+  const pad = 60;
+  const bw = Math.max(1, maxX - minX), bh = Math.max(1, maxY - minY);
+  const k = Math.min(4, Math.max(0.2,
+    Math.min((rect.width - pad * 2) / bw, (rect.height - pad * 2) / bh)));
+  view.k = k;
+  view.x = (rect.width - bw * k) / 2 - minX * k;
+  view.y = (rect.height - bh * k) / 2 - minY * k;
+  render();
+}
+
 // --- keyboard -----------------------------------------------------------------
 window.addEventListener("keydown", (ev) => {
+  if (ev.key === "Escape" && ctxMenuEl) { closeContextMenu(); return; }
   const tag = document.activeElement?.tagName;
   if (tag === "INPUT" || tag === "SELECT" || tag === "TEXTAREA") return;
   const mod = ev.metaKey || ev.ctrlKey;

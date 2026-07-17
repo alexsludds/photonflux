@@ -303,6 +303,37 @@ S.wmirror = {
     <line class="${EL}" x1="40" y1="60" x2="40" y2="50"/>`,
 };
 
+S.circulator = {
+  // non-reciprocal 3-port: circle with a clockwise circulation arrow (routes
+  // 1 -> 2 -> 3 -> 1). Port 1 (TX) left, port 2 (shared line) right, port 3
+  // (RX drop) bottom; each port splits into a directed input (arrow in) and
+  // output (arrow out). gnd stub on top.
+  w: 120, h: 120,
+  pins: { p1i: [0, 40], p1o: [0, 80], p2o: [120, 40], p2i: [120, 80],
+          p3o: [40, 120], p3i: [80, 120], gnd: [60, 0] },
+  label: [0, -6], pinLabels: true,
+  draw: () => `
+    <circle class="${OPT} body-fill" cx="60" cy="60" r="36"/>
+    <line class="${OPT}" x1="0" y1="40" x2="24" y2="40"/>
+    <path class="${OPT}" d="M18 37 l6 3 l-6 3" fill="none" stroke-width="1.1"/>
+    <line class="${OPT}" x1="0" y1="80" x2="24" y2="80"/>
+    <path class="${OPT}" d="M6 77 l-6 3 l6 3" fill="none" stroke-width="1.1"/>
+    <line class="${OPT}" x1="96" y1="40" x2="120" y2="40"/>
+    <path class="${OPT}" d="M114 37 l6 3 l-6 3" fill="none" stroke-width="1.1"/>
+    <line class="${OPT}" x1="96" y1="80" x2="120" y2="80"/>
+    <path class="${OPT}" d="M102 77 l-6 3 l6 3" fill="none" stroke-width="1.1"/>
+    <line class="${OPT}" x1="40" y1="96" x2="40" y2="120"/>
+    <path class="${OPT}" d="M37 114 l3 6 l3 -6" fill="none" stroke-width="1.1"/>
+    <line class="${OPT}" x1="80" y1="96" x2="80" y2="120"/>
+    <path class="${OPT}" d="M77 102 l3 -6 l3 6" fill="none" stroke-width="1.1"/>
+    <path class="${OPT}" d="M76 46 A 22 22 0 1 1 46 44" fill="none" stroke-width="1.5"/>
+    <path class="${OPT}" d="M76 46 l-9 -1 l5 8 z" stroke-width="1"/>
+    <line class="${EL}" x1="60" y1="0" x2="60" y2="24"/>
+    <text x="11" y="34" style="font-size:8px">1</text>
+    <text x="103" y="34" style="font-size:8px">2</text>
+    <text x="52" y="116" style="font-size:8px">3</text>`,
+};
+
 // shared add-drop ring body: in/thru bus on top, ring, drop bus on the
 // bottom whose far (add) port is dark -> a small absorber wedge
 function addDropRingBase() {
@@ -636,6 +667,7 @@ const HEADLINE_PARAM = {
   ring_mod_inj: "tau_c", mzm_seg: "vpi", ring_selfheat: "rth_k_w",
   waveguide: "length_m", splitter: "split_ratio", dir_coupler: "coupling",
   grating: "center_wavelength_nm", opt_filter: "center_nm", opt_mirror: "R",
+  circulator: "iso_db",
   photodiode: "R", vdc: "V", vpulse: "v2", vsin: "V", idc: "I",
   resistor: "R", capacitor: "C", inductor: "L", diode: "Is",
   nmos: "W", pmos: "W", opamp: "A", tia: "gain_ohm", ctle: "peaking_db",

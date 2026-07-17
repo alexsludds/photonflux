@@ -1,0 +1,239 @@
+{
+  "title": "Bidirectional link (circulators)",
+  "group": "Links & receivers",
+  "description": "Full-duplex link where a 3-port optical circulator at each end (models/optical_field/circulator.va, routes 1->2->3->1) separates the two counter-propagating beams that share the link: node A transmits into its port 1, the line hangs off port 2, and the wave returning from node B drops out of port 3 into A's receiver — and vice-versa at B. Each propagation direction is a directed waveguide (WGF forward A->B, WGB backward B->A) — the simulator's honest split of the forward and backward fields on one bidirectional span. Because the circulators are non-reciprocal, each receiver recovers only the FAR transmitter's data (VPA ~500 Mb/s, VPB ~333 Mb/s) at ~40 dB of directional isolation. Drop each circulator's iso_db to watch the near-end transmitter bleed into its own receiver.",
+  "analysis": {
+    "mode": "transient",
+    "t_stop": 8e-09,
+    "points": 800,
+    "solver": "bdf2"
+  },
+  "schematic": {
+    "notes": [
+      {
+        "x": 40,
+        "y": -150,
+        "title": "Bidirectional link with circulators — what this testbench does",
+        "lines": [
+          "One shared fibre span carries BOTH directions at once. Circulator",
+          "CA (node A) and CB (node B) each route light 1 -> 2 -> 3 -> 1:",
+          "  - transmit: MZM light enters port 1, leaves port 2 onto the line",
+          "  - receive:  the wave arriving on port 2 leaves port 3 -> photodiode",
+          "MZMA (driven by VPA, 500 Mb/s) sends A->B on the forward fibre WGF;",
+          "MZMB (VPB, 333 Mb/s) sends B->A on the backward fibre WGB. Because the",
+          "circulators are non-reciprocal, voutB recovers VPA and voutA recovers",
+          "VPB — each end hears only the other end, off one fibre pair.",
+          "",
+          "Drop CA.iso_db / CB.iso_db from 40 to ~10 dB and re-run: the near-end",
+          "transmitter now leaks into its own receiver (self-interference)."
+        ]
+      }
+    ],
+    "instances": {
+      "LASA": {
+        "type": "cw_laser",
+        "x": 40,
+        "y": 360,
+        "rot": 0,
+        "settings": { "wavelength_nm": 1310.0, "power": 0.002 }
+      },
+      "MZMA": {
+        "type": "mzm",
+        "x": 190,
+        "y": 350,
+        "rot": 0,
+        "settings": { "vpi": 3.3, "vbias": 3.3, "il_db": 3.0, "er_db": 20.0 }
+      },
+      "VPA": {
+        "type": "vpulse",
+        "x": 200,
+        "y": 230,
+        "rot": 0,
+        "settings": {
+          "v1": 0.0,
+          "v2": 3.3,
+          "td": 5e-10,
+          "tr": 1.5e-10,
+          "tf": 1.5e-10,
+          "pw": 1e-09,
+          "per": 2e-09
+        }
+      },
+      "CA": {
+        "type": "circulator",
+        "x": 410,
+        "y": 320,
+        "rot": 0,
+        "settings": { "il_db": 0.6, "iso_db": 40.0 }
+      },
+      "TA1": {
+        "type": "opt_term",
+        "x": 300,
+        "y": 388,
+        "rot": 180,
+        "settings": {}
+      },
+      "TA3": {
+        "type": "opt_term",
+        "x": 430,
+        "y": 470,
+        "rot": 270,
+        "settings": {}
+      },
+      "PDA": {
+        "type": "photodiode",
+        "x": 430,
+        "y": 500,
+        "rot": 0,
+        "settings": {}
+      },
+      "TIAA": {
+        "type": "tia",
+        "x": 560,
+        "y": 505,
+        "rot": 0,
+        "settings": { "gain_ohm": 2000.0 }
+      },
+      "WGF": {
+        "type": "waveguide",
+        "x": 600,
+        "y": 350,
+        "rot": 0,
+        "settings": {
+          "length_m": 0.002,
+          "loss_dB_cm": 3.0,
+          "wavelength_nm": 1310.0,
+          "center_wavelength_nm": 1310.0
+        }
+      },
+      "WGB": {
+        "type": "waveguide",
+        "x": 600,
+        "y": 430,
+        "rot": 0,
+        "flip": true,
+        "settings": {
+          "length_m": 0.002,
+          "loss_dB_cm": 3.0,
+          "wavelength_nm": 1310.0,
+          "center_wavelength_nm": 1310.0
+        }
+      },
+      "CB": {
+        "type": "circulator",
+        "x": 750,
+        "y": 320,
+        "rot": 0,
+        "flip": true,
+        "settings": { "il_db": 0.6, "iso_db": 40.0 }
+      },
+      "TB1": {
+        "type": "opt_term",
+        "x": 920,
+        "y": 388,
+        "rot": 0,
+        "settings": {}
+      },
+      "TB3": {
+        "type": "opt_term",
+        "x": 750,
+        "y": 470,
+        "rot": 270,
+        "settings": {}
+      },
+      "PDB": {
+        "type": "photodiode",
+        "x": 800,
+        "y": 500,
+        "rot": 0,
+        "settings": {}
+      },
+      "TIAB": {
+        "type": "tia",
+        "x": 930,
+        "y": 505,
+        "rot": 0,
+        "settings": { "gain_ohm": 2000.0 }
+      },
+      "MZMB": {
+        "type": "mzm",
+        "x": 940,
+        "y": 350,
+        "rot": 0,
+        "flip": true,
+        "settings": { "vpi": 3.3, "vbias": 3.3, "il_db": 3.0, "er_db": 20.0 }
+      },
+      "VPB": {
+        "type": "vpulse",
+        "x": 970,
+        "y": 230,
+        "rot": 0,
+        "settings": {
+          "v1": 0.0,
+          "v2": 3.3,
+          "td": 5e-10,
+          "tr": 1.5e-10,
+          "tf": 1.5e-10,
+          "pw": 1.5e-09,
+          "per": 3e-09
+        }
+      },
+      "LASB": {
+        "type": "cw_laser",
+        "x": 1080,
+        "y": 360,
+        "rot": 0,
+        "flip": true,
+        "settings": { "wavelength_nm": 1310.0, "power": 0.002 }
+      },
+      "GLA": { "type": "ground", "x": 80, "y": 420, "rot": 0, "settings": {} },
+      "GMA": { "type": "ground", "x": 230, "y": 430, "rot": 0, "settings": {} },
+      "GVA": { "type": "ground", "x": 200, "y": 310, "rot": 0, "settings": {} },
+      "GCA": { "type": "ground", "x": 450, "y": 300, "rot": 0, "settings": {} },
+      "GPA": { "type": "ground", "x": 430, "y": 580, "rot": 0, "settings": {} },
+      "GLB": { "type": "ground", "x": 1120, "y": 420, "rot": 0, "settings": {} },
+      "GMB": { "type": "ground", "x": 990, "y": 430, "rot": 0, "settings": {} },
+      "GVB": { "type": "ground", "x": 990, "y": 310, "rot": 0, "settings": {} },
+      "GCB": { "type": "ground", "x": 810, "y": 300, "rot": 0, "settings": {} },
+      "GPB": { "type": "ground", "x": 800, "y": 580, "rot": 0, "settings": {} }
+    },
+    "wires": [
+      { "from": "LASA,p1", "to": "MZMA,pin" },
+      { "from": "LASA,p2", "to": "GLA,p1" },
+      { "from": "MZMA,pout", "to": "CA,p1i" },
+      { "from": "MZMA,vp", "to": "VPA,p1" },
+      { "from": "MZMA,vn", "to": "GMA,p1" },
+      { "from": "VPA,p2", "to": "GVA,p1" },
+      { "from": "CA,p1o", "to": "TA1,p1" },
+      { "from": "CA,p3i", "to": "TA3,p1" },
+      { "from": "CA,gnd", "to": "GCA,p1" },
+      { "from": "CA,p2o", "to": "WGF,p1" },
+      { "from": "WGF,p2", "to": "CB,p2i" },
+      { "from": "CB,p2o", "to": "WGB,p1" },
+      { "from": "WGB,p2", "to": "CA,p2i" },
+      { "from": "CA,p3o", "to": "PDA,po_p" },
+      { "from": "PDA,po_n", "to": "GPA,p1" },
+      { "from": "PDA,an", "to": "GPA,p1" },
+      { "from": "PDA,cat", "to": "TIAA,inp" },
+      { "from": "LASB,p1", "to": "MZMB,pin" },
+      { "from": "LASB,p2", "to": "GLB,p1" },
+      { "from": "MZMB,pout", "to": "CB,p1i" },
+      { "from": "MZMB,vp", "to": "VPB,p1" },
+      { "from": "MZMB,vn", "to": "GMB,p1" },
+      { "from": "VPB,p2", "to": "GVB,p1" },
+      { "from": "CB,p1o", "to": "TB1,p1" },
+      { "from": "CB,p3i", "to": "TB3,p1" },
+      { "from": "CB,gnd", "to": "GCB,p1" },
+      { "from": "CB,p3o", "to": "PDB,po_p" },
+      { "from": "PDB,po_n", "to": "GPB,p1" },
+      { "from": "PDB,an", "to": "GPB,p1" },
+      { "from": "PDB,cat", "to": "TIAB,inp" }
+    ],
+    "probes": [
+      { "name": "txA", "at": "VPA,p1", "color": "#8a8aa3" },
+      { "name": "voutB", "at": "TIAB,out", "color": "#fbbf24" },
+      { "name": "txB", "at": "VPB,p1", "color": "#f87171" },
+      { "name": "voutA", "at": "TIAA,out", "color": "#6ecbf5" }
+    ]
+  }
+}

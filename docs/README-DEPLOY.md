@@ -137,9 +137,11 @@ docker logs <id>        # confirm /api/run 200s, no missing-binary/PDK errors
 - **VA upload is disabled** on the public image. To allow it on a trusted deploy,
   set `PHOTONFLUX_ALLOW_VA_UPLOAD=1` (it compiles untrusted Verilog-A natively —
   only do this behind auth).
-- **Local dev is unchanged.** Running `.venv-circulax/bin/python webapp/server.py`
-  with no env vars keeps 127.0.0.1:8642, VA upload on, and no run timeout — every
-  new behavior is opt-in via env.
+- **Local dev.** Running `.venv-circulax/bin/python webapp/server.py` with no
+  env vars keeps 127.0.0.1:8642, VA upload on, and no run timeout. It also
+  auto-reloads on `.py` edits by default (a supervisor re-spawns the server), so
+  a browser refresh shows the latest code. The image sets `PHOTONFLUX_RELOAD=0`
+  to run a single plain process; every other new behavior is opt-in via env.
 - **Pinned versions:** circulax 0.2.1 · bosdi 0.1.5 · openvaf-py 0.1.5 ·
   SKY130 `open_pdks c6d73a35f524070e85faff4a6a9eef49553ebc2b` · LLVM 18 ·
   ngspice/libngspice (Debian). Bump the `ARG`s in the Dockerfile to move them.

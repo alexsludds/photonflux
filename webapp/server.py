@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Local web frontend for photonflux/circulax: schematic editor + simulator.
 
-    .venv-circulax/bin/python webapp/server.py [--port 8642] [--reload]
+    .venv-circulax/bin/python webapp/server.py [--port 8642] [--no-reload]
 
 Then open http://localhost:8642 — drag photonic/electrical components onto
 the canvas, wire them, attach probes, hit Run. Pure stdlib server (no extra
@@ -11,11 +11,12 @@ lock (JAX solves are single-flight).
 Static assets (index.html/app.js/style.css) and example JSON are read from
 disk on every request, so editing those is already live — just refresh the
 page. The Python engine (simulate.py, catalog.py, the photonflux package) is
-imported once at startup, so editing *code* normally needs a restart. Pass
---reload (or set PHOTONFLUX_RELOAD=1) during development to auto-restart the
-server whenever a .py source file changes — then a browser refresh always
-shows the latest code. Reload is off by default, so production/container runs
-(`python webapp/server.py` with no flags) are unaffected.
+imported once at startup, so editing *code* would otherwise need a restart.
+Auto-reload is ON by default: the launched process supervises a child server
+and restarts it whenever a .py source file changes, so a browser refresh
+always shows the latest code. Pass --no-reload (or set PHOTONFLUX_RELOAD=0) to
+run a single plain process with no supervisor — the container image does this,
+so production runs one process exactly as before.
 """
 from __future__ import annotations
 
@@ -349,11 +350,13 @@ def main() -> int:
     ap.add_argument("--port", type=int,
                     default=int(os.environ.get("PORT", "8642")))
     ap.add_argument("--host", default=os.environ.get("HOST", "127.0.0.1"))
-    # --reload auto-restarts on .py edits (dev only; off by default). Env var
-    # PHOTONFLUX_RELOAD=1 is the equivalent for `python server.py` launchers.
-    ap.add_argument("--reload", action="store_true",
-                    default=os.environ.get("PHOTONFLUX_RELOAD", "0") == "1",
-                    help="auto-restart when a .py source file changes")
+    # Auto-restart on .py edits. On by default so local dev "just refreshes";
+    # pass --no-reload (or set PHOTONFLUX_RELOAD=0, as the container does) to
+    # run a single plain process with no supervisor/watcher.
+    ap.add_argument("--reload", action=argparse.BooleanOptionalAction,
+                    default=os.environ.get("PHOTONFLUX_RELOAD", "1") == "1",
+                    help="auto-restart when a .py source file changes "
+                         "(default: on; use --no-reload to disable)")
     args = ap.parse_args()
 
     is_child = os.environ.get("PHOTONFLUX_RELOAD_CHILD") == "1"

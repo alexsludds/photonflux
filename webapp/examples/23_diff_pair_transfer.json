@@ -1,24 +1,26 @@
 {
   "title": "Differential pair",
   "group": "Electronics — analog",
-  "description": "differential pair: tanh transfer, sweep V(in+) with the tail current stepped 0.1/0.2/0.4 mA",
+  "description": "SKY130 NFET differential pair: tanh transfer, sweep V(in+) with the tail current stepped 0.1/0.2/0.4 mA",
   "schematic": {
     "notes": [
       {
         "x": 60,
-        "y": -173,
+        "y": -193,
         "title": "Differential pair — what this testbench does",
         "lines": [
-          "A MOS differential pair: MN1 and MN2 share a tail",
-          "current IT and load resistors RD1 = RD2 = 7.5 kohm to",
-          "VDD = 5 V. VCM holds MN2's gate at 2.5 V while the",
-          "sweep ramps VIN (MN1's gate) from 1.7 to 3.3 V.",
-          "The pair steers IT between the two sides as a tanh of",
-          "the input difference, so probes voutp and voutn split",
-          "apart and cross at VIN = VCM. IT is stepped",
-          "0.1/0.2/0.4 mA to show steeper transfer at more tail.",
+          "A SKY130 nfet_01v8 differential pair: MN1 and MN2",
+          "(W = 10 um, L = 0.15 um) share a tail current IT and",
+          "load resistors RD1 = RD2 = 4 kohm to VDD = 1.8 V. VCM",
+          "holds MN2's gate at 0.9 V while the sweep ramps VIN",
+          "(MN1's gate) from 0.5 to 1.3 V. The pair steers IT",
+          "between the two sides as a tanh of the input difference,",
+          "so probes voutp and voutn split apart and cross at",
+          "VIN = VCM. Both bulks are grounded (GBK1, GBK2). IT is",
+          "stepped 0.1/0.2/0.4 mA to show steeper transfer at more",
+          "tail.",
           "",
-          "Set VCM.V = 2.0 and re-run to move the crossover point."
+          "Set VCM.V = 0.8 and re-run to move the crossover point."
         ]
       }
     ],
@@ -29,7 +31,7 @@
         "y": 40,
         "rot": 0,
         "settings": {
-          "V": 5.0
+          "V": 1.8
         }
       },
       "GDD": {
@@ -45,7 +47,7 @@
         "y": 120,
         "rot": 0,
         "settings": {
-          "R": 7500.0
+          "R": 4000.0
         }
       },
       "RD2": {
@@ -54,34 +56,42 @@
         "y": 120,
         "rot": 0,
         "settings": {
-          "R": 7500.0
+          "R": 4000.0
         }
       },
       "MN1": {
-        "type": "nmos",
+        "type": "sky130_nfet",
         "x": 240,
         "y": 260,
         "rot": 0,
         "settings": {
-          "Kp": 2e-05,
-          "W": 0.0001,
-          "L": 1e-06,
-          "Vth": 1.0,
-          "lam": 0.0
+          "w_um": 10.0,
+          "l_um": 0.15
         }
       },
       "MN2": {
-        "type": "nmos",
+        "type": "sky130_nfet",
         "x": 440,
         "y": 260,
         "rot": 0,
         "settings": {
-          "Kp": 2e-05,
-          "W": 0.0001,
-          "L": 1e-06,
-          "Vth": 1.0,
-          "lam": 0.0
+          "w_um": 10.0,
+          "l_um": 0.15
         }
+      },
+      "GBK1": {
+        "type": "ground",
+        "x": 160,
+        "y": 300,
+        "rot": 0,
+        "settings": {}
+      },
+      "GBK2": {
+        "type": "ground",
+        "x": 540,
+        "y": 300,
+        "rot": 0,
+        "settings": {}
       },
       "IT": {
         "type": "idc",
@@ -105,7 +115,7 @@
         "y": 260,
         "rot": 0,
         "settings": {
-          "V": 2.5
+          "V": 0.9
         }
       },
       "GI": {
@@ -121,7 +131,7 @@
         "y": 260,
         "rot": 0,
         "settings": {
-          "V": 2.5
+          "V": 0.9
         }
       },
       "GC": {
@@ -178,6 +188,14 @@
         "to": "IT,p1"
       },
       {
+        "from": "MN1,b",
+        "to": "GBK1,p1"
+      },
+      {
+        "from": "MN2,b",
+        "to": "GBK2,p1"
+      },
+      {
         "from": "IT,p2",
         "to": "GT,p1"
       }
@@ -199,8 +217,8 @@
     "mode": "dcsweep",
     "instance": "VIN",
     "param": "V",
-    "start": 1.7,
-    "stop": 3.3,
+    "start": 0.5,
+    "stop": 1.3,
     "points": 161,
     "step_instance": "IT",
     "step_param": "I",

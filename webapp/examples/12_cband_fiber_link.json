@@ -1,17 +1,17 @@
 {
-  "title": "Fiber dispersion link",
+  "title": "C-band fiber link",
   "group": "Channels & equalization",
-  "description": "25 Gb/s over 20 km fiber: dispersion closes the direct-detect eye",
+  "description": "25 Gb/s over 20 km C-band fiber: dispersion closes the direct-detect eye",
   "schematic": {
     "notes": [
       {
         "x": 40,
         "y": -43,
-        "title": "Fiber dispersion link — what this testbench does",
+        "title": "C-band fiber link — what this testbench does",
         "lines": [
           "PAT1 sends a 25 Gb/s NRZ PRBS (ui=40ps) through MZM1,",
-          "then 20 km of fiber FIB1 (D=17 ps/nm/km at 1550nm)",
-          "to PD1 across RL1 (300 ohm).",
+          "then 20 km of C-band fiber FIB1 (D=17 ps/nm/km at 1550nm)",
+          "to PD1, whose photocurrent TIA1 (300 ohm) turns into vout.",
           "",
           "Chromatic dispersion spreads each pulse, so the",
           "direct-detect eye at vout closes; probes ptx/prx show",
@@ -115,30 +115,15 @@
         "rot": 0,
         "settings": {}
       },
-      "RL1": {
-        "type": "resistor",
+      "TIA1": {
+        "type": "tia",
         "x": 660,
-        "y": 190,
+        "y": 180,
         "rot": 0,
         "settings": {
-          "R": 300.0
+          "gain_ohm": 300.0,
+          "f3db": 40000000000.0
         }
-      },
-      "VB1": {
-        "type": "vdc",
-        "x": 760,
-        "y": 200,
-        "rot": 0,
-        "settings": {
-          "V": 1.8
-        }
-      },
-      "GNDB": {
-        "type": "ground",
-        "x": 760,
-        "y": 304,
-        "rot": 0,
-        "settings": {}
       }
     },
     "wires": [
@@ -175,20 +160,12 @@
         "to": "GNDO,p1"
       },
       {
-        "from": "PD1,an",
+        "from": "PD1,cat",
         "to": "GNDA,p1"
       },
       {
-        "from": "PD1,cat",
-        "to": "RL1,p1"
-      },
-      {
-        "from": "RL1,p2",
-        "to": "VB1,p1"
-      },
-      {
-        "from": "VB1,p2",
-        "to": "GNDB,p1"
+        "from": "PD1,an",
+        "to": "TIA1,inp"
       }
     ],
     "probes": [
@@ -204,7 +181,7 @@
       },
       {
         "name": "vout",
-        "at": "PD1,cat",
+        "at": "TIA1,out",
         "color": "#6ecbf5"
       }
     ]

@@ -13,7 +13,8 @@
           "sets MN1's drain (probe vdrv), which swings the MZM MZM1",
           "arm around Vpi = 3.3 V. CD1 is the drain load cap.",
           "MZM1 modulates laser LAS1; light goes down FIB1 to",
-          "photodiode PD1, then TIA OA1 + RF1 gives vout.",
+          "photodiode PD1, then dedicated TIA TIA1 (inp is a virtual",
+          "ground) recovers vout ~= -Iph * TIA1.gain_ohm.",
           "",
           "Set CD1.C = 5e-13 and re-run to see the vdrv edges slow",
           "and the received eye (vout) close from limited bandwidth."
@@ -62,20 +63,13 @@
         "rot": 0,
         "settings": {}
       },
-      "OA1": {
-        "type": "opamp",
+      "TIA1": {
+        "type": "tia",
         "x": 730,
         "y": 280,
         "rot": 0,
-        "settings": {}
-      },
-      "RF1": {
-        "type": "resistor",
-        "x": 730,
-        "y": 220,
-        "rot": 0,
         "settings": {
-          "R": 1000.0
+          "gain_ohm": 1000.0
         }
       },
       "V1": {
@@ -154,13 +148,6 @@
         "rot": 0,
         "settings": {}
       },
-      "GND4": {
-        "type": "ground",
-        "x": 740,
-        "y": 360,
-        "rot": 0,
-        "settings": {}
-      },
       "GND5": {
         "type": "ground",
         "x": 390,
@@ -207,17 +194,13 @@
       { "from": "CD1,p2", "to": "GND7,p1" },
       { "from": "PD1,po_n", "to": "GND3,p1" },
       { "from": "PD1,an", "to": "GND3,p1" },
-      { "from": "OA1,in_m", "to": "RF1,p1" },
-      { "from": "PD1,cat", "to": "OA1,in_m" },
-      { "from": "OA1,out_p", "to": "RF1,p2" },
-      { "from": "OA1,in_p", "to": "GND4,p1" },
-      { "from": "OA1,out_m", "to": "GND4,p1" }
+      { "from": "PD1,cat", "to": "TIA1,inp" }
     ],
     "probes": [
       { "name": "vin", "at": "VIN1,p1", "color": "#8a8aa3" },
       { "name": "vdrv", "at": "MN1,d", "color": "#f87171" },
       { "name": "popt_rx", "at": "PD1,po_p", "color": "#fbbf24" },
-      { "name": "vout", "at": "OA1,out_p", "color": "#6ecbf5" }
+      { "name": "vout", "at": "TIA1,out", "color": "#6ecbf5" }
     ]
   },
   "analysis": {

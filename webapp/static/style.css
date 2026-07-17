@@ -49,6 +49,12 @@ body { display: flex; flex-direction: column; }
 }
 #btn-run:hover { background: var(--accent2) !important; }
 #btn-run:disabled { opacity: .5; cursor: wait; }
+#btn-stop {
+  background: var(--err) !important; color: #fff !important;
+  font-weight: 700; border: none !important; padding: 5px 14px !important;
+}
+#btn-stop:hover { filter: brightness(1.1); }
+#btn-stop[hidden] { display: none; }
 #run-status { color: var(--text-dim); margin-left: 6px; min-width: 120px; }
 #run-status.err { color: var(--err); }
 #run-status.ok { color: var(--ok); }

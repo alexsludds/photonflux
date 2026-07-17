@@ -1,35 +1,32 @@
 {
   "title": "Traveling-wave MZM EO bandwidth",
   "group": "Lasers & modulators",
-  "description": "Electro-optic bandwidth of the traveling-wave MZM (models/optical_power/mzm_tw.va): a 50 Gb/s NRZ PRBS drives the distributed electrode of MZM at quadrature (vpi=1.5, vbias=0.75) and PD detects the optical output. On top of the quasi-static cos() transfer, mzm_tw imposes the two effects that set a real TW electrode's EO bandwidth: frequency-dependent electrode loss (pole at f_el = 35 GHz) and optical/RF velocity walk-off (pole at 0.443*c/(|n_rf-n_opt|*len) ~ 18 GHz for the default n_rf=2.4 vs n_opt=4.2 electrode). Their cascade gives an EO -3 dB bandwidth of ~15 GHz, so the 50 Gb/s optical eye (popt) and received eye (vout) are heavily closed. Set MZM.n_rf = 4.2 (velocity-matched) and re-run: the walk-off pole vanishes, only f_el limits (-3 dB ~ 35 GHz), and the eye springs open. The pinned physics studies are examples/mzm_tw_transient.py (step response + eye) and examples/mzm_tw_eo_bw.py (the network-analyser |H(f)| sweep).",
+  "description": "Electro-optic bandwidth of the traveling-wave MZM (models/optical_power/mzm_tw.va) as a network-analyser AC sweep: LAS1 holds the optical input CW, the model biases the electrode at quadrature (vbias=vpi/2), VE drives the electrode with a 1 V AC tone and PD detects the optical output. AC mode measures H(f) = v(out_eo) per volt of electrode drive — the modulator's small-signal EO response. On top of the quasi-static cos() transfer, mzm_tw imposes the two effects that set a real TW electrode's EO bandwidth: frequency-dependent electrode loss (pole at f_el = 35 GHz) and optical/RF velocity walk-off (pole at 0.443*c/(|n_rf-n_opt|*len) ~ 18 GHz for the default n_rf=2.4 vs n_opt=4.2 electrode). Their cascade gives an EO -3 dB bandwidth of ~15 GHz. Set MZM.n_rf = 4.2 (velocity-matched) and re-run: the walk-off pole vanishes, only f_el limits, and the -3 dB pushes out toward the electrode-loss corner. The pinned physics study is examples/mzm_tw_eo_bw.py (the same |H(f)| sweep, checked against the analytic pole cascade).",
   "schematic": {
     "notes": [
       {
         "x": 40,
-        "y": -40,
-        "title": "Traveling-wave MZM EO bandwidth — what this shows",
+        "y": -170,
+        "title": "Traveling-wave MZM EO bandwidth — AC sweep",
         "lines": [
-          "LAS1 (1 mW CW) feeds the traveling-wave MZM (MZM,",
-          "mzm_tw). PAT1 drives the electrode with a 50 Gb/s NRZ",
-          "PRBS (order 9, ui=20 ps) at quadrature (vpi=1.5,",
-          "vbias=0.75, so the drive swings 0 -> vpi). PD detects",
-          "across RL (200 ohm, fast RC) into VB bias.",
+          "LAS1 (1 mW CW) feeds the traveling-wave MZM",
+          "(MZM, mzm_tw), biased at quadrature by the",
+          "model's own vbias = vpi/2. VE drives the",
+          "electrode with a 1 V AC tone; PD detects the",
+          "optical output across RL into the VB bias.",
           "",
-          "mzm_tw adds a REAL electrode's EO bandwidth on top of",
-          "the cos() transfer: electrode-loss pole f_el = 35 GHz",
-          "and velocity walk-off pole f_w = 0.443*c/(|n_rf-n_opt|",
-          "*len) ~ 18 GHz for the default walk-off electrode",
-          "(n_rf=2.4, n_opt=4.2, len=4 mm). Their cascade -> EO",
-          "-3 dB ~ 15 GHz, so the 50 Gb/s eye is nearly shut.",
+          "AC mode measures H(f) = v(out_eo) per volt of",
+          "electrode drive — the modulator's small-signal",
+          "EO response. mzm_tw rolls it off with an",
+          "electrode-loss pole (f_el = 35 GHz) and a",
+          "velocity walk-off pole (f_w ~ 18 GHz for the",
+          "default n_rf=2.4 vs n_opt=4.2, len=4 mm), so",
+          "the cascade gives a -3 dB EO BW of ~15 GHz.",
           "",
-          "Probe popt = optical eye at the MZM output, vout =",
-          "received electrical eye. Open the Eye tab to fold them.",
-          "",
-          "Set MZM.n_rf = 4.2 (velocity-matched): T_w -> 0 kills",
-          "the walk-off pole, only f_el limits, and the eye opens.",
-          "Raise PAT1.ui to 4e-11 (25 Gb/s) to open it the other",
-          "way. Pinned physics: examples/mzm_tw_transient.py and",
-          "examples/mzm_tw_eo_bw.py."
+          "Set MZM.n_rf = 4.2 (velocity-matched): the",
+          "walk-off pole vanishes and the -3 dB pushes",
+          "out toward the electrode-loss corner. Pinned",
+          "physics: examples/mzm_tw_eo_bw.py."
         ]
       }
     ],
@@ -50,17 +47,13 @@
         "rot": 0,
         "settings": {}
       },
-      "PAT1": {
-        "type": "prbs",
+      "VE": {
+        "type": "vdc",
         "x": 180,
         "y": 300,
         "rot": 0,
         "settings": {
-          "ui": 2e-11,
-          "order": 9,
-          "v0": -0.75,
-          "v1": 0.75,
-          "tr": 4e-12
+          "V": 0.0
         }
       },
       "GNDP": {
@@ -153,11 +146,11 @@
         "to": "GNDL,p1"
       },
       {
-        "from": "PAT1,p1",
+        "from": "VE,p1",
         "to": "MZM,vp"
       },
       {
-        "from": "PAT1,p2",
+        "from": "VE,p2",
         "to": "GNDP,p1"
       },
       {
@@ -195,20 +188,22 @@
     ],
     "probes": [
       {
-        "name": "popt",
-        "at": "MZM,pout",
+        "name": "in_eo",
+        "at": "MZM,vp",
         "color": "#e6862c"
       },
       {
-        "name": "vout",
+        "name": "out_eo",
         "at": "PD,cat",
         "color": "#6ecbf5"
       }
     ]
   },
   "analysis": {
-    "mode": "transient",
-    "t_stop": 6.4e-09,
-    "points": 4000
+    "mode": "ac",
+    "f_start": 100000000.0,
+    "f_stop": 200000000000.0,
+    "points": 161,
+    "z0": 50
   }
 }

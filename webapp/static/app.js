@@ -1689,10 +1689,11 @@ function renderPlots(res) {
                 sync: { key: "photonflux", setSeries: false } },
       legend: { live: true },
     };
-    // AC dB plots: dashed 0 dB reference — |h21| crossing it marks f_T
+    // AC dB plots: dashed 0 dB reference — |h21| crossing it marks f_T, and
+    // for a normalised EO |H(f)| it marks the passband the -3 dB is measured from
     const withZeroRef = res.kind === "ac" && unit === "dB" && pref.y === "linear";
     if (withZeroRef) {
-      opts.series.push({ label: "0 dB (fT crossing)", stroke: "#8a8aa3",
+      opts.series.push({ label: "0 dB ref", stroke: "#8a8aa3",
                          width: 1, dash: [6, 5],
                          value: () => "" });
     }

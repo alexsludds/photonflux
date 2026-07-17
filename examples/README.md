@@ -22,14 +22,18 @@ modulation happens in modulators (`cx.mzm()`, or the ideal `PulseModulator` in
 | [`wg_fwm.py`](wg_fwm.py) | χ(3) four-wave mixing in a waveguide, pinned to every textbook scaling | "χ(3) four-wave mixing" |
 | [`ring_fwm.py`](ring_fwm.py) | four-wave mixing **inside** a Kerr ring resonator | "Kerr ring four-wave mixing" |
 | [`ring_selfheat.py`](ring_selfheat.py) | **thermo-optic bistability** of a self-heating ring — the laser wavelength ramped up then down traces a hysteresis loop | — |
-| [`mzm_tw_transient.py`](mzm_tw_transient.py) | **electro-optic bandwidth** of the traveling-wave MZM (`mzm_tw.va`): step-response rise time and a full-swing NRZ eye, velocity-matched vs walk-off electrode | `mzm_tw` |
-| [`mzm_tw_eo_bw.py`](mzm_tw_eo_bw.py) | **electro-optic frequency response** of the traveling-wave MZM — a network-analyser-style tone sweep pins |H(f)|, phase, the -3 dB EO bandwidth, velocity-match / walk-off (`f_w ∝ 1/ℓ`) and pole-count roll-off against the model's pole cascade | — |
+| [`mzm_tw_transient.py`](mzm_tw_transient.py) | **electro-optic bandwidth** of the traveling-wave MZM (`mzm_tw.va`): step-response rise time and a full-swing NRZ eye, velocity-matched vs walk-off electrode | example 42 |
+| [`mzm_tw_eo_bw.py`](mzm_tw_eo_bw.py) | **electro-optic frequency response** of the traveling-wave MZM — a network-analyser-style tone sweep pins |H(f)|, phase, the -3 dB EO bandwidth, velocity-match / walk-off (`f_w ∝ 1/ℓ`) and pole-count roll-off against the model's pole cascade | example 42 |
 
-The last six have a browser twin (the named web-app examples 36–41): the
+The last seven have a browser twin (the named web-app examples 36–42): the
 script is the pinned physics study, the web-app example is the same circuit to
 click through. Example 41 drives the ring's wavelength node with a PWL source
 so the transient sweeps forward then back — the through-port hysteresis loop is
-the same one this script plots.
+the same one this script plots. Example 42 drives the traveling-wave MZM with a
+50 Gb/s NRZ PRBS at quadrature: the walk-off + electrode-loss poles close the
+optical/received eye, and flipping `MZM.n_rf` to `n_opt` (velocity match) reopens
+it — the same EO bandwidth these two scripts measure as a rise time and an |H(f)|
+sweep.
 
 ```bash
 .venv-circulax/bin/python examples/photodiode_tia.py    # -> out/photodiode_tia.png

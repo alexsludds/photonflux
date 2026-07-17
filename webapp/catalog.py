@@ -150,6 +150,7 @@ CATALOG: dict[str, dict] = {
     "mzm_tw": {
         "label": "MZM Traveling-Wave (VA)",
         "category": "Modulators",
+        "stiff": True,   # ps electrode ddt poles (~4.5 ps): default to BDF2
         "doc": "models/optical_power/mzm_tw.va — traveling-wave MZM. On top of the "
                "quasi-static cos() transfer it models the two effects that "
                "set a real TW electrode's EO bandwidth: frequency-dependent "

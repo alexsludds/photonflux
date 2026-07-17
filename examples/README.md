@@ -15,6 +15,7 @@ modulation happens in modulators (`cx.mzm()`, or the ideal `PulseModulator` in
 | [`link_cmos.py`](link_cmos.py) | full CW + MZM link, transistor driver + CMOS-inverter TIA (no PDK needed) | example 02 |
 | [`link_sky130.py`](link_sky130.py) | the same link with **real SKY130 BSIM4 FETs** (`cx.sky130_fet`) | — |
 | [`ring_mod_sky130.py`](ring_mod_sky130.py) | Verilog-A microring modulator driven by a SKY130 inverter; DC tuning + optical eye (`--baud`, `--kappa2`) | example 03 |
+| [`ring_eo_response.py`](ring_eo_response.py) | small-signal **electro-optic frequency response** of the same ring — swept-tone lock-in vs the analytic photon-lifetime rolloff, f_3dB ~ 44 GHz (`--kappa2`, `--rs`) | — |
 | [`soa_fp_laser.py`](soa_fp_laser.py) | Fabry-Perot laser from an SOA between two mirrors — lasing emerges from the loop | "SOA Fabry-Perot laser" |
 | [`soa_vernier_laser.py`](soa_vernier_laser.py) | Vernier laser seeded by ASE noise, with a live one-FSR mode hop | "Vernier laser mode hop" |
 | [`ring_tpa_q.py`](ring_tpa_q.py) | TPA + free-carrier absorption capping a high-Q ring | "TPA-limited high-Q ring" |

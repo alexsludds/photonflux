@@ -7,12 +7,12 @@
       {
         "x": 40,
         "y": -20,
-        "title": "PAM4 RLM link — what this testbench does",
+        "title": "PAM4 RLM link \u2014 what this testbench does",
         "lines": [
           "PRBS PAM4 source (PAT1) drives an MZM; the photodiode (PD1)",
           "recovers it across a load. The MZM's transfer is a sine,",
           "T = 0.5 + 0.5*sin(pi*V/Vpi), so evenly-spaced DRIVE levels",
-          "become UNEVEN optical levels — the two inner PAM4 eyes squash.",
+          "become UNEVEN optical levels \u2014 the two inner PAM4 eyes squash.",
           "",
           "RLM adjust:  PAT1.rlm_vpi (= 1.5, matched to MZM Vpi) pre-warps",
           "the 4 drive levels so the OPTICAL eye (probe popt) comes out",
@@ -192,9 +192,7 @@
     "t_stop": 1.024e-07,
     "points": 12000,
     "link": {
-      "probe": "vout",
-      "ffe_taps": 0,
-      "dfe_taps": 0
+      "probe": "vout"
     }
   }
 }

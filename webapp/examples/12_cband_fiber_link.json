@@ -7,7 +7,7 @@
       {
         "x": 40,
         "y": -43,
-        "title": "C-band fiber link — what this testbench does",
+        "title": "C-band fiber link \u2014 what this testbench does",
         "lines": [
           "PAT1 sends a 25 Gb/s NRZ PRBS (ui=40ps) through MZM1,",
           "then 20 km of C-band fiber FIB1 (D=17 ps/nm/km at 1550nm)",
@@ -16,7 +16,7 @@
           "Chromatic dispersion spreads each pulse, so the",
           "direct-detect eye at vout closes; probes ptx/prx show",
           "the optical waveform before and after the fiber. The",
-          "link FFE (5 taps) + DFE (1 tap) tries to recover it.",
+          "inline Rx FFE (5 taps) + Rx DFE (1 tap) try to recover it.",
           "Set FIB1.length_km = 0 and re-run to remove dispersion",
           "and watch the eye snap open."
         ]
@@ -124,6 +124,24 @@
           "gain_ohm": 300.0,
           "f3db": 40000000000.0
         }
+      },
+      "RXFFE1": {
+        "type": "rx_ffe",
+        "x": 780,
+        "y": 180,
+        "rot": 0,
+        "settings": {
+          "n_taps": 5
+        }
+      },
+      "RXDFE1": {
+        "type": "rx_dfe",
+        "x": 900,
+        "y": 180,
+        "rot": 0,
+        "settings": {
+          "n_taps": 1
+        }
       }
     },
     "wires": [
@@ -166,6 +184,14 @@
       {
         "from": "PD1,an",
         "to": "TIA1,inp"
+      },
+      {
+        "from": "TIA1,out",
+        "to": "RXFFE1,inp"
+      },
+      {
+        "from": "RXFFE1,out",
+        "to": "RXDFE1,inp"
       }
     ],
     "probes": [
@@ -181,7 +207,7 @@
       },
       {
         "name": "vout",
-        "at": "TIA1,out",
+        "at": "RXDFE1,out",
         "color": "#6ecbf5"
       }
     ]
@@ -191,9 +217,7 @@
     "t_stop": 1.28e-08,
     "points": 8000,
     "link": {
-      "probe": "vout",
-      "ffe_taps": 5,
-      "dfe_taps": 1
+      "probe": "vout"
     }
   }
 }

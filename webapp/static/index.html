@@ -47,10 +47,6 @@
         </select>
       </label>
       <label>max&nbsp;dt <input id="an-dtmax" type="text" value="" size="5" placeholder="auto"> s</label>
-      <label title="BER/Q link report against the PRBS source's known data — pick the received probe. FFE/DFE taps are data-aided least-squares (0 = off).">
-        BER&nbsp;vs <select id="an-link-probe"><option value="">—</option></select></label>
-      <label>FFE <input id="an-link-ffe" type="text" value="0" size="2"></label>
-      <label>DFE <input id="an-link-dfe" type="text" value="0" size="2"></label>
       <label title="Transient noise: photodiode shot noise, laser RIN (set rin_db < 0 on the CW laser) and TIA input noise, band-limited to bw. N seeds re-run the compiled circuit; the eye and BER report pool all seeds.">
         noise <input id="an-nz-seeds" type="text" value="" size="2"
           placeholder="off"> seeds</label>
@@ -211,7 +207,14 @@
       <canvas id="eye-canvas" width="900" height="420"></canvas>
       <div id="eye-hint" class="insp-empty" hidden></div>
     </div>
-    <div id="tab-link" class="rpane"></div>
+    <div id="tab-link" class="rpane">
+      <div id="link-controls">
+        <label title="BER/Q link report against the PRBS source's known data — pick the received probe (needs a PRBS source). Drop Rx FFE / Rx DFE blocks on the receive path to equalize.">
+          BER&nbsp;vs <select id="link-probe"><option value="">—</option></select></label>
+        <span class="link-hint">pick a received probe, then Run</span>
+      </div>
+      <div id="link-report"></div>
+    </div>
     <div id="tab-op" class="rpane"></div>
     <div id="tab-log" class="rpane"><pre id="log-pre"></pre></div>
   </div>

@@ -7,7 +7,7 @@
       {
         "x": 100,
         "y": -23,
-        "title": "CTLE copper channel — what this testbench does",
+        "title": "CTLE copper channel \u2014 what this testbench does",
         "lines": [
           "PAT1 drives a 10 Gb/s NRZ PRBS (ui=100ps) into CH1,",
           "a lossy copper channel (12 dB loss at 5 GHz Nyquist).",
@@ -121,9 +121,7 @@
     "t_stop": 5.12e-08,
     "points": 8000,
     "link": {
-      "probe": "vout",
-      "ffe_taps": 0,
-      "dfe_taps": 0
+      "probe": "vout"
     }
   }
 }

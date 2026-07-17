@@ -7,7 +7,7 @@
       {
         "x": 40,
         "y": -43,
-        "title": "O-band fiber link — what this testbench does",
+        "title": "O-band fiber link \u2014 what this testbench does",
         "lines": [
           "Same 25 Gb/s / 20 km link as the C-band case, but LAS1",
           "runs at 1311 nm. PAT1 -> MZM1 -> FIB1 (fiber) -> PD1",
@@ -129,6 +129,24 @@
           "vmax": 0.0,
           "in_noise": 0.0
         }
+      },
+      "RXFFE1": {
+        "type": "rx_ffe",
+        "x": 780,
+        "y": 155,
+        "rot": 0,
+        "settings": {
+          "n_taps": 5
+        }
+      },
+      "RXDFE1": {
+        "type": "rx_dfe",
+        "x": 900,
+        "y": 155,
+        "rot": 0,
+        "settings": {
+          "n_taps": 1
+        }
       }
     },
     "wires": [
@@ -171,6 +189,14 @@
       {
         "from": "PD1,cat",
         "to": "TIA1,inp"
+      },
+      {
+        "from": "TIA1,out",
+        "to": "RXFFE1,inp"
+      },
+      {
+        "from": "RXFFE1,out",
+        "to": "RXDFE1,inp"
       }
     ],
     "probes": [
@@ -186,7 +212,7 @@
       },
       {
         "name": "vout",
-        "at": "TIA1,out",
+        "at": "RXDFE1,out",
         "color": "#6ecbf5"
       }
     ]
@@ -196,9 +222,7 @@
     "t_stop": 1.28e-08,
     "points": 8000,
     "link": {
-      "probe": "vout",
-      "ffe_taps": 5,
-      "dfe_taps": 1
+      "probe": "vout"
     }
   }
 }

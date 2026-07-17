@@ -931,7 +931,7 @@ $("sel-analysis").addEventListener("change", () => {
 
 // probe selects for the link-report / pulse-COM / noise controls
 function updateProbeSelectors() {
-  for (const [id, blank] of [["an-link-probe", true], ["an-pl-probe", false],
+  for (const [id, blank] of [["link-probe", true], ["an-pl-probe", false],
                              ["an-nq-probe", false]]) {
     const sel = $(id);
     const prev = sel.value;
@@ -1000,7 +1000,7 @@ function fillParamOptions(instSelId, paramSelId) {
   if ([...paramSel.options].some((o) => o.value === prev)) paramSel.value = prev;
 }
 // probes may be added after the mode was selected — refresh on focus
-$("an-link-probe").addEventListener("focus", updateProbeSelectors);
+$("link-probe").addEventListener("focus", updateProbeSelectors);
 $("an-pl-probe").addEventListener("focus", updateProbeSelectors);
 $("an-nq-probe").addEventListener("focus", updateProbeSelectors);
 
@@ -1280,12 +1280,10 @@ function collectAnalysisBase() {
   if (solver) a.solver = solver;
   const dtmax = parseSI($("an-dtmax").value);
   if (!isNaN(dtmax) && dtmax > 0) a.dtmax = dtmax;
-  const lp = $("an-link-probe").value;
-  if (lp) {
-    a.link = { probe: lp,
-               ffe_taps: parseInt($("an-link-ffe").value) || 0,
-               dfe_taps: parseInt($("an-link-dfe").value) || 0 };
-  }
+  // "BER vs" probe lives in the Link results tab now; FFE/DFE tap counts come
+  // from Rx FFE / Rx DFE blocks placed on the schematic (read server-side).
+  const lp = $("link-probe").value;
+  if (lp) a.link = { probe: lp };
   const nzSeeds = parseInt($("an-nz-seeds").value);
   if (nzSeeds >= 1) {
     a.noise = { seeds: nzSeeds, bw: parseSI($("an-nz-bw").value) || 50e9 };
@@ -1306,9 +1304,7 @@ function applyAnalysis(a) {
     $("an-solver").value = a.solver || "";
     $("an-dtmax").value = a.dtmax ? fmtSI(a.dtmax) : "";
     updateProbeSelectors();
-    $("an-link-probe").value = a.link?.probe || "";
-    $("an-link-ffe").value = a.link?.ffe_taps ?? 0;
-    $("an-link-dfe").value = a.link?.dfe_taps ?? 0;
+    $("link-probe").value = a.link?.probe || "";
     $("an-nz-seeds").value = a.noise?.seeds || "";
     $("an-nz-bw").value = a.noise?.bw ? fmtSI(a.noise.bw) : "50G";
   } else if (a.mode === "optimize") {
@@ -2055,7 +2051,7 @@ function renderEye() {
 // link report tab: BER/Q metrics + bathtub (transient) or pulse/COM (pulse)
 // ---------------------------------------------------------------------------
 function renderLink() {
-  const holder = $("tab-link");
+  const holder = $("link-report");
   holder.innerHTML = "";
   const opt = lastResult?.optim;
   if (opt) {
@@ -2092,14 +2088,19 @@ function renderLink() {
   if (opt && !rep && !pul) return;
   if (!rep && !pul) {
     holder.innerHTML = `<div class="insp-empty" style="padding:16px">
-      No link report. Transient: pick a received probe in the toolbar's
-      &ldquo;BER vs&rdquo; select (needs a PRBS source). Or run the
-      Pulse&nbsp;/&nbsp;COM analysis.</div>`;
+      No link report. Transient: pick a received probe in the
+      &ldquo;BER vs&rdquo; select above (needs a PRBS source), then Run.
+      Drop Rx&nbsp;FFE / Rx&nbsp;DFE blocks on the receive path to equalize.
+      Or run the Pulse&nbsp;/&nbsp;COM analysis.</div>`;
     return;
   }
   const fmtTaps = (taps) => taps.map((v) => v.toFixed(3)).join(", ") || "—";
   if (rep) {
     const c = rep.counted, q = rep.qfit;
+    const eqMode = rep.adaptive
+      ? ` <span class="link-hint">(LMS, rate ${rep.adapt_rate})</span>`
+      : (rep.ffe_taps.length > 1 || rep.dfe_taps.length
+        ? ' <span class="link-hint">(least-squares)</span>' : "");
     const berTxt = c.bit_errors === 0
       ? `0 / ${c.bits} bits (< ${(1 / c.bits).toExponential(1)})`
       : `${c.bit_errors} / ${c.bits} bits = ${c.ber.toExponential(2)}`;
@@ -2117,7 +2118,7 @@ function renderLink() {
           <tr><th>Q-fit BER</th><td>${q.ber_est.toExponential(2)}</td></tr>
           <tr><th>levels</th><td>${q.levels.map((x) => fmtSI(x)).join(" / ")}</td></tr>`
           : `<tr><th>Q fit</th><td>${q.reason || "failed"}</td></tr>`}
-          <tr><th>RX FFE taps</th><td>${fmtTaps(rep.ffe_taps)}</td></tr>
+          <tr><th>RX FFE taps</th><td>${fmtTaps(rep.ffe_taps)}${eqMode}</td></tr>
           <tr><th>RX DFE taps</th><td>${fmtTaps(rep.dfe_taps)}</td></tr>
         </table>
         <div id="link-plot"></div>

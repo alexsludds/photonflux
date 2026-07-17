@@ -105,6 +105,41 @@ def _ls_equalize(y: np.ndarray, a: np.ndarray, n_ffe: int, n_dfe: int,
     return eq, ffe, dfe
 
 
+def _lms_equalize(y: np.ndarray, a: np.ndarray, n_ffe: int, n_dfe: int,
+                  skip: int, mu: float) -> tuple[np.ndarray, np.ndarray,
+                                                 np.ndarray]:
+    """Data-aided normalized-LMS FFE(+DFE) at step size ``mu``.
+
+    Same regressor as :func:`_ls_equalize` but the taps adapt symbol-by-symbol
+    (the receiver's real adaptation loop) instead of a one-shot Wiener solve.
+    The FFE centre tap is seeded to 1 so an unconverged loop still passes the
+    signal through. Returns the a-priori equalized stream aligned with
+    ``a[start:]`` plus the final tap vectors.
+    """
+    n = min(len(y), len(a))
+    y, a = y[:n], a[:n]
+    if n_ffe <= 0:
+        return y, np.array([1.0]), np.zeros(0)
+    pre = n_ffe // 2
+    w = np.zeros(n_ffe)
+    w[min(pre, n_ffe - 1)] = 1.0
+    b = np.zeros(n_dfe)
+    eq = []
+    eps = 1e-9
+    for k in range(skip + n_ffe + n_dfe, n):
+        yv = np.array([y[k - i + pre] if 0 <= k - i + pre < n else 0.0
+                       for i in range(n_ffe)])
+        av = np.array([a[k - 1 - j] for j in range(n_dfe)])
+        out = float(w @ yv + b @ av)         # a-priori decision statistic
+        err = a[k] - out
+        norm = float(yv @ yv + av @ av) + eps
+        step = mu * err / norm
+        w = w + step * yv
+        b = b + step * av
+        eq.append(out)
+    return np.asarray(eq), w, b
+
+
 def _qfit(eq: np.ndarray, tx: np.ndarray, nlv: int) -> dict:
     """Per-eye Gaussian Q fit on equalized samples grouped by known symbol."""
     lv_fracs = np.linspace(0, 1, nlv)
@@ -227,7 +262,12 @@ def link_report(result: dict, meta: dict, cfg: dict, log: list) -> dict | None:
     phase, lag, corr = _align(samples0, tx, osr, skip)
     n_ffe = int(cfg.get("ffe_taps", 0))
     n_dfe = int(cfg.get("dfe_taps", 0))
-    start = skip + (n_ffe + n_dfe if n_ffe > 0 else 0)
+    mu = float(cfg.get("ffe_mu", 0.0)) or float(cfg.get("dfe_mu", 0.0))
+    # a DFE placed without an FFE still equalizes: give it a single main tap
+    if n_dfe > 0 and n_ffe == 0:
+        n_ffe = 1
+    eq_active = n_ffe > 0
+    start = skip + (n_ffe + n_dfe if eq_active else 0)
 
     eq_all, a_all = [], []
     ffe, dfe = np.array([1.0]), np.zeros(0)
@@ -237,8 +277,12 @@ def link_report(result: dict, meta: dict, cfg: dict, log: list) -> dict | None:
         m = min(len(y) - lag, nsym_rec)
         y_k = y[lag: lag + m]
         a_k = tx[:m]
-        if n_ffe > 0:
-            eq_i, ffe_i, dfe_i = _ls_equalize(y_k, a_k, n_ffe, n_dfe, skip)
+        if eq_active:
+            if mu > 0.0:
+                eq_i, ffe_i, dfe_i = _lms_equalize(y_k, a_k, n_ffe, n_dfe,
+                                                   skip, mu)
+            else:
+                eq_i, ffe_i, dfe_i = _ls_equalize(y_k, a_k, n_ffe, n_dfe, skip)
             if i == 0:
                 ffe, dfe = ffe_i, dfe_i
         else:
@@ -253,9 +297,15 @@ def link_report(result: dict, meta: dict, cfg: dict, log: list) -> dict | None:
     tub = _bathtub(samples0, tx, osr, phase, lag, skip, nlv)
 
     seed_tag = f" x {len(trs)} seeds" if len(trs) > 1 else ""
+    eq_tag = ""
+    if eq_active:
+        eq_tag = (f"; {'LMS' if mu > 0 else 'LS'} EQ "
+                  f"{n_ffe}-tap FFE + {n_dfe}-tap DFE"
+                  + (f" (mu {mu:g})" if mu > 0 else ""))
     log.append(f"link report: {counted['symbols']} symbols{seed_tag} @ phase "
                f"{phase}/{osr}, lag {lag} UI (corr {corr:.3f}); counted BER "
-               f"{counted['ber']:.3g}, Q-fit BER {qfit.get('ber_est', 0):.3g}")
+               f"{counted['ber']:.3g}, Q-fit BER "
+               f"{qfit.get('ber_est', 0):.3g}{eq_tag}")
     return {
         "pattern": pat_inst, "probe": probe, "ui": ui, "nlv": nlv,
         "sampling_phase_ui": phase / osr, "lag_ui": lag, "corr": corr,
@@ -263,6 +313,7 @@ def link_report(result: dict, meta: dict, cfg: dict, log: list) -> dict | None:
         "counted": counted, "qfit": qfit, "bathtub": tub,
         "ffe_taps": [float(x) for x in ffe],
         "dfe_taps": [float(x) for x in dfe],
+        "adapt_rate": mu, "adaptive": bool(mu > 0.0),
         "skip": skip,
     }
 

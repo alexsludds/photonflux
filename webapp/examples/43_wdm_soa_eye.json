@@ -1,0 +1,741 @@
+{
+  "title": "WDM through an SOA (saturation + SNR)",
+  "group": "WDM & crosstalk",
+  "description": "3-channel WDM bus amplified by one shared SOA: shows gain-saturation cross-gain-modulation crosstalk and the weak-input OSNR penalty on the eye.",
+  "analysis": {
+    "mode": "transient",
+    "t_stop": 6.4e-09,
+    "points": 8000,
+    "dtmax": 2e-13,
+    "noise": {
+      "seeds": 1,
+      "bw": 100000000000.0
+    }
+  },
+  "schematic": {
+    "instances": {
+      "LAS1": {
+        "type": "cw_laser",
+        "x": 40,
+        "y": 60,
+        "rot": 0,
+        "settings": {
+          "wavelength_nm": 1309.6,
+          "power": 1.5e-05,
+          "ref_wavelength_nm": 1310.0,
+          "phase": 0.0
+        }
+      },
+      "GL1": {
+        "type": "ground",
+        "x": 20,
+        "y": 144,
+        "rot": 0,
+        "settings": {}
+      },
+      "MZM1": {
+        "type": "mzm",
+        "x": 220,
+        "y": 50,
+        "rot": 0,
+        "settings": {
+          "vpi": 1.5,
+          "vbias": 0.75,
+          "il_db": 3.0,
+          "er_db": 20.0
+        }
+      },
+      "GM1": {
+        "type": "ground",
+        "x": 250,
+        "y": 144,
+        "rot": 0,
+        "settings": {}
+      },
+      "PAT1": {
+        "type": "prbs",
+        "x": 120,
+        "y": 180,
+        "rot": 0,
+        "settings": {
+          "ui": 1e-10,
+          "order": 7,
+          "v0": -0.75,
+          "v1": 0.75,
+          "tr": 2.5e-11,
+          "seed": 1
+        }
+      },
+      "GP1": {
+        "type": "ground",
+        "x": 100,
+        "y": 260,
+        "rot": 0,
+        "settings": {}
+      },
+      "LAS2": {
+        "type": "cw_laser",
+        "x": 40,
+        "y": 260,
+        "rot": 0,
+        "settings": {
+          "wavelength_nm": 1310.0,
+          "power": 1.5e-05,
+          "ref_wavelength_nm": 1310.0,
+          "phase": 1.9
+        }
+      },
+      "GL2": {
+        "type": "ground",
+        "x": 20,
+        "y": 344,
+        "rot": 0,
+        "settings": {}
+      },
+      "MZM2": {
+        "type": "mzm",
+        "x": 220,
+        "y": 250,
+        "rot": 0,
+        "settings": {
+          "vpi": 1.5,
+          "vbias": 0.75,
+          "il_db": 3.0,
+          "er_db": 20.0
+        }
+      },
+      "GM2": {
+        "type": "ground",
+        "x": 250,
+        "y": 344,
+        "rot": 0,
+        "settings": {}
+      },
+      "PAT2": {
+        "type": "prbs",
+        "x": 120,
+        "y": 380,
+        "rot": 0,
+        "settings": {
+          "ui": 1e-10,
+          "order": 9,
+          "v0": -0.75,
+          "v1": 0.75,
+          "tr": 2.5e-11,
+          "seed": 2
+        }
+      },
+      "GP2": {
+        "type": "ground",
+        "x": 100,
+        "y": 460,
+        "rot": 0,
+        "settings": {}
+      },
+      "LAS3": {
+        "type": "cw_laser",
+        "x": 40,
+        "y": 460,
+        "rot": 0,
+        "settings": {
+          "wavelength_nm": 1310.4,
+          "power": 1.5e-05,
+          "ref_wavelength_nm": 1310.0,
+          "phase": 3.7
+        }
+      },
+      "GL3": {
+        "type": "ground",
+        "x": 20,
+        "y": 544,
+        "rot": 0,
+        "settings": {}
+      },
+      "MZM3": {
+        "type": "mzm",
+        "x": 220,
+        "y": 450,
+        "rot": 0,
+        "settings": {
+          "vpi": 1.5,
+          "vbias": 0.75,
+          "il_db": 3.0,
+          "er_db": 20.0
+        }
+      },
+      "GM3": {
+        "type": "ground",
+        "x": 250,
+        "y": 544,
+        "rot": 0,
+        "settings": {}
+      },
+      "PAT3": {
+        "type": "prbs",
+        "x": 120,
+        "y": 580,
+        "rot": 0,
+        "settings": {
+          "ui": 1e-10,
+          "order": 11,
+          "v0": -0.75,
+          "v1": 0.75,
+          "tr": 2.5e-11,
+          "seed": 3
+        }
+      },
+      "GP3": {
+        "type": "ground",
+        "x": 100,
+        "y": 660,
+        "rot": 0,
+        "settings": {}
+      },
+      "CMB1": {
+        "type": "splitter",
+        "x": 400,
+        "y": 120,
+        "rot": 0,
+        "flip": true,
+        "settings": {
+          "split_ratio": 0.5
+        }
+      },
+      "CMB2": {
+        "type": "splitter",
+        "x": 520,
+        "y": 250,
+        "rot": 0,
+        "flip": true,
+        "settings": {
+          "split_ratio": 0.5
+        }
+      },
+      "VOA": {
+        "type": "waveguide",
+        "x": 640,
+        "y": 250,
+        "rot": 0,
+        "settings": {
+          "length_m": 0.01,
+          "loss_dB_cm": 0.0,
+          "neff": 2.4,
+          "n_group": 4.0,
+          "center_wavelength_nm": 1310.0,
+          "wavelength_nm": 1310.0
+        }
+      },
+      "SOA1": {
+        "type": "soa",
+        "x": 780,
+        "y": 240,
+        "rot": 0,
+        "settings": {
+          "g0_db": 20.0,
+          "i_op_ma": 80.0,
+          "p_sat": 0.01,
+          "tau_bw": 1e-12
+        }
+      },
+      "VBS": {
+        "type": "vdc",
+        "x": 760,
+        "y": 120,
+        "rot": 0,
+        "settings": {
+          "V": 1.44
+        }
+      },
+      "GVS": {
+        "type": "ground",
+        "x": 740,
+        "y": 60,
+        "rot": 0,
+        "settings": {}
+      },
+      "GS": {
+        "type": "ground",
+        "x": 820,
+        "y": 360,
+        "rot": 0,
+        "settings": {}
+      },
+      "TTB": {
+        "type": "opt_term",
+        "x": 700,
+        "y": 330,
+        "rot": 0,
+        "settings": {}
+      },
+      "TTC": {
+        "type": "opt_term",
+        "x": 700,
+        "y": 370,
+        "rot": 0,
+        "settings": {}
+      },
+      "ASE1": {
+        "type": "ase_src",
+        "x": 940,
+        "y": 230,
+        "rot": 0,
+        "settings": {
+          "s_ase_dbm_hz": -144.0
+        }
+      },
+      "FLT1": {
+        "type": "opt_filter",
+        "x": 1080,
+        "y": 200,
+        "rot": 0,
+        "settings": {
+          "center_nm": 1309.6,
+          "bandwidth_nm": 0.2,
+          "order": 3.0,
+          "il_db": 0.0,
+          "lambda_nm": 1310.0
+        }
+      },
+      "PD1": {
+        "type": "photodiode",
+        "x": 1070,
+        "y": 360,
+        "rot": 0,
+        "settings": {
+          "R": 0.8,
+          "Cj": 4e-14
+        }
+      },
+      "GO1": {
+        "type": "ground",
+        "x": 1040,
+        "y": 460,
+        "rot": 0,
+        "settings": {}
+      },
+      "GA1": {
+        "type": "ground",
+        "x": 1110,
+        "y": 480,
+        "rot": 0,
+        "settings": {}
+      },
+      "RL1": {
+        "type": "resistor",
+        "x": 1150,
+        "y": 370,
+        "rot": 0,
+        "settings": {
+          "R": 300.0
+        }
+      },
+      "VB1": {
+        "type": "vdc",
+        "x": 1230,
+        "y": 380,
+        "rot": 0,
+        "settings": {
+          "V": 1.8
+        }
+      },
+      "GB1": {
+        "type": "ground",
+        "x": 1230,
+        "y": 480,
+        "rot": 0,
+        "settings": {}
+      },
+      "FLT2": {
+        "type": "opt_filter",
+        "x": 1340,
+        "y": 200,
+        "rot": 0,
+        "settings": {
+          "center_nm": 1310.0,
+          "bandwidth_nm": 0.2,
+          "order": 3.0,
+          "il_db": 0.0,
+          "lambda_nm": 1310.0
+        }
+      },
+      "PD2": {
+        "type": "photodiode",
+        "x": 1330,
+        "y": 360,
+        "rot": 0,
+        "settings": {
+          "R": 0.8,
+          "Cj": 4e-14
+        }
+      },
+      "GO2": {
+        "type": "ground",
+        "x": 1300,
+        "y": 460,
+        "rot": 0,
+        "settings": {}
+      },
+      "GA2": {
+        "type": "ground",
+        "x": 1370,
+        "y": 480,
+        "rot": 0,
+        "settings": {}
+      },
+      "RL2": {
+        "type": "resistor",
+        "x": 1410,
+        "y": 370,
+        "rot": 0,
+        "settings": {
+          "R": 300.0
+        }
+      },
+      "VB2": {
+        "type": "vdc",
+        "x": 1490,
+        "y": 380,
+        "rot": 0,
+        "settings": {
+          "V": 1.8
+        }
+      },
+      "GB2": {
+        "type": "ground",
+        "x": 1490,
+        "y": 480,
+        "rot": 0,
+        "settings": {}
+      },
+      "FLT3": {
+        "type": "opt_filter",
+        "x": 1600,
+        "y": 200,
+        "rot": 0,
+        "settings": {
+          "center_nm": 1310.4,
+          "bandwidth_nm": 0.2,
+          "order": 3.0,
+          "il_db": 0.0,
+          "lambda_nm": 1310.0
+        }
+      },
+      "PD3": {
+        "type": "photodiode",
+        "x": 1590,
+        "y": 360,
+        "rot": 0,
+        "settings": {
+          "R": 0.8,
+          "Cj": 4e-14
+        }
+      },
+      "GO3": {
+        "type": "ground",
+        "x": 1560,
+        "y": 460,
+        "rot": 0,
+        "settings": {}
+      },
+      "GA3": {
+        "type": "ground",
+        "x": 1630,
+        "y": 480,
+        "rot": 0,
+        "settings": {}
+      },
+      "RL3": {
+        "type": "resistor",
+        "x": 1670,
+        "y": 370,
+        "rot": 0,
+        "settings": {
+          "R": 300.0
+        }
+      },
+      "VB3": {
+        "type": "vdc",
+        "x": 1750,
+        "y": 380,
+        "rot": 0,
+        "settings": {
+          "V": 1.8
+        }
+      },
+      "GB3": {
+        "type": "ground",
+        "x": 1750,
+        "y": 480,
+        "rot": 0,
+        "settings": {}
+      },
+      "TTE": {
+        "type": "opt_term",
+        "x": 1860,
+        "y": 200,
+        "rot": 0,
+        "settings": {}
+      }
+    },
+    "wires": [
+      {
+        "from": "LAS1,p1",
+        "to": "MZM1,pin"
+      },
+      {
+        "from": "LAS1,p2",
+        "to": "GL1,p1"
+      },
+      {
+        "from": "PAT1,p1",
+        "to": "MZM1,vp"
+      },
+      {
+        "from": "PAT1,p2",
+        "to": "GP1,p1"
+      },
+      {
+        "from": "MZM1,vn",
+        "to": "GM1,p1"
+      },
+      {
+        "from": "LAS2,p1",
+        "to": "MZM2,pin"
+      },
+      {
+        "from": "LAS2,p2",
+        "to": "GL2,p1"
+      },
+      {
+        "from": "PAT2,p1",
+        "to": "MZM2,vp"
+      },
+      {
+        "from": "PAT2,p2",
+        "to": "GP2,p1"
+      },
+      {
+        "from": "MZM2,vn",
+        "to": "GM2,p1"
+      },
+      {
+        "from": "LAS3,p1",
+        "to": "MZM3,pin"
+      },
+      {
+        "from": "LAS3,p2",
+        "to": "GL3,p1"
+      },
+      {
+        "from": "PAT3,p1",
+        "to": "MZM3,vp"
+      },
+      {
+        "from": "PAT3,p2",
+        "to": "GP3,p1"
+      },
+      {
+        "from": "MZM3,vn",
+        "to": "GM3,p1"
+      },
+      {
+        "from": "MZM1,pout",
+        "to": "CMB1,p2"
+      },
+      {
+        "from": "MZM2,pout",
+        "to": "CMB1,p3"
+      },
+      {
+        "from": "CMB1,p1",
+        "to": "CMB2,p2"
+      },
+      {
+        "from": "MZM3,pout",
+        "to": "CMB2,p3"
+      },
+      {
+        "from": "CMB2,p1",
+        "to": "VOA,p1"
+      },
+      {
+        "from": "VOA,p2",
+        "to": "SOA1,fin"
+      },
+      {
+        "from": "VBS,p1",
+        "to": "SOA1,an"
+      },
+      {
+        "from": "VBS,p2",
+        "to": "GVS,p1"
+      },
+      {
+        "from": "SOA1,cat",
+        "to": "GS,p1"
+      },
+      {
+        "from": "SOA1,gnd",
+        "to": "GS,p1"
+      },
+      {
+        "from": "SOA1,bin",
+        "to": "TTB,p1"
+      },
+      {
+        "from": "SOA1,bout",
+        "to": "TTC,p1"
+      },
+      {
+        "from": "SOA1,fout",
+        "to": "ASE1,pin"
+      },
+      {
+        "from": "ASE1,pout",
+        "to": "FLT1,pin"
+      },
+      {
+        "from": "FLT1,drop",
+        "to": "PD1,po_p"
+      },
+      {
+        "from": "PD1,po_n",
+        "to": "GO1,p1"
+      },
+      {
+        "from": "PD1,an",
+        "to": "GA1,p1"
+      },
+      {
+        "from": "PD1,cat",
+        "to": "RL1,p1"
+      },
+      {
+        "from": "RL1,p2",
+        "to": "VB1,p1"
+      },
+      {
+        "from": "VB1,p2",
+        "to": "GB1,p1"
+      },
+      {
+        "from": "FLT1,thru",
+        "to": "FLT2,pin"
+      },
+      {
+        "from": "FLT2,drop",
+        "to": "PD2,po_p"
+      },
+      {
+        "from": "PD2,po_n",
+        "to": "GO2,p1"
+      },
+      {
+        "from": "PD2,an",
+        "to": "GA2,p1"
+      },
+      {
+        "from": "PD2,cat",
+        "to": "RL2,p1"
+      },
+      {
+        "from": "RL2,p2",
+        "to": "VB2,p1"
+      },
+      {
+        "from": "VB2,p2",
+        "to": "GB2,p1"
+      },
+      {
+        "from": "FLT2,thru",
+        "to": "FLT3,pin"
+      },
+      {
+        "from": "FLT3,drop",
+        "to": "PD3,po_p"
+      },
+      {
+        "from": "PD3,po_n",
+        "to": "GO3,p1"
+      },
+      {
+        "from": "PD3,an",
+        "to": "GA3,p1"
+      },
+      {
+        "from": "PD3,cat",
+        "to": "RL3,p1"
+      },
+      {
+        "from": "RL3,p2",
+        "to": "VB3,p1"
+      },
+      {
+        "from": "VB3,p2",
+        "to": "GB3,p1"
+      },
+      {
+        "from": "FLT3,thru",
+        "to": "TTE,p1"
+      }
+    ],
+    "probes": [
+      {
+        "name": "bus_in",
+        "at": "VOA,p2",
+        "color": "#e6862c",
+        "spectrum": true
+      },
+      {
+        "name": "amp_out",
+        "at": "ASE1,pout",
+        "color": "#c8a842",
+        "spectrum": true
+      },
+      {
+        "name": "vout2",
+        "at": "PD2,cat",
+        "color": "#6ecbf5"
+      },
+      {
+        "name": "vout1",
+        "at": "PD1,cat",
+        "color": "#8fd18f"
+      },
+      {
+        "name": "vout3",
+        "at": "PD3,cat",
+        "color": "#f08fb0"
+      }
+    ],
+    "notes": [
+      {
+        "x": 40,
+        "y": -210,
+        "title": "WDM through an SOA \u2014 what this testbench does",
+        "lines": [
+          "Three CW lasers on a 0.4 nm grid (1309.6/1310.0/1310.4 nm)",
+          "are each modulated by their own MZM + PRBS, combined onto",
+          "one bus (bus_in shows the 3-line comb), and amplified by a",
+          "SINGLE shared SOA. A demux (FLT1-3) drops each channel to",
+          "PD1-3; amp_out shows the amplified comb sitting on the SOA's",
+          "ASE floor, vout1-3 are the recovered eyes. Transient noise",
+          "(seeds = 1) is on, so the ASE is a live noise source.",
+          "",
+          "At the default power the SOA is unsaturated (amp_out ~2 mW",
+          "<< p_sat 10 mW) with high OSNR: the eyes are open. Push it",
+          "off either edge of its power window and the eyes collapse:",
+          "",
+          "SATURATION -> set SOA1.p_sat = 1e-3 and re-run. The shared",
+          "gain reservoir now follows the aggregate bit pattern, so",
+          "each channel's gain swings with its NEIGHBOURS' data (cross-",
+          "gain modulation) - the eye patterns shut (Q 10 -> 2).",
+          "",
+          "WEAK INPUT / BAD SNR -> set VOA.loss_dB_cm = 20 and re-run.",
+          "The signal sinks toward the fixed ASE floor, OSNR collapses",
+          "and the eye fills with noise (Q 10 -> 4; try 25 dB for more)."
+        ]
+      }
+    ]
+  }
+}

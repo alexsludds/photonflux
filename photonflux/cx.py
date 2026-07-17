@@ -453,9 +453,12 @@ def _bsim4_osdi() -> Path:
     binary = openvaf_ir_path()
     if not binary.exists():
         raise FileNotFoundError(
-            f"{binary} not found — build the ChipFlow openvaf fork "
-            "(github.com/robtaylor/OpenVAF, branch vajax) and install it as "
-            "bin/openvaf-ir, or set PHOTONFLUX_OPENVAF_IR"
+            f"{binary} not found — the SKY130 FET path needs the ChipFlow "
+            "openvaf fork (github.com/robtaylor/OpenVAF, branch vajax). Build "
+            "and install it in one step:\n"
+            "    scripts/build-openvaf.sh\n"
+            "then check the toolchain with `python -m photonflux doctor`. To "
+            "use a binary elsewhere, set PHOTONFLUX_OPENVAF_IR to its path."
         )
     key = _hash(BSIM4_VA.read_text(), str(binary.stat().st_mtime_ns))
     out = CACHE_DIR / f"bsim4_{key}.osdi"

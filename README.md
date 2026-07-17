@@ -58,6 +58,14 @@ python3 -m venv .venv-circulax
 .venv-circulax/bin/pip install volare
 .venv-circulax/bin/python -m volare enable --pdk sky130 <commit>   # -> ~/.volare/sky130A
 
+# openvaf-ir — required for every SKY130 FET example/circuit. The pip
+# `openvaf-py` above is NOT this: the FET path needs the ChipFlow `vajax`
+# fork, which has no wheel. Build + install it as bin/openvaf-ir in one step:
+scripts/build-openvaf.sh                             # needs Rust + LLVM 18
+
+# verify the toolchain is complete before running anything
+.venv-circulax/bin/python -m photonflux doctor       # openvaf-ir, PDK, libngspice
+
 # run a standalone example, or the tests
 .venv-circulax/bin/python examples/link_sky130.py    # -> out/link_sky130.png
 .venv-circulax/bin/python -m pytest tests/           # circulax model-physics pins
@@ -65,6 +73,13 @@ python3 -m venv .venv-circulax
 # or build circuits in the browser (drag-drop schematic editor + plotting)
 .venv-circulax/bin/python webapp/server.py           # -> http://localhost:8642
 ```
+
+> **SKY130 transistors need `bin/openvaf-ir`.** Photonic (`cx.va`) models and
+> the non-PDK examples work without it, but any `cx.sky130_fet` call — the
+> SKY130 device studies in the web app and `examples/*_sky130.py` — fails with
+> `FileNotFoundError: bin/openvaf-ir not found` until you run
+> `scripts/build-openvaf.sh`. It is gitignored because it is a native,
+> arch-specific binary the container rebuilds for Linux.
 
 ## Browser app — `webapp/` ([webapp/README.md](webapp/README.md))
 
@@ -187,8 +202,12 @@ Native arm64 for local dev; the container rebuilds the native pieces for Linux.
 
 ### Rebuilding openvaf-ir
 
-Builds with `llvm@18` and one macOS patch (skip the Windows-only UCRT
-import-lib step in `openvaf/target/build.rs`: force `check = true`):
+`scripts/build-openvaf.sh` does all of the below — clone the `vajax` fork,
+locate LLVM 18, build, and install `bin/openvaf-ir` (idempotent; `--force`
+to rebuild). It needs Rust (https://rustup.rs) and LLVM 18
+(`brew install llvm@18`). The manual recipe, if you want to run it by hand
+(one macOS patch: skip the Windows-only UCRT import-lib step in
+`openvaf/target/build.rs` by forcing `check = true`):
 
 ```bash
 brew install llvm@18 ngspice libngspice

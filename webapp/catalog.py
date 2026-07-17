@@ -928,6 +928,42 @@ CATALOG: dict[str, dict] = {
             _p("A_out", 1.0, "V/V", "Output scale"),
         ],
     },
+    "rx_ffe": {
+        "label": "Rx FFE",
+        "category": "Amplifiers & EQ",
+        "doc": "Receiver feed-forward equalizer. Drop it inline on the "
+               "receive path: during the transient it is an ideal unity "
+               "buffer (high-impedance input, driven output — no loading, "
+               "waveform unchanged). The Link BER report reads its tap count "
+               "and adaptation rate and applies a data-aided FFE to the "
+               "selected “BER vs” probe. adapt_rate = 0 uses the "
+               "one-shot least-squares (Wiener) solution; > 0 adapts the taps "
+               "with normalized LMS at that step size.",
+        "ports": _ports("inp:e out:e"),
+        "params": [
+            _p("n_taps", 7, "", "FFE taps"),
+            _p("adapt_rate", 0.0, "", "Adaptation rate"),
+        ],
+        "eq": "ffe",
+    },
+    "rx_dfe": {
+        "label": "Rx DFE",
+        "category": "Amplifiers & EQ",
+        "doc": "Receiver decision-feedback equalizer. Drop it inline on the "
+               "receive path: during the transient it is an ideal unity "
+               "buffer (high-impedance input, driven output — no loading, "
+               "waveform unchanged). The Link BER report reads its tap count "
+               "and adaptation rate and cancels that many post-cursor symbols "
+               "(data-aided) on the selected “BER vs” probe. "
+               "adapt_rate = 0 uses the one-shot least-squares solution; "
+               "> 0 adapts with normalized LMS at that step size.",
+        "ports": _ports("inp:e out:e"),
+        "params": [
+            _p("n_taps", 1, "", "DFE taps"),
+            _p("adapt_rate", 0.0, "", "Adaptation rate"),
+        ],
+        "eq": "dfe",
+    },
     # --- electrical sources -------------------------------------------------
     "vdc": {
         "label": "DC Voltage",
@@ -1347,6 +1383,36 @@ def _ctle():
         }, {"x1": s.x1 / wp1, "x2": s.x2 / wp2}
 
     return CTLE
+
+
+def _rx_eq_buffer():
+    """Rx FFE / DFE placeholder: an ideal unity buffer.
+
+    The receive-side equalizers are *measurement-time* post-processing (see
+    linkpost.py) rather than a filter in the transient solve, so the inline
+    schematic block is electrically transparent: a high-impedance input
+    (draws no current, does not load the channel) driving an output held at
+    the input voltage. ``n_taps``/``adapt_rate`` are read by the Link BER
+    report, not by this model — they are accepted here only because every
+    catalog param is passed through as a component setting.
+    """
+    from circulax.components.base_component import Signals, States, component
+
+    @component(ports=("inp", "out"), states=("i_out",))
+    def RxEqBuffer(
+        signals: Signals,
+        s: States,
+        n_taps: float = 7.0,
+        adapt_rate: float = 0.0,
+    ) -> tuple[dict, dict]:
+        vin = signals.inp.real
+        return {
+            "inp": 0.0,                      # high-Z input (no current drawn)
+            "out": s.i_out,
+            "i_out": signals.out - vin,      # drive output to the input volts
+        }, {}
+
+    return RxEqBuffer
 
 
 def _pulse_mod():
@@ -2066,6 +2132,8 @@ def build_models(sky130_geoms: dict[str, tuple[str, float, float]] | None = None
         "opamp": IdealOpAmp,
         "tia": _tia(),
         "ctle": _ctle(),
+        "rx_ffe": _rx_eq_buffer(),
+        "rx_dfe": _rx_eq_buffer(),
         "opt_f2p": _field_to_power(),
         "opt_p2f": _power_to_field(),
         "ase_src": _ase_src_plain(),

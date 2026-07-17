@@ -119,12 +119,14 @@ container image does this, so production runs exactly one process.
   source), scope-style persistence render, with levels (1-D k-means), per-eye
   height, and width (guard-banded clear phase span). Multi-seed noise
   families fold together.
-* **Link tab / BER report**: pick a received probe in the transient
-  toolbar's "BER vs" select. Alignment and error counting are data-aided
+* **Link tab / BER report**: pick a received probe in the Link tab's
+  "BER vs" select. Alignment and error counting are data-aided
   against the PRBS source's known sequence: best sampling phase + lag by
-  correlation, optional least-squares RX **FFE/DFE** (data-aided Wiener),
-  counted BER/SER, per-eye Gaussian **Q-fit BER**, and a **bathtub** curve.
-  Multi-seed noise runs pool their statistics.
+  correlation, optional RX **FFE/DFE** — configured by dropping **Rx FFE** /
+  **Rx DFE** blocks on the receive path (each carries a tap count and an
+  adaptation rate: 0 = one-shot least-squares/Wiener, > 0 = normalized-LMS
+  adaptation) — counted BER/SER, per-eye Gaussian **Q-fit BER**, and a
+  **bathtub** curve. Multi-seed noise runs pool their statistics.
 * **Pulse / COM analysis**: reruns the PRBS source in single-pulse mode,
   extracts the symbol-spaced pulse response at a probe, designs a Wiener
   FFE(+DFE) and reports a COM-style FOM = 20 log10(cursor / sigma_ISI) with

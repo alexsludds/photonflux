@@ -106,6 +106,7 @@ def schematic_to_netlist(sch: dict, wave_span: float = DEFAULT_WAVE_SPAN,
     param_root: dict[str, str] = {}     # UI instance -> instance owning its settings
     passive_reqs: list[tuple[str, str, str, float, float]] = []  # PDK R/C extractions
     patterns: dict[str, dict] = {}      # PRBS instances (for eye/BER post-proc)
+    rx_eq: dict[str, dict] = {}         # Rx FFE/DFE blocks (for the link report)
     ltis: dict[str, dict] = {}          # model key -> state-space payload
     lti_log: list[str] = []
     noisy: dict[str, tuple] = {}        # model key -> (kind, bank, dt_n)
@@ -161,6 +162,13 @@ def schematic_to_netlist(sch: dict, wave_span: float = DEFAULT_WAVE_SPAN,
                 v = float(settings.pop(p["name"])) * m.get("scale", 1.0)
                 if m["to"] not in (inst.get("settings") or {}):
                     settings[m["to"]] = v
+        # Rx FFE/DFE blocks are inline unity buffers in the transient (see
+        # catalog._rx_eq_buffer); record their tap count + adaptation rate so
+        # the link report can equalize the received probe in post-processing.
+        if entry.get("eq"):
+            rx_eq[name] = {"kind": entry["eq"],
+                           "n_taps": int(float(settings.get("n_taps", 0))),
+                           "adapt_rate": float(settings.get("adapt_rate", 0.0))}
         expand = entry.get("expand")
         if expand:
             for sub, spec in expand["instances"].items():
@@ -364,7 +372,7 @@ def schematic_to_netlist(sch: dict, wave_span: float = DEFAULT_WAVE_SPAN,
             "probe_at": {p["name"]: p["at"] for p in probes},
             "extracted": extracted, "is_complex": any_optical,
             "hard_dc": hard_dc, "stiff": stiff, "src_delay": src_delay,
-            "waveforms": waveforms, "patterns": patterns,
+            "waveforms": waveforms, "patterns": patterns, "rx_eq": rx_eq,
             "noisy": noisy, "noise_insts": noise_insts,
             "noise_cfg": noise_cfg, "ltis": ltis, "lti_log": lti_log}
     return net, meta
@@ -1514,6 +1522,30 @@ def _run_sweep_overlay(payload: dict) -> dict:
 # entry point
 # ---------------------------------------------------------------------------
 
+def _link_cfg_with_eq(link: dict, meta: dict, log: list) -> dict:
+    """Fold placed Rx FFE/DFE blocks into the link-report config.
+
+    Receiver equalization is configured by dropping Rx FFE / Rx DFE blocks on
+    the schematic (each carries a tap count + adaptation rate); the link
+    report reads them here instead of from a global toolbar setting. With
+    several blocks of one kind the first placed wins.
+    """
+    cfg = dict(link or {})
+    rx_eq = meta.get("rx_eq") or {}
+    for kind, taps_key, mu_key in (("ffe", "ffe_taps", "ffe_mu"),
+                                   ("dfe", "dfe_taps", "dfe_mu")):
+        blocks = [(n, e) for n, e in rx_eq.items() if e["kind"] == kind]
+        if not blocks:
+            continue
+        name, eq = blocks[0]
+        cfg[taps_key] = eq["n_taps"]
+        cfg[mu_key] = eq["adapt_rate"]
+        if len(blocks) > 1:
+            log.append(f"link report: {len(blocks)} Rx {kind.upper()} blocks "
+                       f"placed — using {name} ({eq['n_taps']} taps)")
+    return cfg
+
+
 def run(payload: dict) -> dict:
     # Bracket the whole run so the web UI's /api/progress poll sees a live
     # bar appear on Run and clear when the result lands. Re-entrancy safe: the
@@ -1585,8 +1617,8 @@ def _run_inner(payload: dict) -> dict:
             if analysis.get("link"):
                 import linkpost
 
-                result["link"] = linkpost.link_report(
-                    result, meta, analysis["link"], log)
+                cfg = _link_cfg_with_eq(analysis["link"], meta, log)
+                result["link"] = linkpost.link_report(result, meta, cfg, log)
         elif mode == "pulse":
             result = _run_transient(circuit, meta, analysis, log)
             import linkpost

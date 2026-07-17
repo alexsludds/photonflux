@@ -646,6 +646,36 @@ S.ctle = {
     <text x="22" y="16" style="font-size:8px">CTLE</text>`,
 };
 
+S.rx_ffe = {
+  w: 80, h: 50,
+  pins: { inp: [0, 25], out: [80, 25] },
+  label: [20, -6], pinLabels: true,
+  draw: () => `
+    <rect class="${EL} body-fill" x="12" y="4" width="56" height="42" rx="5"/>
+    <line class="${EL}" x1="0" y1="25" x2="12" y2="25"/>
+    <line class="${EL}" x1="68" y1="25" x2="80" y2="25"/>
+    <line class="${EL}" x1="20" y1="36" x2="20" y2="26" stroke-width="1.3"/>
+    <line class="${EL}" x1="30" y1="36" x2="30" y2="22" stroke-width="1.3"/>
+    <line class="${EL}" x1="40" y1="36" x2="40" y2="28" stroke-width="1.3"/>
+    <line class="${EL}" x1="50" y1="36" x2="50" y2="31" stroke-width="1.3"/>
+    <line class="${EL}" x1="16" y1="36" x2="54" y2="36" stroke-width="1"/>
+    <text x="22" y="16" style="font-size:8px">FFE</text>`,
+};
+
+S.rx_dfe = {
+  w: 80, h: 50,
+  pins: { inp: [0, 25], out: [80, 25] },
+  label: [20, -6], pinLabels: true,
+  draw: () => `
+    <rect class="${EL} body-fill" x="12" y="4" width="56" height="42" rx="5"/>
+    <line class="${EL}" x1="0" y1="25" x2="12" y2="25"/>
+    <line class="${EL}" x1="68" y1="25" x2="80" y2="25"/>
+    <circle class="${EL}" cx="34" cy="31" r="5" fill="none" stroke-width="1.2"/>
+    <path class="${EL}" d="M39 31 h12 v7 h-26 v-7" fill="none"
+      stroke-width="1" opacity="0.85"/>
+    <text x="22" y="16" style="font-size:8px">DFE</text>`,
+};
+
 S.opamp = {
   w: 80, h: 60,
   pins: { in_m: [0, 20], in_p: [0, 40], out_p: [80, 30], out_m: [40, 60] },
@@ -671,6 +701,7 @@ const HEADLINE_PARAM = {
   photodiode: "R", vdc: "V", vpulse: "v2", vsin: "V", idc: "I",
   resistor: "R", capacitor: "C", inductor: "L", diode: "Is",
   nmos: "W", pmos: "W", opamp: "A", tia: "gain_ohm", ctle: "peaking_db",
+  rx_ffe: "n_taps", rx_dfe: "n_taps",
   channel: "loss_db", s2p_channel: "z0", fiber_cd: "length_km",
   sky130_nfet: "w_um", sky130_nfet_lvt: "w_um", sky130_nfet_5v: "w_um",
   sky130_nfet_nvt: "w_um", sky130_pfet: "w_um", sky130_pfet_lvt: "w_um",

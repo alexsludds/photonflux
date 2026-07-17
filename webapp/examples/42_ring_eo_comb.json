@@ -1,0 +1,143 @@
+{
+  "title": "Ring modulator EO comb",
+  "group": "Lasers & modulators",
+  "description": "Electro-optic frequency comb from ONE microring modulator (models/optical_field/ring_mod.va): a CW laser (1309.9264 nm, 1 mW) parked on the max-slope side of the ring's resonance (R = 7.5 um, k^2 = 10 %, linewidth 255 pm, cold resonance 1310 nm) while VD drives the depletion electrode with a strong 10 GHz tone (V_ac = 4.53 V, so the resonance sweeps +-1.6 half-linewidths at 45 pm/V). Sweeping the resonance across the laser modulates the through-port field, and the p_comb spectrum probe (turn on Optical spectrum) shows the resulting comb: teeth spaced by the 10 GHz drive, spanning ~+-0.3 nm around 1310 nm. The comb is CAVITY-SHAPED, not flat: the ring's finite photon lifetime (tau/2 = 3.6 ps, f_cav = 44 GHz) low-passes the modulation, so sidebands beyond the cavity linewidth roll off. Raise VD.V to swing the resonance further and grow more teeth; raise VD.freq toward f_cav and the comb bandwidth SATURATES as the cavity can no longer follow (the photon-lifetime limit). examples/eo_comb.py pins every tooth against an independent integration of the ring CMT and plots the bandwidth-vs-f_RF rolloff.",
+  "analysis": {
+    "mode": "transient",
+    "t_stop": 3e-09,
+    "points": 6000,
+    "dtmax": 2e-13,
+    "solver": "bdf2"
+  },
+  "schematic": {
+    "notes": [
+      {
+        "x": 60,
+        "y": -110,
+        "title": "Ring modulator EO comb — what this testbench does",
+        "lines": [
+          "LAS (1 mW at 1309.9264 nm) sits on the steep side of ring",
+          "RG1's resonance (cold 1310 nm, linewidth 255 pm). VD drives",
+          "the depletion electrode with a 10 GHz tone at V_ac = 4.53 V,",
+          "sweeping the resonance +-1.6 half-linewidths (45 pm/V) across",
+          "the laser. The through-port field is modulated, so p_comb",
+          "grows a frequency comb spaced by 10 GHz - turn on the probe's",
+          "Optical spectrum toggle to see the teeth around 1310 nm.",
+          "",
+          "The comb is cavity-shaped: the ring's photon lifetime",
+          "(f_cav = 44 GHz) rolls off the far sidebands. Raise VD.V for",
+          "more teeth; raise VD.freq toward f_cav and the comb bandwidth",
+          "saturates - the photon-lifetime limit."
+        ]
+      }
+    ],
+    "instances": {
+      "LAS": {
+        "type": "cw_laser",
+        "x": 80,
+        "y": 140,
+        "rot": 0,
+        "settings": {
+          "wavelength_nm": 1309.9264,
+          "power": 0.001,
+          "ref_wavelength_nm": 1309.9264
+        }
+      },
+      "GNDL": {
+        "type": "ground",
+        "x": 80,
+        "y": 240,
+        "rot": 0,
+        "settings": {}
+      },
+      "RG1": {
+        "type": "ring_mod",
+        "x": 320,
+        "y": 140,
+        "rot": 0,
+        "settings": {
+          "lambda_nm": 1309.9264,
+          "lambda_res_nm": 1310.0,
+          "radius_um": 7.5,
+          "n_g": 4.0,
+          "n_eff": 2.4,
+          "loss_db_m": 7000.0,
+          "kappa2": 0.10,
+          "dl_dv_pm": 45.0,
+          "cj_ff_um": 0.5
+        }
+      },
+      "VD": {
+        "type": "vsin",
+        "x": 320,
+        "y": 320,
+        "rot": 0,
+        "settings": {
+          "V": 4.53,
+          "freq": 1.0e10,
+          "phase": 0.0,
+          "delay": 0.0
+        }
+      },
+      "GNDR": {
+        "type": "ground",
+        "x": 360,
+        "y": 220,
+        "rot": 0,
+        "settings": {}
+      },
+      "GNDD": {
+        "type": "ground",
+        "x": 320,
+        "y": 420,
+        "rot": 0,
+        "settings": {}
+      },
+      "TT": {
+        "type": "opt_term",
+        "x": 560,
+        "y": 140,
+        "rot": 0,
+        "settings": {}
+      }
+    },
+    "wires": [
+      {
+        "from": "LAS,p1",
+        "to": "RG1,pin"
+      },
+      {
+        "from": "LAS,p2",
+        "to": "GNDL,p1"
+      },
+      {
+        "from": "VD,p1",
+        "to": "RG1,vp"
+      },
+      {
+        "from": "VD,p2",
+        "to": "GNDD,p1"
+      },
+      {
+        "from": "RG1,vn",
+        "to": "GNDR,p1"
+      },
+      {
+        "from": "RG1,gnd",
+        "to": "GNDR,p1"
+      },
+      {
+        "from": "RG1,pout",
+        "to": "TT,p1"
+      }
+    ],
+    "probes": [
+      {
+        "name": "p_comb",
+        "at": "RG1,pout",
+        "color": "#e6862c",
+        "spectrum": true
+      }
+    ]
+  }
+}

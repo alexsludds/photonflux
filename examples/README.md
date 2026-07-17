@@ -24,13 +24,14 @@ modulation happens in modulators (`cx.mzm()`, or the ideal `PulseModulator` in
 | [`ring_selfheat.py`](ring_selfheat.py) | **thermo-optic bistability** of a self-heating ring — the laser wavelength ramped up then down traces a hysteresis loop | — |
 | [`mzm_tw_transient.py`](mzm_tw_transient.py) | **electro-optic bandwidth** of the traveling-wave MZM (`mzm_tw.va`): step-response rise time and a full-swing NRZ eye, velocity-matched vs walk-off electrode | `mzm_tw` |
 | [`mzm_tw_eo_bw.py`](mzm_tw_eo_bw.py) | **electro-optic frequency response** of the traveling-wave MZM — a network-analyser-style tone sweep pins |H(f)|, phase, the -3 dB EO bandwidth, velocity-match / walk-off (`f_w ∝ 1/ℓ`) and pole-count roll-off against the model's pole cascade | — |
-| [`eo_comb.py`](eo_comb.py) | **electro-optic frequency comb** — a CW laser through one hard-driven phase modulator; the field spectrum is pinned line-by-line to the Jacobi-Anger Bessel teeth `il·P·J_n(β)²`, with carrier suppression at the `J_0` zero (β = 2.4048), the `Σn²J_n²=β²/2` width law, and an optional electrode RC roll-off (`--beta`, `--frf`, `--rs`) | — |
+| [`eo_comb.py`](eo_comb.py) | **electro-optic frequency comb** from one hard-driven microring modulator (`ring_mod.va`): a strong RF tone sweeps the resonance across a slope-parked CW laser, and the through-port field grows a comb spaced by `f_RF`. Each tooth is pinned against an independent integration of the ring CMT; the comb is **cavity-shaped** and its bandwidth **saturates near the photon-lifetime limit** `f_cav ≈ 44 GHz` as `f_RF` rises (`--frf`, `--swing`, `--kappa2`) | example 42 |
 
-The last six have a browser twin (the named web-app examples 36–41): the
+The last seven have a browser twin (the named web-app examples 36–42): the
 script is the pinned physics study, the web-app example is the same circuit to
 click through. Example 41 drives the ring's wavelength node with a PWL source
 so the transient sweeps forward then back — the through-port hysteresis loop is
-the same one this script plots.
+the same one this script plots. Example 42 drives the ring modulator's electrode
+with a strong `vsin` tone; its through-port spectrum probe shows the EO comb.
 
 ```bash
 .venv-circulax/bin/python examples/photodiode_tia.py    # -> out/photodiode_tia.png

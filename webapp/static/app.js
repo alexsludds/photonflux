@@ -1099,7 +1099,7 @@ function restoreRunCfg() {
 // mapping the legacy dcsweep / ac-sweep payloads and the new run_config alike
 function restorePaneFromAnalysis(a) {
   refreshRunCfgSelectors();
-  let axes = null, colorMode = "shaded";
+  let axes = null, colorMode = "shaded", enabled = null;
   const rc = a.run_config;
   if (rc && rc.sweep && rc.sweep.length) {
     axes = rc.sweep.map((ax) => ({ instance: ax.instance, param: ax.param,
@@ -1116,12 +1116,18 @@ function restorePaneFromAnalysis(a) {
   } else if (a.mode === "ac" && a.sweep_instance) {
     axes = [{ instance: a.sweep_instance, param: a.sweep_param,
       values: (a.sweep_values || []).map(fmtSI).join(", ") }];
+    // a testbench may ship the sweep pre-configured but off (sweep_enabled: false),
+    // so it sits ready in the pane for the user to enable with one click
+    enabled = a.sweep_enabled !== false;
   }
-  const on = !!(axes && axes.length);
-  $("rc-enable").checked = on;
+  // "shipped" -> the pane should be filled in; "enabled" -> the checkbox is on.
+  // Legacy paths (dcsweep / run_config) enable whenever a sweep is present.
+  const shipped = !!(axes && axes.length);
+  if (enabled === null) enabled = shipped;
+  $("rc-enable").checked = enabled;
   $("rc-colormode").value = colorMode;
-  $("rc-2nd-on").checked = on && axes.length > 1;
-  if (on) {
+  $("rc-2nd-on").checked = shipped && axes.length > 1;
+  if (shipped) {
     $("rc-inst").value = axes[0].instance; fillParamOptions("rc-inst", "rc-param");
     $("rc-param").value = axes[0].param; $("rc-values").value = axes[0].values;
     if (axes.length > 1) {
@@ -1131,7 +1137,7 @@ function restorePaneFromAnalysis(a) {
   }
   syncRunCfgDisabled(); updateRunCount(); persistRunCfg();
   // opening a testbench that ships a sweep -> reveal the pane so it's not hidden
-  setRunCfgPanel(on);
+  setRunCfgPanel(shipped);
 }
 
 // translate the pane + current analysis type into the run payload

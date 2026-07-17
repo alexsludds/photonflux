@@ -137,12 +137,13 @@ VOLT_TO_DELTA = 2 * np.pi * C0 / (WAVELENGTH_NM * 1e-9) ** 2 * DL_DV_PM * 1e-12
 
 
 def comb_device(kappa2: float | None = None) -> dict:
-    """The CMT ring parked at its maximum-slope bias, split into CMT rates.
+    """The CMT ring parked at its maximum-slope bias.
 
     ``tau`` (loaded) and ``tk2`` come from the physical device (``design_ring``);
-    the coupler/cavity split follows ``ring_mod.va``'s derivation:
-    ``1/tau_e = tk2/(2*tau)`` (bus coupling), ``1/tau_i = 1/tau - 1/tau_e``
-    (round-trip loss), and the drive/output rate ``kappa^2 = tk2/tau``.
+    the bias point adds the max-slope detuning ``delta0`` and the drive/output
+    rate ``kappa^2 = tk2/tau`` used by the golden CMT integration below. The
+    coupler/cavity rate split lives in ``cx.ring_cmt_rates`` (same derivation),
+    which ``cx.ring_modulator`` applies when it builds the ring in :func:`build`.
     """
     d = dict(design_ring(0.0, kappa2=kappa2))
     hwhm_pm = d["fwhm_pm"] / 2
@@ -152,8 +153,6 @@ def comb_device(kappa2: float | None = None) -> dict:
     lam_l, lam_res = d["lambda_light_nm"] * 1e-9, WAVELENGTH_NM * 1e-9
     d["delta0"] = 2 * np.pi * C0 * (1 / lam_l - 1 / lam_res)
     d["krate"] = d["tk2"] / d["tau"]               # kappa^2: drive/output rate
-    d["inv_tau_e"] = d["tk2"] / (2 * d["tau"])     # bus coupling rate
-    d["inv_tau_i"] = 1.0 / d["tau"] - d["inv_tau_e"]  # round-trip loss rate
     return d
 
 
@@ -164,66 +163,13 @@ def vac_for_swing(design: dict, swing_hwhm: float) -> float:
 # ===========================================================================
 # The ring, built from optical sub-components (temporal coupled-mode blocks)
 # ===========================================================================
-# The three blocks share one internal complex node — the circulating cavity
-# field ``a`` — and their Kirchhoff sum there IS the ring CMT (see module
-# docstring). Each is an ordinary circulax coherent-field component.
-def directional_coupler(inv_tau_e: float, krate: float):
-    """Bus <-> ring point coupler.
-
-    Couples the input field into the cavity mode at the external (amplitude)
-    rate ``1/tau_e`` and taps the through port ``s_out = s_in + j*a``. Contributes
-    ``a/tau_e - j*kappa^2 s_in`` to the cavity node (coupling loss + drive) and
-    draws nothing from the bus input (an ideal directional tap)."""
-
-    @component(ports=("sin", "sout", "a"), states=("i_out",))
-    def Coupler(signals: Signals, s: States) -> tuple[dict, dict]:
-        return {
-            "sin": 0.0,                                    # ideal input tap
-            "a": inv_tau_e * signals.a - 1j * krate * signals.sin,
-            "sout": s.i_out,
-            "i_out": signals.sout - (signals.sin + 1j * signals.a),
-        }, {}
-
-    return Coupler
-
-
-def eo_phase_shifter(design: dict, cj: float = 0.0):
-    """Depletion phase shifter in the ring: electrode voltage -> cavity detuning.
-
-    ``lambda_res(V) = lambda_res + dl_dv_pm*V`` moves the resonance, so the
-    electrode sets the CMT detuning ``delta(V) = 2*pi*c*(1/lambda_light -
-    1/lambda_res(V))`` — the same electro-optic map as ``ring_mod.va``. It
-    contributes ``-j*delta(V)*a`` to the cavity node. ``cj`` is the junction
-    capacitance a real driver would load (0 = ideal drive; harmless here since
-    the drive is an ideal voltage source)."""
-    lam_l = design["lambda_light_nm"] * 1e-9
-    lam_res0 = WAVELENGTH_NM * 1e-9
-
-    @component(ports=("a", "vp", "vn"))
-    def PhaseShifter(signals: Signals, s: States) -> tuple[dict, dict]:
-        v = (signals.vp - signals.vn).real
-        lam_res = lam_res0 + DL_DV_PM * 1e-12 * v
-        delta = 2 * np.pi * C0 * (1.0 / lam_l - 1.0 / lam_res)
-        f = {"a": -1j * delta * signals.a, "vp": 0.0, "vn": 0.0}
-        q_el = cj * (signals.vp - signals.vn)
-        return f, {"vp": q_el, "vn": -q_el}
-
-    return PhaseShifter
-
-
-def cavity_mode(inv_tau_i: float):
-    """The ring loop: circulating-field energy storage + round-trip loss.
-
-    Contributes ``dA/dt + a/tau_i`` to the cavity node — the ``d/dt`` (photon
-    storage, i.e. the photon lifetime) plus the intrinsic round-trip loss."""
-
-    @component(ports=("a",))
-    def Cavity(signals: Signals, s: States) -> tuple[dict, dict]:
-        return {"a": inv_tau_i * signals.a}, {"a": signals.a}
-
-    return Cavity
-
-
+# The three blocks — ``cx.directional_coupler`` + ``cx.ring_phase_shifter`` +
+# ``cx.cavity_mode`` — are the reusable coherent-field building blocks (they
+# live in ``photonflux/cx.py`` alongside ``cw_laser`` / ``mzm``). They share one
+# internal complex node — the circulating cavity field ``a`` — and their
+# Kirchhoff sum there IS the ring CMT (see module docstring). ``cx.ring_modulator``
+# wires them together from the same physical parameters as ``ring_mod.va``; this
+# bench uses it directly in ``build`` below.
 def sine_source():
     """Ideal RF voltage source V = v_ac*sin(2*pi*freq*t) (starts at 0)."""
 
@@ -251,31 +197,33 @@ def field_terminator():
 # Circuits: the sub-component ring, and the monolithic ring_mod.va twin
 # ===========================================================================
 def build(design: dict):
-    """CW laser -> [coupler | EO phase shifter | cavity mode] ring -> through."""
+    """CW laser -> [coupler | EO phase shifter | cavity mode] ring -> through.
+
+    The ring is ``cx.ring_modulator`` — the coupler + intracavity phase shifter
+    + cavity mode wired from the same physical parameters as ``ring_mod.va``
+    (``ring_settings(design)``), so this bench and ``build_monolithic`` feed the
+    two twins identical inputs."""
+    ring = cx.ring_modulator(ring_settings(design))
     inst = {
         "GND": {"component": "ground"},
         "LAS": {"component": "laser",
                 "settings": {"wavelength_nm": design["lambda_light_nm"],
                              "power": P_LASER}},
-        "CPL": {"component": "coupler"},        # bus <-> ring coupler + tap
-        "PS": {"component": "phaseshifter"},    # EO detuning drive
-        "CAV": {"component": "cavity"},         # ring loop storage + loss
         "VS": {"component": "sine"},
         "TO": {"component": "term"},
+        **ring.instances,
     }
     conn = {
-        "LAS,p1": "CPL,sin",
-        "CPL,sout": "TO,c",
-        "CPL,a": ("PS,a", "CAV,a"),             # shared circulating-field node
-        "VS,p1": "PS,vp",
-        "GND,p1": ("LAS,p2", "PS,vn", "VS,p2"),
+        "LAS,p1": ring.sin,
+        ring.sout: "TO,c",
+        "VS,p1": ring.vp,
+        "GND,p1": ("LAS,p2", ring.vn, "VS,p2"),
+        **ring.connections,                     # shared circulating-field node
     }
-    net = {"instances": inst, "connections": conn, "ports": {"pout": "CPL,sout"}}
+    net = {"instances": inst, "connections": conn, "ports": {"pout": ring.sout}}
     models = {"ground": lambda: 0, "laser": cx.cw_laser(),
-              "coupler": directional_coupler(design["inv_tau_e"], design["krate"]),
-              "phaseshifter": eo_phase_shifter(design, cj=design["cj"]),
-              "cavity": cavity_mode(design["inv_tau_i"]),
-              "sine": sine_source(), "term": field_terminator()}
+              "sine": sine_source(), "term": field_terminator(),
+              **ring.models}
     return compile_circuit(net, models, backend="dense", is_complex=True,
                            max_steps=400)
 

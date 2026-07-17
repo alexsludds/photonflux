@@ -37,13 +37,16 @@ import ast
 import hashlib
 import json
 import re
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 from . import toolchain
 
 __all__ = ["va", "sky130_fet", "sky130_card", "cw_laser", "mzm",
-           "field_to_ri", "ri_to_field"]
+           "field_to_ri", "ri_to_field",
+           "directional_coupler", "ring_phase_shifter", "cavity_mode",
+           "ring_cmt_rates", "ring_modulator", "RingModulatorParts"]
 
 CACHE_DIR = toolchain.MODELS_DIR / "__jax__"
 BSIM4_VA = toolchain.REPO / "vendor" / "BSIM4" / "bsim4.va"
@@ -279,6 +282,266 @@ def ri_to_field():
 
     _COMPONENT_CACHE["ri_to_field"] = RIToField
     return RIToField
+
+
+# ---------------------------------------------------------------------------
+# microring modulator, as temporal coupled-mode sub-components
+# ---------------------------------------------------------------------------
+#
+# ``models/optical_field/ring_mod.va`` is a monolithic coupled-mode-theory (CMT)
+# ring: one block that solves
+#
+#     dA/dt = (-1/tau + j*delta(V)) A + j*kappa^2 s_in ,   s_out = s_in + j*A
+#
+# with ``1/tau = 1/tau_i + 1/tau_e``. The same physics factors into three
+# coherent-field building blocks that share one internal complex node — the
+# circulating cavity field ``A`` — whose Kirchhoff sum on that node reproduces
+# the ODE exactly (verified to machine precision against ring_mod.va in
+# ``tests/test_ring_decomposition.py`` and ``examples/eo_comb.py``):
+#
+#   * :func:`directional_coupler` — the bus<->ring point coupler: couples the
+#     input into the cavity mode (external rate 1/tau_e) and taps the through
+#     port ``s_out = s_in + j*A``;
+#   * :func:`ring_phase_shifter` — the intracavity depletion phase shifter: the
+#     electrode voltage sets the cavity detuning ``delta(V)`` (the electro-optic
+#     drive). NB this is the *cavity-detuning* element, distinct from the
+#     memoryless field-rotating ``models/optical_field/phase_shifter.va``;
+#   * :func:`cavity_mode` — the ring loop itself: the circulating field's energy
+#     storage (``d/dt``, i.e. the photon lifetime) plus its round-trip loss
+#     (rate 1/tau_i).
+#
+# Why sub-components and not a literal coupler + waveguide feedback loop: the
+# coherent-field primitives are memoryless (an optical S-matrix has no delay),
+# so a physical loop would be algebraic and would model only the adiabatic,
+# lifetime-free ring; localising the round trip into the cavity-mode storage
+# element is what keeps the photon-lifetime dynamics. :func:`ring_modulator`
+# wires the three into a drop-in coherent-field twin of ring_mod.va.
+
+_C0 = 299792458.0  # speed of light [m/s]
+
+
+def directional_coupler():
+    """Bus<->ring point coupler (coherent-field CMT sub-component).
+
+    ``settings = {"inv_tau_e"}`` — the external (amplitude) decay rate
+    ``1/tau_e = kappa2/(2*T_rt)`` set by the bus power coupling. Couples the
+    bus input into the shared cavity node ``a`` and taps the through port:
+
+        contributes  a/tau_e - j*kappa^2 s_in  to the cavity node ``a``,
+        drives       s_out = s_in + j*a        on the through port.
+
+    For a lossless point coupler energy conservation fixes ``kappa^2 =
+    2/tau_e``, so the single rate ``inv_tau_e`` sets both the coupling loss and
+    the drive/output strength. Ports: ``sin`` (bus input — an ideal tap that
+    draws nothing), ``sout`` (through output, driven), ``a`` (shared cavity
+    field, joined to the phase shifter and cavity mode).
+    """
+    if "directional_coupler" in _COMPONENT_CACHE:
+        return _COMPONENT_CACHE["directional_coupler"]
+    from circulax.components.base_component import Signals, States, component
+
+    @component(ports=("sin", "sout", "a"), states=("i_out",))
+    def DirectionalCoupler(
+        signals: Signals, s: States, inv_tau_e: float = 1.0,
+    ) -> tuple[dict, dict]:
+        krate = 2.0 * inv_tau_e                      # kappa^2 (lossless coupler)
+        return {
+            "sin": 0.0,                              # ideal input tap
+            "a": inv_tau_e * signals.a - 1j * krate * signals.sin,
+            "sout": s.i_out,
+            "i_out": signals.sout - (signals.sin + 1j * signals.a),
+        }, {}
+
+    _COMPONENT_CACHE["directional_coupler"] = DirectionalCoupler
+    return DirectionalCoupler
+
+
+def ring_phase_shifter():
+    """Intracavity electro-optic phase shifter (cavity-detuning sub-component).
+
+    ``settings = {"lambda_nm", "lambda_res_nm", "dl_dv_pm", "cj", "rleak"}``.
+    The depletion electrode moves the resonance linearly,
+    ``lambda_res(V) = lambda_res_nm + dl_dv_pm*V``, i.e. it sets the CMT
+    detuning
+
+        delta(V) = 2*pi*c*(1/lambda_nm - 1/lambda_res(V))
+
+    and contributes ``-j*delta(V)*a`` to the shared cavity node ``a`` — the
+    same electro-optic map as ring_mod.va. Ports: ``a`` (shared cavity field),
+    ``vp``/``vn`` (differential electrode). The electrode presents junction
+    capacitance ``cj`` plus leakage ``rleak`` — the load a real driver sees.
+
+    This is the ring's *cavity-detuning* phase shifter (it modulates the
+    resonance of a stored mode); the standalone
+    ``models/optical_field/phase_shifter.va`` is the memoryless field rotator
+    ``E_out = e^{j*phi} E_in``. Both are "EO phase shifters"; only this one
+    lives inside a cavity.
+    """
+    if "ring_phase_shifter" in _COMPONENT_CACHE:
+        return _COMPONENT_CACHE["ring_phase_shifter"]
+    import jax.numpy as jnp
+    from circulax.components.base_component import Signals, States, component
+
+    @component(ports=("a", "vp", "vn"))
+    def RingPhaseShifter(
+        signals: Signals, s: States,
+        lambda_nm: float = 1310.0,
+        lambda_res_nm: float = 1310.0,
+        dl_dv_pm: float = 45.0,
+        cj: float = 0.0,
+        rleak: float = 1e8,
+    ) -> tuple[dict, dict]:
+        v = (signals.vp - signals.vn).real
+        lam_res = lambda_res_nm * 1e-9 + dl_dv_pm * 1e-12 * v
+        delta = 2.0 * jnp.pi * _C0 * (1.0 / (lambda_nm * 1e-9) - 1.0 / lam_res)
+        # electrode load: junction capacitance (reactive q) + leakage (resistive
+        # f) — matches ring_mod.va's electrical port. Harmless under an ideal
+        # drive (the source fixes V), so it never perturbs the optical output.
+        gleak = (signals.vp - signals.vn) / rleak
+        f = {"a": -1j * delta * signals.a, "vp": gleak, "vn": -gleak}
+        q_el = cj * (signals.vp - signals.vn)
+        return f, {"vp": q_el, "vn": -q_el}
+
+    _COMPONENT_CACHE["ring_phase_shifter"] = RingPhaseShifter
+    return RingPhaseShifter
+
+
+def cavity_mode():
+    """Ring-loop cavity mode (energy storage + round-trip loss sub-component).
+
+    ``settings = {"inv_tau_i"}`` — the intrinsic (amplitude) decay rate
+    ``1/tau_i = alpha*v_g/2`` from the round-trip propagation loss. Contributes
+    ``dA/dt + a/tau_i`` to the shared cavity node ``a``: the ``d/dt`` is the
+    photon storage (the photon lifetime), ``a/tau_i`` the round-trip loss. This
+    is the element that localises the round trip, so the ring keeps its
+    photon-lifetime dynamics instead of collapsing to the adiabatic limit.
+    Single port ``a`` (the shared cavity field).
+    """
+    if "cavity_mode" in _COMPONENT_CACHE:
+        return _COMPONENT_CACHE["cavity_mode"]
+    from circulax.components.base_component import Signals, States, component
+
+    @component(ports=("a",))
+    def CavityMode(
+        signals: Signals, s: States, inv_tau_i: float = 1.0,
+    ) -> tuple[dict, dict]:
+        return {"a": inv_tau_i * signals.a}, {"a": signals.a}
+
+    _COMPONENT_CACHE["cavity_mode"] = CavityMode
+    return CavityMode
+
+
+@dataclass
+class RingModulatorParts:
+    """A decomposed-microring netlist fragment, ready to stitch into a circuit.
+
+    ``instances``/``connections``/``models`` are the ring-internal pieces (the
+    coupler, intracavity phase shifter and cavity mode, joined on an internal
+    cavity node). The terminal names ``sin``/``sout``/``vp``/``vn`` are the
+    *external* nets the caller wires: bus input field, through-port output
+    field, and the two electrode nodes. Merge the three dicts into the netlist
+    and connect the four terminals, e.g.::
+
+        ring = cx.ring_modulator(ring_settings)
+        inst.update(ring.instances); mdl.update(ring.models)
+        conn.update(ring.connections)
+        conn["LAS,p1"] = ring.sin
+        conn[ring.sout] = "TERM,c"
+        conn["VDRV,p1"] = ring.vp
+        conn["GND,p1"] = (ring.vn, ...)
+    """
+
+    instances: dict
+    connections: dict
+    models: dict
+    sin: str
+    sout: str
+    vp: str
+    vn: str
+
+
+def ring_cmt_rates(
+    *,
+    radius_um: float = 7.5,
+    n_g: float = 4.0,
+    loss_db_m: float = 7000.0,
+    kappa2: float = 0.10,
+    cj_ff_um: float = 0.5,
+) -> dict[str, float]:
+    """Device geometry -> CMT decay rates, exactly as ring_mod.va derives them.
+
+    Returns ``{"inv_tau_e", "inv_tau_i", "cj"}``::
+
+        circ = 2*pi*R,  v_g = c/n_g,  T_rt = circ/v_g
+        1/tau_i = loss*ln(10)/10 * v_g/2      (round-trip loss)
+        1/tau_e = kappa2/(2*T_rt)             (bus coupling)
+        cj      = cj_ff_um * (2*pi*R[um]) fF  (junction capacitance)
+
+    so a ring assembled by :func:`ring_modulator` reproduces the monolithic
+    model driven by the same physical parameters.
+    """
+    import math
+
+    circ = 2.0 * math.pi * radius_um * 1e-6
+    v_g = _C0 / n_g
+    t_rt = circ / v_g
+    alpha = loss_db_m * math.log(10.0) / 10.0
+    return {
+        "inv_tau_e": kappa2 / (2.0 * t_rt),
+        "inv_tau_i": alpha * v_g / 2.0,
+        "cj": cj_ff_um * 1e-15 * 2.0 * math.pi * radius_um,
+    }
+
+
+def ring_modulator(settings: dict | None = None, *,
+                   prefix: str = "RING") -> RingModulatorParts:
+    """Microring modulator built from its coherent-field sub-components.
+
+    A drop-in coherent-field twin of ``models/optical_field/ring_mod.va``: it
+    accepts the *same* physical parameters and wires :func:`directional_coupler`
+    + :func:`ring_phase_shifter` + :func:`cavity_mode` into a ring whose
+    through-port field reproduces the monolithic model to machine precision
+    (see ``tests/test_ring_decomposition.py``). ``settings`` mirrors
+    ring_mod.va::
+
+        lambda_nm, lambda_res_nm, radius_um, n_g, loss_db_m, kappa2,
+        dl_dv_pm, cj_ff_um, rleak
+
+    (``n_eff`` is accepted and ignored, exactly as in the aligned single-mode
+    ring_mod.va — the thermal tuner fixes which cold mode is on the grid.)
+    Returns a :class:`RingModulatorParts` fragment; connect its ``sin`` to the
+    bus field, ``sout`` to the next stage, and ``vp``/``vn`` to the drive.
+    Instances are namespaced by ``prefix`` so several rings can coexist.
+    """
+    p = dict(settings or {})
+    rates = ring_cmt_rates(
+        radius_um=p.get("radius_um", 7.5),
+        n_g=p.get("n_g", 4.0),
+        loss_db_m=p.get("loss_db_m", 7000.0),
+        kappa2=p.get("kappa2", 0.10),
+        cj_ff_um=p.get("cj_ff_um", 0.5),
+    )
+    cpl, ps, cav = f"{prefix}_CPL", f"{prefix}_PS", f"{prefix}_CAV"
+    return RingModulatorParts(
+        instances={
+            cpl: {"component": "ring_coupler",
+                  "settings": {"inv_tau_e": rates["inv_tau_e"]}},
+            ps: {"component": "ring_phaseshifter",
+                 "settings": {"lambda_nm": p.get("lambda_nm", 1310.0),
+                              "lambda_res_nm": p.get("lambda_res_nm", 1310.0),
+                              "dl_dv_pm": p.get("dl_dv_pm", 45.0),
+                              "cj": rates["cj"],
+                              "rleak": p.get("rleak", 1e8)}},
+            cav: {"component": "ring_cavity",
+                  "settings": {"inv_tau_i": rates["inv_tau_i"]}},
+        },
+        # the coupler, phase shifter and cavity share one internal cavity node
+        connections={f"{cpl},a": (f"{ps},a", f"{cav},a")},
+        models={"ring_coupler": directional_coupler(),
+                "ring_phaseshifter": ring_phase_shifter(),
+                "ring_cavity": cavity_mode()},
+        sin=f"{cpl},sin", sout=f"{cpl},sout", vp=f"{ps},vp", vn=f"{ps},vn",
+    )
 
 
 # ---------------------------------------------------------------------------

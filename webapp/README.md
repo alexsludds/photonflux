@@ -317,7 +317,16 @@ strength in the other.
   through); ring_mod_inj is coherent-field like ring_mod. Circuits with
   `laser_rate` automatically get the fixed-step BDF2 transient solver and a
   pseudo-transient DC settle (lasing turn-on is a bifurcation plain Newton
-  cannot cross); injection rings default to BDF2 too.
+  cannot cross); injection rings and mzm_tw default to BDF2 too (mzm_tw's
+  distributed electrode adds ~4.5 ps ddt poles). Example 42 is the mzm_tw
+  browser twin: a 50 Gb/s NRZ PRBS drives the traveling-wave MZM at quadrature
+  and a photodiode detects it, so the electrode-loss pole (f_el = 35 GHz) and
+  velocity-walk-off pole (f_w ~ 18 GHz for the default n_rf=2.4 vs n_opt=4.2
+  electrode) close the optical and received eyes (EO -3 dB ~ 15 GHz). Set
+  `MZM.n_rf = 4.2` to velocity-match: the walk-off pole vanishes, only f_el
+  limits (-3 dB ~ 35 GHz), and the eye reopens — the same EO bandwidth
+  `examples/mzm_tw_transient.py` measures as a rise time and
+  `examples/mzm_tw_eo_bw.py` measures as an |H(f)| network-analyser sweep.
 * **SOA + cavity building blocks (Verilog-A, directed waves)**: `soa`
   (bidirectional Agrawal-Olsson gain reservoir with bias pins and an ASE
   seed — hard-DC like laser_rate, so a cavity closed around it lases in DC

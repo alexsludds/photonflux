@@ -1,0 +1,55 @@
+`include "discipline.h"
+`include "constants.h"
+
+// Ideal electro-optic phase shifter for coherent fields.
+//
+// A pure voltage-controlled phase rotation of the optical field — the lumped
+// building block behind every EO modulator (an MZM is two of these, one per
+// arm; a microring modulator is one of these inside a cavity). The field is
+// rotated, its magnitude left untouched: ideal here means lossless,
+// dispersionless and instantaneous (no photon-lifetime roll-off), so this is
+// the reference element to which a real, band-limited phase shifter is
+// compared.
+//
+//     E_out = s * e^{j*phi} * E_in ,   phi = pi*(V + vbias)/vpi
+//
+// The electrode reaches a half-wave (pi) phase shift at V = vpi and a full
+// 2*pi at V = 2*vpi — the usual V-pi convention. s = 10^(-il_db/20) is an
+// optional excess insertion loss (il_db = 0 -> ideal, unity transmission).
+//
+// Coherent-field convention: optical ports are Ereal/Eimag node pairs with
+// |E|^2 = optical power [W] (same normalisation as the circulax field nodes
+// and ring_mod.va). Inputs are read at infinite impedance; outputs are driven
+// — never tie two driven outputs to the same node.
+//
+// Electrical port (vp, vn): the electrode presents capacitance cel plus a
+// large leakage rleak — the load a real driver actually sees. That ddt() on
+// the electrode also keeps the reactive side dtype-honest for the circulax
+// complex assembly (see the dummy-node note in mirror.va), so no extra state
+// is needed here.
+module phase_shifter(in_re, in_im, out_re, out_im, vp, vn, gnd);
+    inout in_re, in_im, out_re, out_im, vp, vn, gnd;
+    electrical in_re, in_im, out_re, out_im, vp, vn, gnd;
+
+    parameter real vpi   = 3.0  from (0:inf);   // half-wave voltage V-pi [V]
+    parameter real vbias = 0.0;                 // static bias offset [V]
+    parameter real il_db = 0.0  from [0:inf);   // excess insertion loss [dB]
+    parameter real cel   = 50f  from [0:inf);   // electrode capacitance [F]
+    parameter real rleak = 1e8  from (0:inf);   // electrode leakage [ohm]
+
+    real phi, s, c, sn;
+
+    analog begin
+        phi = `M_PI * (V(vp, vn) + vbias) / vpi;
+        s   = pow(10.0, -il_db / 20.0);
+        c   = s * cos(phi);
+        sn  = s * sin(phi);
+
+        // E_out = s * e^{j*phi} * E_in
+        V(out_re, gnd) <+ c * V(in_re, gnd) - sn * V(in_im, gnd);
+        V(out_im, gnd) <+ sn * V(in_re, gnd) + c * V(in_im, gnd);
+
+        // electrode load: capacitance + leakage
+        I(vp, vn) <+ cel * ddt(V(vp, vn)) + V(vp, vn) / rleak;
+    end
+endmodule

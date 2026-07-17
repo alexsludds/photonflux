@@ -82,6 +82,43 @@ CATALOG: dict[str, dict] = {
             _p("cel", 50e-15, "F", "Electrode cap."),
         ],
     },
+    "phase_shifter": {
+        "label": "EO Phase Shifter (VA)",
+        "category": "Modulators",
+        "doc": "models/optical_field/phase_shifter.va — ideal electro-optic phase "
+               "shifter: E_out = s*e^{j*phi}*E_in with phi = pi*(V+vbias)/vpi, "
+               "so the electrode reaches a half-wave (pi) shift at V = vpi. "
+               "The lumped building block behind every EO modulator (two make "
+               "an MZM, one inside a cavity makes a ring modulator). Lossless "
+               "and instantaneous by default (il_db = 0); the electrode loads "
+               "the driver with cel + leakage. gnd must be grounded.",
+        "ports": _ports("pin:o pout:o vp:e vn:e gnd:e"),
+        "params": [
+            _p("vpi", 3.0, "V", "V-pi (half-wave)"),
+            _p("vbias", 0.0, "V", "Bias offset"),
+            _p("il_db", 0.0, "dB", "Insertion loss"),
+            _p("cel", 50e-15, "F", "Electrode cap."),
+            _p("rleak", 1e8, "Ohm", "Electrode leakage"),
+        ],
+        # one symbol -> f2ri adapter + VA phase shifter + ri2f adapter
+        "expand": {
+            "instances": {
+                "tap": {"component": "_f2ri"},
+                "ps": {"component": "_phaseshift_va", "settings": "ALL"},
+                "join": {"component": "_ri2f"},
+            },
+            "connections": [
+                ("tap,re", "ps,in_re"),
+                ("tap,im", "ps,in_im"),
+                ("ps,out_re", "join,re"),
+                ("ps,out_im", "join,im"),
+            ],
+            "port_map": {
+                "pin": "tap,c", "pout": "join,c",
+                "vp": "ps,vp", "vn": "ps,vn", "gnd": "ps,gnd",
+            },
+        },
+    },
     "laser_dml": {
         "label": "DML Laser (VA)",
         "category": "Lasers",
@@ -2038,6 +2075,7 @@ def build_models(sky130_geoms: dict[str, tuple[str, float, float]] | None = None
         "_f2ri_m": _field_to_ri_matched(),
         "_ri2f": cx.ri_to_field(),
         "_ring_va": cx.va("ring_mod"),
+        "_phaseshift_va": cx.va("phase_shifter"),
         "_p2f": _power_to_field(),
         "_f2p": _field_to_power(),
         "_dml_va": cx.va("laser_dml"),

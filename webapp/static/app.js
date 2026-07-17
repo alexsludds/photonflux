@@ -1130,6 +1130,8 @@ function restorePaneFromAnalysis(a) {
     } else { $("rc-values2").value = ""; }
   }
   syncRunCfgDisabled(); updateRunCount(); persistRunCfg();
+  // opening a testbench that ships a sweep -> reveal the pane so it's not hidden
+  setRunCfgPanel(on);
 }
 
 // translate the pane + current analysis type into the run payload
@@ -1166,12 +1168,16 @@ function withRunCfg(a) {
   return a;
 }
 
-$("btn-runcfg").addEventListener("click", () => {
+// show/hide the sweep-parameters pane, keeping the caret button in sync
+function setRunCfgPanel(open) {
   const p = $("runcfg-panel");
-  p.hidden = !p.hidden;
-  $("btn-runcfg").classList.toggle("active", !p.hidden);
-  $("btn-runcfg").setAttribute("aria-expanded", String(!p.hidden));
-  if (!p.hidden) { refreshRunCfgSelectors(); syncRunCfgDisabled(); updateRunCount(); }
+  p.hidden = !open;
+  $("btn-runcfg").classList.toggle("active", open);
+  $("btn-runcfg").setAttribute("aria-expanded", String(open));
+  if (open) { refreshRunCfgSelectors(); syncRunCfgDisabled(); updateRunCount(); }
+}
+$("btn-runcfg").addEventListener("click", () => {
+  setRunCfgPanel($("runcfg-panel").hidden);
 });
 $("rc-inst").addEventListener("change", () => {
   fillParamOptions("rc-inst", "rc-param"); updateRunCount(); persistRunCfg();

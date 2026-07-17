@@ -895,6 +895,53 @@ def _ac_system(circuit):
             "n": n, "n_dead": int(dead.sum())}
 
 
+def _ac_system_complex(circuit):
+    """Linearize an optical (complex field-envelope) circuit into the full
+    2N real-DOF (re/im) small-signal system -> dict(G, C, gnd, n, n_dead).
+
+    circulax's real AC path (assemble_gc_real / setup_ac_sweep) stamps only the
+    real block of the Jacobian, which silently drops the electro-optic coupling:
+    for the power-domain laser/MZM/PD models the field envelope is real at the
+    operating point, but the sensitivity of detected power to electrode voltage
+    routes through the field (imaginary) DOFs that the real path discards. Here
+    we recover G and C over all 2N real unknowns from the transient Newton
+    matrix, which is exactly affine in 1/dt (J(dt) = G + C/dt): read it at two
+    step sizes and solve the two-point system for G and C. This is the same
+    (G, C) the transient integrator uses, so the AC response matches it.
+    """
+    import numpy as np
+
+    import jax.numpy as jnp
+    from circulax.solvers.ac_sweep import _build_index_arrays
+    from circulax.solvers.assembly import assemble_system_complex
+
+    if any(getattr(g, "is_fdomain", False) for g in circuit.groups.values()):
+        raise NetlistError("AC analysis does not support frequency-domain "
+                           "(dispersive optical) components")
+    y_dc = jnp.asarray(np.asarray(circuit.dc()))
+    # two well-separated step sizes; J is affine in 1/dt so any pair recovers
+    # (G, C) exactly (float64 keeps the 1e6 spread well-conditioned).
+    dt1, dt2 = 1e-6, 1e-12
+    j1 = np.asarray(assemble_system_complex(y_dc, circuit.groups, 0.0, dt1)[2])
+    j2 = np.asarray(assemble_system_complex(y_dc, circuit.groups, 0.0, dt2)[2])
+    c_vals = (j1 - j2) / ((1.0 / dt1) - (1.0 / dt2))
+    g_vals = j1 - c_vals * (1.0 / dt1)
+
+    rows, cols, gnd, n = _build_index_arrays(
+        circuit.groups, circuit.sys_size, is_complex=True)
+    rows = np.asarray(rows).reshape(-1)
+    cols = np.asarray(cols).reshape(-1)
+    G = np.zeros((n, n))
+    C = np.zeros((n, n))
+    np.add.at(G, (rows, cols), g_vals)
+    np.add.at(C, (rows, cols), c_vals)
+    dead = ((~np.abs(G).any(axis=1)) & (~np.abs(C).any(axis=1))
+            & (~np.abs(G).any(axis=0)) & (~np.abs(C).any(axis=0)))
+    G[dead, dead] = 1.0
+    return {"G": G, "C": C, "gnd": np.asarray(gnd).reshape(-1),
+            "n": n, "n_dead": int(dead.sum())}
+
+
 def _ac_Y(sysm, f):
     import numpy as np
 
@@ -1139,18 +1186,101 @@ def _ft_from_h21(h21_db, freqs):
     return None
 
 
+def _bw_3db(freqs, mag_db):
+    """First -3.01 dB crossing of a roll-off, referenced to the low-freq band.
+
+    ``mag_db`` is the absolute magnitude in dB; the reference is its value at
+    the lowest sweep frequency (assumed to sit in the passband). Log-freq
+    interpolated crossing, or None if the sweep never drops 3 dB."""
+    import numpy as np
+
+    rel = np.asarray(mag_db) - mag_db[0]
+    target = -10.0 * np.log10(2.0)                     # -3.0103 dB
+    below = rel <= target
+    for k in range(1, len(freqs)):
+        if below[k] and not below[k - 1]:
+            lf = np.log10(freqs)
+            frac = (target - rel[k - 1]) / (rel[k] - rel[k - 1])
+            return float(10.0 ** (lf[k - 1] + frac * (lf[k] - lf[k - 1])))
+    return None
+
+
+def _measure_ac_optical(circuit, meta, freqs, log):
+    """Small-signal EO/OE transfer H(f) = V(out_<x>) per volt on the in_<x>
+    drive source, for optical (complex) circuits.
+
+    ``in_<x>`` must sit on a DC-voltage (vdc) source terminal — the electrode
+    bias source, driven with 1 V AC — and ``out_<x>`` on any signal node (the
+    detected output). The full 2N field-DOF system carries the electro-optic
+    coupling, so |H(f)| rolls off at the modulator's EO bandwidth exactly as a
+    network analyser measures it. Returns [(suffix, out_probe, H_complex), ...].
+    """
+    import numpy as np
+
+    pairs = _ac_pairs(list(meta["probe_domains"]))
+    sysm = _ac_system_complex(circuit)
+    if sysm["n_dead"]:
+        log.append(f"AC: pinned {sysm['n_dead']} collapsed field DOFs")
+
+    drives = []   # (suffix, p_out, i_src_drive, out_node)
+    for suffix, p_in, p_out in pairs:
+        out_node = circuit._resolve_port_node(p_out)
+        if out_node == 0:
+            raise NetlistError(f"AC pair {suffix!r}: out_{suffix} sits on the "
+                               "ground net — move it to a signal node")
+        drives.append((suffix, p_out,
+                       _src_isrc_index(circuit, meta, p_in), out_node))
+
+    drive_idx = sorted({d[2] for d in drives})
+    col = {ix: k for k, ix in enumerate(drive_idx)}
+    B = np.zeros((sysm["n"], len(drive_idx)), complex)
+    for ix in drive_idx:
+        B[ix, col[ix]] = 1.0          # 1 V AC on that source's constraint row
+    H = {d[0]: np.empty(len(freqs), complex) for d in drives}
+    for k, f in enumerate(freqs):
+        X = np.linalg.solve(_ac_Y(sysm, f), B)
+        for suffix, _p_out, i_drv, out_node in drives:
+            H[suffix][k] = X[out_node, col[i_drv]]
+    return [(suffix, p_out, H[suffix]) for suffix, p_out, _i, _o in drives]
+
+
+def _run_ac_optical(circuit, meta, freqs, log) -> dict:
+    """EO-bandwidth AC for optical circuits: |H(f)| of each in_/out_ pair,
+    normalised to its passband (0 dB at the lowest sweep frequency)."""
+    import numpy as np
+
+    t0 = time.perf_counter()
+    results = _measure_ac_optical(circuit, meta, freqs, log)
+    log.append(f"EO AC sweep ({len(freqs)} freqs) in "
+               f"{time.perf_counter() - t0:.2f}s")
+    traces = []
+    for suffix, p_out, H in results:
+        floor = 1e-18
+        mag_db = 20.0 * np.log10(np.maximum(np.abs(H), floor))
+        mag_db -= mag_db[0]                            # 0 dB in the passband
+        bw = _bw_3db(freqs, mag_db)
+        if bw:
+            log.append(f"EO -3 dB bandwidth({suffix}) = {bw / 1e9:.2f} GHz")
+        bw_tag = f"  (-3dB {bw / 1e9:.1f}G)" if bw else ""
+        traces.append({"name": f"EO |H| {suffix}{bw_tag}", "domain": "electrical",
+                       "unit": "dB", "values": mag_db.tolist(),
+                       "probe": p_out, "step_frac": 1.0})
+    return {"kind": "ac", "x": freqs.tolist(), "xlabel": "frequency [Hz]",
+            "xlog": True, "traces": traces}
+
+
 def _run_ac(circuit, meta, analysis, log) -> dict:
     """AC sweep; probe pairs named ``in_<x>`` / ``out_<x>``.
 
-    Pairs probed on ``vdc`` source terminals give the fixture-free |h21|
-    (small-signal current gain; its 0 dB crossing is f_T). Pairs on plain
-    nodes give the z0 S-parameter fixture (|S21| + |h21| derived from S).
+    Optical (complex) circuits measure the EO/OE transfer |H(f)| = V(out) per
+    volt of electrode drive (the network-analyser bandwidth of a modulator).
+    Electrical circuits: pairs probed on ``vdc`` source terminals give the
+    fixture-free |h21| (small-signal current gain; its 0 dB crossing is f_T);
+    pairs on plain nodes give the z0 S-parameter fixture (|S21| + |h21|).
     """
-    if meta["is_complex"]:
-        raise NetlistError(
-            "AC analysis currently supports electrical-only circuits — "
-            "remove optical components or use a transient/DC analysis.")
     freqs = _ac_freqs(analysis)
+    if meta["is_complex"]:
+        return _run_ac_optical(circuit, meta, freqs, log)
     z0 = float(analysis.get("z0", 50.0))
 
     t0 = time.perf_counter()

@@ -98,7 +98,7 @@ volts).
 - **Optical spectra (OSA):** flag an optical probe and get a full
   Blackman–Harris FFT of its field beside the time-domain trace, on a shared
   wavelength axis; results export to CSV (time-domain **and** spectra).
-- **40 example circuits**, grouped: photonic links, lasers/modulators (SOA
+- **41 example circuits**, grouped: photonic links, lasers/modulators (SOA
   Fabry-Perot laser, Vernier tunable ring laser, TPA/FCA-limited high-Q ring,
   χ(3) four-wave mixing in a waveguide and resonantly enhanced inside a Kerr
   ring — all from the nonlinear VA models), SKY130 device studies, channels +
@@ -120,8 +120,8 @@ Docker SDK went paid for free accounts in 2026).
 
 ## Standalone examples — `examples/` ([examples/README.md](examples/README.md))
 
-Each script's module docstring is the full write-up; the last five also appear
-as named examples 36–40 in the web app. One-line index:
+Each script's module docstring is the full write-up; the last seven also appear
+as named examples 36–42 in the web app. One-line index:
 
 | script | what it shows | output |
 |---|---|---|
@@ -135,6 +135,7 @@ as named examples 36–40 in the web app. One-line index:
 | `wg_fwm.py` | χ(3) four-wave mixing in a waveguide, pinned to every textbook scaling | `out/wg_fwm.png` |
 | `ring_fwm.py` | four-wave mixing **inside** a Kerr ring resonator | `out/ring_fwm.png` |
 | `ring_selfheat.py` | **thermo-optic bistability** of a self-heating microring (`models/optical_field/ring_selfheat.va`) — absorbed circulating power heats a high-Q ring and red-shifts its resonance (dn/dT>0); one transient ramps the laser wavelength up then down and the through-port traces a **hysteresis loop** (thermal-locking triangle to the red, sharp cold dip to the blue), pinned to the analytic three-root self-consistency | `out/ring_selfheat.png` |
+| `eo_comb.py` | **electro-optic frequency comb** from a microring modulator built out of **sub-components** (directional coupler + EO phase shifter + cavity-mode loop, asserted identical to `models/optical_field/ring_mod.va`) — a strong RF tone sweeps the resonance across a slope-parked laser to grow a comb spaced by `f_RF`, pinned to an independent CMT integration; the comb is cavity-shaped and its bandwidth saturates at the photon-lifetime limit (browser twin: example 42) | `out/eo_comb.png` |
 
 ## How the SKY130 flow works
 
@@ -175,7 +176,7 @@ photonflux/       Python package — the circulax bridge (the only simulator)
 webapp/           browser schematic editor + stdlib simulation server
   server.py       serves the static UI and POST /api/run (single origin)
   static/         index.html + app.js + symbols.js + style.css (uPlot plotting)
-  examples/       40 example circuits (JSON)
+  examples/       41 example circuits (JSON)
   catalog.py, simulate.py, warmup.py, ...
 models/           Verilog-A model library (single source of truth)
   __jax__/        content-hash cache of lowered JAX + OSDI artifacts (regenerated)

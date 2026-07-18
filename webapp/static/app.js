@@ -2322,14 +2322,18 @@ function renderEye() {
   const pad = 0.08 * (hi - lo);
   lo -= pad; hi += pad;
 
-  // density render: overlay 2-UI segments with low alpha
+  // density render: overlay 2-UI segments with low alpha, inside a plot area
+  // that leaves margins for the x-axis (time in UI) and y-axis (amplitude)
   const W = canvas.width, H = canvas.height;
   const ctx = canvas.getContext("2d");
   ctx.fillStyle = "#121218";
   ctx.fillRect(0, 0, W, H);
-  const span = 2 * osr;                       // 2 UI across the canvas
-  const px = (k) => (k / span) * W;
-  const py = (y) => H - ((y - lo) / (hi - lo)) * H;
+  const mL = 64, mR = 14, mT = 12, mB = 34;   // axis margins
+  const plotX = mL, plotY = mT;
+  const plotW = W - mL - mR, plotH = H - mT - mB;
+  const span = 2 * osr;                       // 2 UI across the plot area
+  const px = (k) => plotX + (k / span) * plotW;
+  const py = (y) => plotY + plotH - ((y - lo) / (hi - lo)) * plotH;
   const alpha = Math.max(0.03, 0.10 / Math.sqrt(records.length));
   // overlaying several swept values: tint each eye with its plot colour so the
   // families stay distinguishable; otherwise use the flat per-domain hue.
@@ -2355,7 +2359,8 @@ function renderEye() {
   ctx.strokeStyle = "rgba(255,255,255,0.18)";
   ctx.setLineDash([4, 5]);
   for (const k of [0, osr, 2 * osr]) {
-    ctx.beginPath(); ctx.moveTo(px(k), 0); ctx.lineTo(px(k), H); ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(px(k), plotY); ctx.lineTo(px(k), plotY + plotH); ctx.stroke();
   }
   ctx.setLineDash([]);
 
@@ -2421,9 +2426,52 @@ function renderEye() {
   ctx.strokeStyle = "rgba(120,255,160,0.35)";
   ctx.setLineDash([2, 6]);
   for (const l of km.levels) {
-    ctx.beginPath(); ctx.moveTo(0, py(l)); ctx.lineTo(W, py(l)); ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(plotX, py(l)); ctx.lineTo(plotX + plotW, py(l)); ctx.stroke();
   }
   ctx.setLineDash([]);
+
+  // axes: frame, ticks and labels around the plot area
+  ctx.save();
+  ctx.lineWidth = 1;
+  ctx.strokeStyle = "rgba(255,255,255,0.35)";
+  ctx.strokeRect(plotX + 0.5, plotY + 0.5, plotW, plotH);
+  ctx.font = '11px "SF Mono", ui-monospace, monospace';
+
+  // y-axis: amplitude ticks (fmtSI-formatted), evenly spaced across the range
+  ctx.fillStyle = "rgba(255,255,255,0.75)";
+  ctx.textAlign = "right";
+  ctx.textBaseline = "middle";
+  const yTicks = 5;
+  for (let i = 0; i <= yTicks; i++) {
+    const val = lo + (hi - lo) * i / yTicks;
+    const yp = py(val);
+    ctx.beginPath();
+    ctx.moveTo(plotX - 4, yp); ctx.lineTo(plotX, yp); ctx.stroke();
+    ctx.fillText(fmtSI(val), plotX - 7, yp);
+  }
+
+  // x-axis: time in unit intervals, 0 .. 2 UI
+  ctx.textAlign = "center";
+  ctx.textBaseline = "top";
+  for (let i = 0; i <= 4; i++) {
+    const ui2 = i / 2;                          // 0, 0.5, 1, 1.5, 2
+    const xp = px(ui2 * osr);
+    ctx.beginPath();
+    ctx.moveTo(xp, plotY + plotH); ctx.lineTo(xp, plotY + plotH + 4); ctx.stroke();
+    ctx.fillText(ui2.toFixed(1), xp, plotY + plotH + 7);
+  }
+
+  // axis titles
+  ctx.fillStyle = "rgba(255,255,255,0.55)";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "bottom";
+  ctx.fillText("time [UI]", plotX + plotW / 2, H - 1);
+  ctx.translate(12, plotY + plotH / 2);
+  ctx.rotate(-Math.PI / 2);
+  ctx.textBaseline = "top";
+  ctx.fillText(unit ? `amplitude [${unit}]` : "amplitude", 0, 0);
+  ctx.restore();
 }
 
 // ---------------------------------------------------------------------------

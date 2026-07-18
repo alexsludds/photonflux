@@ -74,6 +74,11 @@ STATIC = HERE / "static"
 EXAMPLES = HERE / "examples"
 _RUN_LOCK = threading.Lock()
 
+# Live schematic mirror shared with notebook clients (photonflux.nb). Kept in
+# a module the supervisor never imports; pure stdlib, so importing it here (at
+# module scope, unlike the lazy engine) costs nothing.
+from session import SESSION  # noqa: E402
+
 # --- public-deployment knobs (all default to the local-dev behaviour) --------
 # Verilog-A upload compiles untrusted source through the native OpenVAF
 # toolchain, so a public host must turn it OFF. It defaults ON so running
@@ -129,6 +134,15 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/examples":
             self._json(_examples_index())
             return
+        if path == "/api/schematic":
+            # Live mirror of the browser's active tab (see session.py).
+            # Lock-free w.r.t. _RUN_LOCK so a notebook can read the canvas
+            # while a run is in flight.
+            self._json(SESSION.get())
+            return
+        if path == "/api/schematic/events":
+            self._sse_events()
+            return
         if path == "/api/progress":
             # Live transient-solve progress, polled by the browser while an
             # /api/run is in flight. Deliberately lock-free (it never touches
@@ -165,6 +179,36 @@ class Handler(BaseHTTPRequestHandler):
         else:
             self._json({"error": "not found"}, 404)
 
+    def _sse_events(self) -> None:
+        """Stream schematic-mirror change events (server-sent events).
+
+        One long-lived response per subscriber (the browser's EventSource and
+        each notebook ``watch()``); ThreadingHTTPServer gives each its own
+        handler thread, which parks in ``SESSION.wait_change``. An event fires
+        on every rev bump; a comment line every ``timeout`` keeps proxies and
+        dead-peer detection honest. Lock-free w.r.t. _RUN_LOCK, so edits
+        propagate while a solve is running."""
+        self.send_response(200)
+        self.send_header("Content-Type", "text/event-stream")
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("Connection", "close")
+        self.end_headers()
+        self.close_connection = True
+        rev = -1  # sentinel: always send one snapshot event immediately
+        try:
+            while True:
+                cur, source = SESSION.wait_change(rev, timeout=15.0)
+                if cur == rev:
+                    self.wfile.write(b": ping\n\n")     # heartbeat
+                else:
+                    rev = cur
+                    data = json.dumps({"rev": rev, "source": source})
+                    self.wfile.write(
+                        f"event: change\ndata: {data}\n\n".encode())
+                self.wfile.flush()
+        except (BrokenPipeError, ConnectionResetError, OSError):
+            return  # subscriber went away — normal teardown
+
     def do_POST(self) -> None:  # noqa: N802
         route = self.path.split("?", 1)[0]
         if route == "/api/cancel":
@@ -176,7 +220,8 @@ class Handler(BaseHTTPRequestHandler):
             progress.PROGRESS.request_cancel()
             self._json({"ok": True})
             return
-        if route not in ("/api/run", "/api/upload", "/api/upload_va"):
+        if route not in ("/api/run", "/api/upload", "/api/upload_va",
+                         "/api/schematic"):
             self._json({"error": "not found"}, 404)
             return
         try:
@@ -186,6 +231,17 @@ class Handler(BaseHTTPRequestHandler):
             payload = json.loads(self.rfile.read(length) or b"{}")
         except (ValueError, json.JSONDecodeError) as exc:
             self._json({"ok": False, "error": f"bad request: {exc}"}, 400)
+            return
+        if route == "/api/schematic":
+            doc = payload.get("doc")
+            if not isinstance(doc, dict) or \
+                    not isinstance(doc.get("schematic"), dict):
+                self._json({"ok": False, "error": "doc.schematic required"},
+                           400)
+                return
+            res = SESSION.put(doc, str(payload.get("source") or "unknown"),
+                              payload.get("base_rev"))
+            self._json(res, 200 if res["ok"] else 409)
             return
         if route == "/api/upload":
             self._json(self._upload(payload))

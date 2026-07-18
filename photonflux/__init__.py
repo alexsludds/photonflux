@@ -20,9 +20,6 @@ All four drop into a circulax netlist as ordinary components; see the
 House convention: optical nodes carry the coherent field (complex ``E``,
 power = ``|E|^2``); lasers are CW only and all modulation happens in modulators.
 """
-from . import cx
-from .signals import prbs, sample_centers
-from .toolchain import doctor, doctor_report, sky130_lib
 
 __version__ = "0.2.0"
 
@@ -34,3 +31,30 @@ __all__ = [
     "doctor_report",
     "sky130_lib",
 ]
+
+# Lazy attribute loading (PEP 562): `photonflux.cx` drags in the whole JAX
+# stack, which the lightweight HTTP notebook client (`photonflux.nb`) must not
+# pay for — `from photonflux.nb import Session` should work in any kernel that
+# has numpy. Every public name resolves exactly as before, just on first use.
+_LAZY = {
+    "cx": ("photonflux.cx", None),
+    "prbs": ("photonflux.signals", "prbs"),
+    "sample_centers": ("photonflux.signals", "sample_centers"),
+    "doctor": ("photonflux.toolchain", "doctor"),
+    "doctor_report": ("photonflux.toolchain", "doctor_report"),
+    "sky130_lib": ("photonflux.toolchain", "sky130_lib"),
+}
+
+
+def __getattr__(name: str):
+    try:
+        modname, attr = _LAZY[name]
+    except KeyError:
+        raise AttributeError(
+            f"module {__name__!r} has no attribute {name!r}") from None
+    import importlib
+
+    mod = importlib.import_module(modname)
+    value = mod if attr is None else getattr(mod, attr)
+    globals()[name] = value      # cache: __getattr__ runs once per name
+    return value

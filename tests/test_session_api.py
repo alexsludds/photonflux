@@ -338,6 +338,16 @@ def test_result_spectrum_helper():
     with pytest.raises(KeyError, match="no optical spectrum"):
         two.spectrum("p_nope")
 
+    # one probe name shadowing another: exact match wins over prefix
+    raw["extra_plots"].append(_spectrum_plot("p_comb2", [1311.0], [0.0]))
+    three = nb.Result(raw)
+    wl3, _ = three.spectrum("p_comb")
+    np.testing.assert_allclose(wl3, [1309.9, 1310.0, 1310.1])
+    wl4, _ = three.spectrum("p_comb2")
+    np.testing.assert_allclose(wl4, [1311.0])
+    with pytest.raises(KeyError, match="ambiguous"):
+        three.spectrum("p_c")                    # prefix-only, two matches
+
     dry = nb.Result({"ok": True, "kind": "transient", "traces": []})
     assert dry.spectra == []
     with pytest.raises(KeyError, match="no optical spectra"):

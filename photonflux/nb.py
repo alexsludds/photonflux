@@ -316,9 +316,12 @@ class Result:
         ``name`` is the probe name; omit it when the run has exactly one."""
         plots = self._spectrum_plots()
         if name is not None:
-            plots = [ep for ep in plots
-                     if any(str(t.get("name", "")).startswith(name)
-                            for t in ep.get("traces") or [])]
+            def match(ep, exact):
+                return any(str(t.get("name", "")) in (name, f"{name} spectrum")
+                           if exact else str(t.get("name", "")).startswith(name)
+                           for t in ep.get("traces") or [])
+            plots = ([ep for ep in plots if match(ep, True)]      # exact first,
+                     or [ep for ep in plots if match(ep, False)])  # then prefix
         if not plots:
             raise KeyError(f"no optical spectrum {name!r} "
                            f"(have: {self.spectra or '—'} — the probe needs "
@@ -328,7 +331,9 @@ class Result:
                            "as spectrum in the browser, or set "
                            "\"spectrum\": true on it — transient runs only)")
         if len(plots) > 1:
-            raise KeyError("several spectrum probes "
+            raise KeyError(f"{name!r} is ambiguous: several spectrum probes "
+                           f"match ({self.spectra})" if name is not None else
+                           "several spectrum probes "
                            f"({self.spectra}) — pass the probe name")
         ep = plots[0]
         return (np.asarray(ep["x"], float),

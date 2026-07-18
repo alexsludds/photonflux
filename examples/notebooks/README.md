@@ -18,7 +18,7 @@ touches the schematic mirrored from your browser canvas.
 | [`04_vernier_design_space`](04_vernier_design_space.ipynb) | 33 (Vernier) | FSRs, Vernier FSR, interstitial suppression vs the zero-fit Airy product, and the Δm / κ² design charts (FSR-extension vs rejection, linewidth vs loss) |
 | [`05_diff_pair_hand_analysis`](05_diff_pair_hand_analysis.ipynb) | 23 (+ 04) | gm/Id-method gain prediction (few %), square-law transfer overlay and where it cracks, ±R_D·I_T plateaus |
 | [`06_fabry_perot_airy`](06_fabry_perot_airy.ipynb) | 35 (Fabry-Perot) | full-sweep Airy overlay (<1 dB RMS), FSR/finesse/peak-T/×10 buildup across a mirror-R design sweep |
-| [`07_cmos_inverter_ring_osc`](07_cmos_inverter_ring_osc.ipynb) | 26 + 29 | square-law calibration, V_M switching-threshold formula to mV across a skew sweep, CΔV/I delay → ring-oscillator frequency to ~20 % |
+| [`07_cmos_inverter_ring_osc`](07_cmos_inverter_ring_osc.ipynb) | 26 + 29 | square-law calibration, V_M switching-threshold formula to mV across a skew sweep, ring-oscillator frequency: four-constant ODE to ~1 % (and why the CΔV/I napkin is ×2 fast) |
 
 Suggested order: `01` first (it writes the extraction that `05` reuses —
 though `05` falls back to re-measuring inline), everything else standalone.

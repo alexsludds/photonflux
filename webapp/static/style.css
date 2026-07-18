@@ -219,6 +219,8 @@ body { display: flex; flex-direction: column; }
 
 /* ---------------- schematic ---------------- */
 .comp { cursor: move; }
+/* invisible full-bbox hit target: clicking anywhere on the symbol selects it */
+.comp .comp-hit { fill: transparent; stroke: none; pointer-events: all; }
 .comp .body { stroke: var(--text); stroke-width: 1.6; fill: none; }
 .comp .body-fill { fill: var(--panel2); }
 .comp text { fill: var(--text-dim); font-size: 10px; font-family: inherit; user-select: none; }

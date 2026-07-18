@@ -40,6 +40,9 @@ let view = { x: 60, y: 40, k: 1 };
 
 let mode = { kind: "idle" };     // idle | place | wire | probe | drag | pan
 let selection = null;            // {kind:"inst"|"wire"|"probe", id}
+let clipboard = null;            // detached copy of an instance (no id/wires)
+let lastPastePos = null;         // {x,y} of the previous paste, for cascading
+let pointer = null;              // last pointer world coords over the canvas
 let lastResult = null;
 let plots = [];
 
@@ -496,6 +499,7 @@ svg.addEventListener("mousedown", (ev) => {
 });
 
 svg.addEventListener("mousemove", (ev) => {
+  pointer = toWorld(ev);                  // track pointer for paste placement
   if (mode.kind === "pan") {
     view.x = mode.ox + ev.clientX - mode.sx;
     view.y = mode.oy + ev.clientY - mode.sy;
@@ -653,6 +657,10 @@ function compMenu(id) {
     { label: "Flip vertical", hint: "⇧F",
       action: () => { selection = { kind: "inst", id }; flipSelected(true); } },
     { label: "Duplicate", action: () => duplicateInstance(id) },
+    { label: "Copy", hint: "⌘C",
+      action: () => { selection = { kind: "inst", id }; copySelection(); } },
+    { label: "Paste", hint: "⌘V", disabled: !clipboard,
+      action: () => { lastPastePos = null; pasteClipboard(); } },
     { sep: true },
     { label: "Edit parameters…",
       action: () => { selection = { kind: "inst", id }; renderInspector(); render(); } },
@@ -706,12 +714,57 @@ function canvasMenu() {
     { label: "Fit to view", disabled: empty, action: () => fitView() },
     { label: "Reset zoom", action: () => { view = { x: 60, y: 40, k: 1 }; render(); } },
     { sep: true },
+    { label: "Paste", hint: "⌘V", disabled: !clipboard,
+      action: () => { lastPastePos = null; pasteClipboard(); } },
+    { sep: true },
     { label: "Undo", hint: "⌘Z", disabled: !undoStack.length, action: () => undo() },
     { label: "Redo", hint: "⇧⌘Z", disabled: !redoStack.length, action: () => redo() },
     { sep: true },
     { label: "New schematic", danger: true, disabled: empty,
       action: () => $("btn-new").click() },
   ];
+}
+
+// --- clipboard (copy/paste of components) ----------------------------------
+// The clipboard holds a detached deep copy of an instance's data — type,
+// orientation and settings, but never its id or wires. Copy/paste is internal
+// to the page (no system clipboard); it mirrors duplicateInstance but lets the
+// copy outlive the source and land near the pointer.
+function copySelection() {
+  if (selection?.kind !== "inst") return;
+  const src = state.instances[selection.id];
+  if (!src) return;
+  clipboard = JSON.parse(JSON.stringify(src));
+  lastPastePos = null;                    // next paste drops at the pointer
+  setHint(`Copied ${CAT[clipboard.type]?.label || clipboard.type} — ⌘V to paste.`);
+}
+
+// paste a fresh instance from the clipboard: at the pointer for the first
+// paste, then cascading down-right so repeated pastes don't stack.
+function pasteClipboard() {
+  if (!clipboard) return;
+  const sym = S[clipboard.type];
+  if (!sym) return;
+  let x, y;
+  if (lastPastePos) {
+    x = snap(lastPastePos.x + 20);
+    y = snap(lastPastePos.y + 20);
+  } else if (pointer) {
+    x = snap(pointer[0] - sym.w / 2);
+    y = snap(pointer[1] - sym.h / 2);
+  } else {
+    x = snap(clipboard.x + 20);
+    y = snap(clipboard.y + 20);
+  }
+  const nid = newId(clipboard.type);
+  commit(() => {
+    const copy = JSON.parse(JSON.stringify(clipboard));
+    copy.x = x; copy.y = y;
+    state.instances[nid] = copy;
+  });
+  lastPastePos = { x, y };
+  selection = { kind: "inst", id: nid };
+  renderInspector(); render();
 }
 
 // clone an instance offset slightly down-right and select the copy
@@ -772,6 +825,11 @@ window.addEventListener("keydown", (ev) => {
   if (mod && ev.key === "z" && !ev.shiftKey) { ev.preventDefault(); undo(); return; }
   if (mod && (ev.key === "y" || (ev.key === "z" && ev.shiftKey))) { ev.preventDefault(); redo(); return; }
   if (mod && ev.key === "s") { ev.preventDefault(); saveJSON(); return; }
+  if (mod && ev.key === "c" && !ev.shiftKey) {
+    if (!window.getSelection().isCollapsed) return;   // let native text copy run
+    ev.preventDefault(); copySelection(); return;
+  }
+  if (mod && ev.key === "v" && !ev.shiftKey) { ev.preventDefault(); pasteClipboard(); return; }
   if (mod && ev.key === "Enter") { ev.preventDefault(); runSim(); return; }
   switch (ev.key) {
     case "Escape": if (runAbort) { stopSim(); } else { disarm(); render(); } break;

@@ -1686,21 +1686,25 @@ function restorePaneFromAnalysis(a) {
   refreshRunCfgSelectors();
   let axes = null, colorMode = "shaded", enabled = null;
   const rc = a.run_config;
+  // fmtNum, not fmtSI: these strings populate editable sweep inputs (rc-values)
+  // that must round-trip through parseSI on re-run. fmtSI keeps only ~3 sig figs,
+  // collapsing e.g. start 1309.5 / stop 1310.5 both to "1.31k" — the displayed
+  // sweep then no longer matches the testbench and re-parses to 1310:1310 (ALE-65).
   if (rc && rc.sweep && rc.sweep.length) {
     axes = rc.sweep.map((ax) => ({ instance: ax.instance, param: ax.param,
-      values: (ax.values || []).map(fmtSI).join(", ") }));
+      values: (ax.values || []).map(fmtNum).join(", ") }));
     colorMode = (rc.overlay || {}).color_mode || "shaded";
   } else if (a.mode === "dcsweep" && a.instance) {
     axes = [{ instance: a.instance, param: a.param,
-      values: a.values ? a.values.map(fmtSI).join(", ")
-        : `${fmtSI(a.start)}:${fmtSI(a.stop)}:${a.points || 101}` }];
+      values: a.values ? a.values.map(fmtNum).join(", ")
+        : `${fmtNum(a.start)}:${fmtNum(a.stop)}:${a.points || 101}` }];
     if (a.step_instance && (a.step_values || []).length)
       axes.push({ instance: a.step_instance, param: a.step_param,
-        values: (a.step_values || []).map(fmtSI).join(", ") });
+        values: (a.step_values || []).map(fmtNum).join(", ") });
     colorMode = (a.overlay || {}).color_mode || "shaded";
   } else if (a.mode === "ac" && a.sweep_instance) {
     axes = [{ instance: a.sweep_instance, param: a.sweep_param,
-      values: (a.sweep_values || []).map(fmtSI).join(", ") }];
+      values: (a.sweep_values || []).map(fmtNum).join(", ") }];
     // a testbench may ship the sweep pre-configured but off (sweep_enabled: false),
     // so it sits ready in the pane for the user to enable with one click
     enabled = a.sweep_enabled !== false;

@@ -96,7 +96,16 @@ body { display: flex; flex-direction: column; }
   border-right: 1px solid var(--border); overflow-y: auto;
   display: flex; flex-direction: column;
 }
+#palette-search {
+  margin: 8px 8px 4px; padding: 5px 8px; font-size: 12px;
+  background: var(--panel2); color: var(--text);
+  border: 1px solid var(--border); border-radius: 4px; outline: none;
+}
+#palette-search:focus { border-color: var(--accent); }
 #palette-items { flex: 1 0 auto; }
+.pal-empty {
+  padding: 10px; color: var(--text-dim); font-size: 12px; font-style: italic;
+}
 .pal-cat {
   font-size: 10px; text-transform: uppercase; letter-spacing: 1px;
   color: var(--text-dim); padding: 8px 10px 3px;

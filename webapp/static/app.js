@@ -860,6 +860,11 @@ window.addEventListener("keydown", (ev) => {
       mode = { kind: "probe" };
       setHint("Probe mode — click a port to attach a probe. Esc exits.");
       break;
+    case "i": case "I":
+      // focus the components search box (preventDefault so "i" isn't typed in)
+      ev.preventDefault();
+      $("palette-search")?.focus();
+      break;
     case "g": case "G":
       if (CAT.ground) armPlacement("ground");
       break;
@@ -1188,9 +1193,31 @@ function renameInstance(oldId, newId_) {
 // ---------------------------------------------------------------------------
 // palette
 // ---------------------------------------------------------------------------
+// Current palette search query (fuzzy filter). Empty = show everything.
+let paletteFilter = "";
+
+// Subsequence fuzzy match: every char of `query` appears in `text` in order.
+// Case-insensitive; an empty query matches anything.
+function fuzzyMatch(query, text) {
+  if (!query) return true;
+  query = query.toLowerCase();
+  text = (text || "").toLowerCase();
+  let qi = 0;
+  for (let ti = 0; ti < text.length && qi < query.length; ti++) {
+    if (text[ti] === query[qi]) qi++;
+  }
+  return qi === query.length;
+}
+
 function buildPalette() {
   const holder = $("palette-items");
   holder.innerHTML = "";
+  const q = paletteFilter.trim();
+  // Match a component against label, type key, and category so a search like
+  // "laser" or "cw" finds the part regardless of which field it lives in.
+  const matches = (type, entry) =>
+    fuzzyMatch(q, entry.label) || fuzzyMatch(q, type) || fuzzyMatch(q, entry.category);
+  let shown = 0;
   const cats = {};
   for (const [type, entry] of Object.entries(CAT)) {
     (cats[entry.category] = cats[entry.category] || []).push([type, entry]);
@@ -1201,12 +1228,13 @@ function buildPalette() {
                  "Reference"];
   for (const cat of order.concat(Object.keys(cats).filter((c) => !order.includes(c)))) {
     if (!cats[cat]) continue;
+    const visible = cats[cat].filter(([type, entry]) => S[type] && matches(type, entry));
+    if (!visible.length) continue;
     const h = document.createElement("div");
     h.className = "pal-cat"; h.textContent = cat;
     holder.appendChild(h);
-    for (const [type, entry] of cats[cat]) {
+    for (const [type, entry] of visible) {
       const sym = S[type];
-      if (!sym) continue;
       const item = document.createElement("div");
       item.className = "pal-item";
       item.dataset.type = type;
@@ -1222,24 +1250,48 @@ function buildPalette() {
         else armPlacement(type);
       });
       holder.appendChild(item);
+      shown++;
     }
   }
   // probe tool
-  const h = document.createElement("div");
-  h.className = "pal-cat"; h.textContent = "Measure";
-  holder.appendChild(h);
-  const item = document.createElement("div");
-  item.className = "pal-item";
-  item.innerHTML = `
-    <svg width="34" height="26"><circle cx="14" cy="15" r="5" fill="#fbbf24"/>
-      <line x1="17" y1="12" x2="26" y2="4" stroke="#fbbf24" stroke-width="1.5"/></svg>
-    <span class="pal-label">Probe <b>(P)</b></span>`;
-  item.addEventListener("click", () => {
-    mode = { kind: "probe" };
-    setHint("Probe mode — click a port to attach a probe. Esc exits.");
-  });
-  holder.appendChild(item);
+  if (fuzzyMatch(q, "probe") || fuzzyMatch(q, "measure")) {
+    const h = document.createElement("div");
+    h.className = "pal-cat"; h.textContent = "Measure";
+    holder.appendChild(h);
+    const item = document.createElement("div");
+    item.className = "pal-item";
+    item.innerHTML = `
+      <svg width="34" height="26"><circle cx="14" cy="15" r="5" fill="#fbbf24"/>
+        <line x1="17" y1="12" x2="26" y2="4" stroke="#fbbf24" stroke-width="1.5"/></svg>
+      <span class="pal-label">Probe <b>(P)</b></span>`;
+    item.addEventListener("click", () => {
+      mode = { kind: "probe" };
+      setHint("Probe mode — click a port to attach a probe. Esc exits.");
+    });
+    holder.appendChild(item);
+    shown++;
+  }
+  if (!shown) {
+    const empty = document.createElement("div");
+    empty.className = "pal-empty";
+    empty.textContent = `No parts match “${q}”`;
+    holder.appendChild(empty);
+  }
 }
+
+// Wire up the palette search box: filter as the user types, Esc clears/blurs.
+(function initPaletteSearch() {
+  const box = $("palette-search");
+  if (!box) return;
+  box.addEventListener("input", () => { paletteFilter = box.value; buildPalette(); });
+  box.addEventListener("keydown", (ev) => {
+    if (ev.key === "Escape") {
+      ev.preventDefault();
+      if (box.value) { box.value = ""; paletteFilter = ""; buildPalette(); }
+      else box.blur();
+    }
+  });
+})();
 
 // ---------------------------------------------------------------------------
 // analysis toolbar

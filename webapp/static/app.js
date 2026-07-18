@@ -687,7 +687,19 @@ function setHint(msg, isErr) {
 
 // --- svg-level mouse handling -----------------------------------------------
 svg.addEventListener("mousedown", (ev) => {
-  if (ev.button !== 0) return;           // right/middle click: leave for contextmenu
+  // Middle mouse button pans from anywhere, regardless of the active tool. We
+  // stash the prior mode so releasing the button drops you back into whatever
+  // you were doing (placing, wiring, probing) instead of resetting to idle.
+  if (ev.button === 1) {
+    ev.preventDefault();                 // suppress the browser's autoscroll
+    if (mode.kind === "drag") return;    // don't hijack an in-progress drag
+    mode = {
+      kind: "pan", sx: ev.clientX, sy: ev.clientY, ox: view.x, oy: view.y,
+      prev: mode.kind === "pan" ? { kind: "idle" } : mode,
+    };
+    return;
+  }
+  if (ev.button !== 0) return;           // right click: leave for contextmenu
   if (mode.kind === "place") {
     const [wx, wy] = toWorld(ev);
     const type = mode.type, rot = mode.rot, flip = !!mode.flip;
@@ -754,7 +766,7 @@ svg.addEventListener("mousemove", (ev) => {
 window.addEventListener("mouseup", () => {
   if (mode.kind === "pan" || mode.kind === "drag") {
     if (mode.kind === "drag" && mode.moved) autosave();
-    mode = { kind: "idle" };
+    mode = mode.prev || { kind: "idle" };
   }
 });
 

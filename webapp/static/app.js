@@ -62,6 +62,81 @@ let lastResult = null;
 let plots = [];
 
 const $ = (id) => document.getElementById(id);
+
+// Typeset any LaTeX in `el` (in place) using the vendored KaTeX auto-render.
+// Doc/help strings mark math with $…$ (inline) or $$…$$ (display); everything
+// else is left untouched. Fails soft if KaTeX didn't load or a formula is
+// malformed, so a bad delimiter never blanks the panel.
+function renderMath(el) {
+  if (!el || typeof renderMathInElement !== "function") return;
+  try {
+    renderMathInElement(el, {
+      delimiters: [
+        { left: "$$", right: "$$", display: true },
+        { left: "$", right: "$", display: false },
+        { left: "\\(", right: "\\)", display: false },
+        { left: "\\[", right: "\\]", display: true },
+      ],
+      throwOnError: false,
+    });
+  } catch (e) { /* leave the raw text in place */ }
+}
+
+// Turn a LaTeX doc string into readable ASCII for plain-text contexts (native
+// tooltips) that can't typeset. Converts the handful of macros used in the
+// catalog — \frac, \sqrt, \text, \mathcal and a few symbols — then drops the
+// remaining markup, so e.g. "$$H=\frac{a}{b}$$" reads as "H=(a)/(b)".
+const _TEX_SYMBOLS = {
+  omega: "w", lambda: "lambda", phi: "phi", beta: "beta", Delta: "d",
+  pi: "pi", pm: "+-", cdot: "*", times: "x", approx: "~", mathcal: "",
+};
+function texToPlain(tex) {
+  const src = String(tex);
+  let out = "", i = 0;
+  // read a single {…}-delimited group (brace-matched), or one following char
+  const group = () => {
+    if (src[i] !== "{") return src[i++] ?? "";
+    let depth = 0, start = ++i;
+    for (; i < src.length; i++) {
+      if (src[i] === "{") depth++;
+      else if (src[i] === "}") { if (depth === 0) break; depth--; }
+    }
+    const inner = src.slice(start, i);
+    i++;                       // skip closing brace
+    return texToPlain(inner);  // recurse so nested macros resolve
+  };
+  while (i < src.length) {
+    const c = src[i];
+    if (c === "\\") {
+      const m = /^\\([a-zA-Z]+|[,;!\s])/.exec(src.slice(i));
+      if (!m) { out += src[++i] ?? ""; i++; continue; }
+      const name = m[1].trim();
+      i += m[0].length;
+      if (name === "frac" || name === "tfrac" || name === "dfrac") {
+        out += "(" + group() + ")/(" + group() + ")";
+      } else if (name === "sqrt") {
+        out += "sqrt(" + group() + ")";
+      } else if (name === "text" || name === "mathcal") {
+        out += group();
+      } else if (name === "" || name === "," || name === ";" || name === "!") {
+        out += " ";               // spacing macros: \(space) \, \; \!
+      } else {
+        out += _TEX_SYMBOLS[name] ?? name;
+      }
+    } else if (c === "{" || c === "}") {
+      i++;                        // drop stray grouping braces
+    } else {
+      out += c; i++;
+    }
+  }
+  return out;
+}
+function stripMathDelims(s) {
+  return String(s || "")
+    .replace(/\$\$([\s\S]*?)\$\$/g, (_, t) => texToPlain(t))
+    .replace(/\$([^$]*?)\$/g, (_, t) => texToPlain(t));
+}
+
 const svg = $("canvas");
 const layers = {
   notes: $("layer-notes"), wires: $("layer-wires"), comps: $("layer-comps"),
@@ -1210,6 +1285,7 @@ function renderInspector() {
     }
     html += `<div class="insp-doc">${cat.doc || ""}</div>`;
     body.innerHTML = html;
+    renderMath(body.querySelector(".insp-doc"));
 
     body.querySelectorAll("input[data-param]").forEach((inp) => {
       inp.addEventListener("change", () => {
@@ -1454,7 +1530,7 @@ function buildPalette() {
       const item = document.createElement("div");
       item.className = "pal-item";
       item.dataset.type = type;
-      item.title = entry.doc || "";
+      item.title = stripMathDelims(entry.doc);
       const scale = Math.min(28 / sym.w, 24 / sym.h, 0.6);
       item.innerHTML = `
         <svg width="34" height="26" viewBox="0 0 34 26">

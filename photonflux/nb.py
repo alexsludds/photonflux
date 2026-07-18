@@ -459,14 +459,27 @@ class Session:
                 return ref, inst
         return None
 
-    def watch(self, sources: tuple = ("browser",), debounce: float = 0.0):
+    def watch(self, sources: tuple = ("browser",), debounce: float = 0.0,
+              initial: bool = False):
         """Yield the live ``Schematic`` every time it changes.
 
         ``sources`` filters whose edits you care about (by default only the
         browser's, so your own pushes don't re-trigger you); ``debounce``
-        waits that many seconds of quiet before yielding, coalescing bursts.
+        waits that many seconds of quiet before yielding, coalescing bursts;
+        ``initial=True`` also yields the current state immediately (the
+        live-bench loop usually wants to draw once before the first edit).
         Reconnects across dev-server restarts; stop with Ctrl-C / break."""
         last = -1
+        if not initial:
+            # prime with the current rev *now* (not on first next()) so the
+            # subscription's connect snapshot is never mistaken for an edit
+            try:
+                last = self._req("/api/schematic").get("rev", 0)
+            except SessionError:
+                last = 0
+        return self._watch(sources, debounce, last)
+
+    def _watch(self, sources: tuple, debounce: float, last: int):
         while True:
             try:
                 for ev in self._sse("/api/schematic/events"):

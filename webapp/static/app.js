@@ -310,7 +310,7 @@ function applyRemoteDoc(doc) {
           state.instances[selection.id]))
       selection = null;
     if (doc.analysis) applyAnalysis(doc.analysis);
-    if (doc.title && tabs[activeTab] && !tabs[activeTab].title) {
+    if (doc.title && tabs[activeTab] && tabs[activeTab].title !== doc.title) {
       tabs[activeTab].title = doc.title;
       renderTabStrip();
     }

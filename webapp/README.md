@@ -400,6 +400,39 @@ strength in the other.
   detector) and digital (inverter VTC, NAND2, SR latch, ring oscillator,
   T-gate mux, Schmitt trigger) electronics.
 
+## Notebook bridge (photonflux.nb)
+
+The server keeps a **live mirror of the active tab** (`/api/schematic`): the
+editor debounce-pushes it on every edit, and notebook clients read it, edit
+it, and subscribe to changes (`/api/schematic/events`, SSE) — so a Jupyter
+kernel and the canvas are two views of one document. The browser applies
+notebook pushes through the normal undo stack (`Cmd+Z` reverts them), and
+notebook parameter writes are revision-checked so they never clobber a racing
+canvas edit.
+
+```python
+from photonflux.nb import Session, Builder
+
+s = Session()                        # http://127.0.0.1:8642
+s.pull()                             # the live schematic (browser's active tab)
+s["CPL.coupling"] = 0.088            # canvas updates live, undoably
+res = s.dcsweep("*", "wavelength_nm", 1304, 1316, points=2001)
+res.plot()                           # numpy traces, matplotlib
+
+for sch in s.watch():                # yields on every canvas edit —
+    ...                              # a live analysis bench for the schematic
+```
+
+`s.run()` with no arguments mirrors the Run button (canvas schematic +
+toolbar analysis); `transient/dc/dcsweep/ac/noise/pulse` helpers cover the
+toolbar modes, all accepting SI suffixes ("20n", "50G"). Progress streams
+from `/api/progress`; interrupting the kernel cancels the run server-side.
+`Builder` composes schematics programmatically (an N-channel WDM bank is a
+loop) and `s.push(builder)` drops the result on the canvas for hand-tidying.
+Importing `photonflux.nb` needs only numpy — no JAX in the kernel; runs
+execute server-side through the same caches as the Run button, serialized
+behind it. `examples/notebook_live_bench.ipynb` is the guided tour.
+
 ## How it maps onto circulax
 
 The frontend posts `{schematic: {instances, wires, probes}, analysis}` to
@@ -427,7 +460,10 @@ The modules group by role:
 ```
 Server core
   server.py          stdlib HTTP server (static + /api/components, /api/run,
-                     /api/upload, /api/upload_va; runs serialized by a lock)
+                     /api/upload, /api/upload_va, /api/schematic; runs
+                     serialized by a lock)
+  session.py         live schematic mirror + SSE change feed (the notebook
+                     bridge; client side is photonflux/nb.py)
   simulate.py        schematic JSON -> circulax netlist -> dc/dcsweep/
                      transient/ac/noise/pulse/optimize   (the hub)
   catalog.py         component catalog + models_map builder (noisy variants,

@@ -255,6 +255,96 @@ function autosave() {
         view: t.view, analysis: t.analysis, runCfg: t.runCfg, exprs: t.exprs })),
     }));
   } catch {}
+  schedulePushMirror();   // keep the notebook-facing mirror in step
+}
+
+// ---------------------------------------------------------------------------
+// live session mirror — the notebook bridge (/api/schematic)
+// ---------------------------------------------------------------------------
+// The active tab is debounce-pushed to the server on every edit so notebook
+// clients (photonflux.nb) can read what's on the canvas right now; pushes
+// coming back from a notebook are applied through commit(), so they land in
+// the undo stack like any other edit. `applying` suppresses the push that the
+// apply's own autosave/renderInspector would otherwise schedule, breaking the
+// echo loop.
+const MIRROR_SOURCE = "browser";
+let mirror = { rev: 0, timer: null, applying: false, lastPushed: "",
+               disabled: false };   // set on 403: bridge off on this server
+
+function mirrorDoc() {
+  const t = tabs[activeTab];
+  return { title: (t && t.title) || "", schematic: state,
+           analysis: collectAnalysis(), selection };
+}
+
+function schedulePushMirror() {
+  if (mirror.applying || mirror.disabled || !tabs.length) return;
+  clearTimeout(mirror.timer);
+  mirror.timer = setTimeout(pushMirror, 250);
+}
+
+async function pushMirror() {
+  let body;
+  try { body = JSON.stringify({ source: MIRROR_SOURCE, doc: mirrorDoc() }); }
+  catch { return; }
+  if (body === mirror.lastPushed) return;   // selection-only re-renders etc.
+  try {
+    const r = await fetch("/api/schematic", {
+      method: "POST", headers: { "Content-Type": "application/json" }, body,
+    });
+    if (r.status === 403) { mirror.disabled = true; return; }
+    const resp = await r.json();
+    if (resp.ok) {
+      // max(): a slow push response must not rewind past an applied doc
+      mirror.rev = Math.max(mirror.rev, resp.rev);
+      mirror.lastPushed = body;
+    }
+  } catch {}  // server briefly away (dev reload) — the EventSource re-seeds
+}
+
+function applyRemoteDoc(doc) {
+  mirror.applying = true;
+  try {
+    const wasEmpty = docEmpty(state);
+    commit(() => {
+      state = normalizeSchematic(doc.schematic);
+      adoptGlobals(state);
+      resolveSheet();
+    });
+    // keep an instance selection that survived the edit; drop everything else
+    // (wire/probe selections are positional and may now point elsewhere)
+    if (!(selection && selection.kind === "inst" &&
+          state.instances[selection.id]))
+      selection = null;
+    if (doc.analysis) applyAnalysis(doc.analysis);
+    if (doc.title && tabs[activeTab] && tabs[activeTab].title !== doc.title) {
+      tabs[activeTab].title = doc.title;
+      renderTabStrip();
+    }
+    renderInspector();
+    render();
+    if (wasEmpty) zoomToFit();
+    setHint("Schematic updated from notebook session.");
+  } finally { mirror.applying = false; }
+}
+
+function startMirror() {
+  const es = new EventSource("/api/schematic/events");
+  // (re)connect: force a full push so a freshly restarted server re-seeds
+  es.onopen = () => { mirror.lastPushed = ""; schedulePushMirror(); };
+  es.addEventListener("change", async (ev) => {
+    let msg;
+    try { msg = JSON.parse(ev.data); } catch { return; }
+    if (msg.source === MIRROR_SOURCE || msg.rev === mirror.rev) return;
+    if (!msg.rev) { schedulePushMirror(); return; }  // empty mirror: seed it
+    try {
+      const resp = await (await fetch("/api/schematic")).json();
+      if (!resp.doc || resp.rev === mirror.rev ||
+          resp.source === MIRROR_SOURCE) return;
+      mirror.rev = resp.rev;
+      applyRemoteDoc(resp.doc);
+    } catch {}
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -1222,6 +1312,7 @@ function showVeriloga(type, path) {
 // inspector
 // ---------------------------------------------------------------------------
 function renderInspector() {
+  schedulePushMirror();   // selection is part of the notebook-facing mirror
   const body = $("inspector-body");
   if (!selection) {
     body.innerHTML = `<div class="insp-empty">Nothing selected.<br><br>
@@ -3293,5 +3384,6 @@ async function boot() {
     } catch { render(); }
   }
   renderInspector();
+  startMirror();
 }
 boot();

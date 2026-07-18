@@ -74,6 +74,11 @@ STATIC = HERE / "static"
 EXAMPLES = HERE / "examples"
 _RUN_LOCK = threading.Lock()
 
+# Live schematic mirror shared with notebook clients (photonflux.nb). Kept in
+# a module the supervisor never imports; pure stdlib, so importing it here (at
+# module scope, unlike the lazy engine) costs nothing.
+from session import SESSION  # noqa: E402
+
 # --- public-deployment knobs (all default to the local-dev behaviour) --------
 # Verilog-A upload compiles untrusted source through the native OpenVAF
 # toolchain, so a public host must turn it OFF. It defaults ON so running
@@ -87,6 +92,17 @@ try:
     _RUN_TIMEOUT_S = float(os.environ.get("PHOTONFLUX_RUN_TIMEOUT_S", "0") or "0")
 except ValueError:
     _RUN_TIMEOUT_S = 0.0
+# The notebook bridge (/api/schematic + its SSE feed) mirrors whatever is on
+# the canvas through one process-global session — correct for the single-user
+# local server, but on a shared public host it would leak one visitor's
+# schematic to the next and let anyone inject documents into connected
+# editors. Defaults ON for local dev; the container image sets it to "0".
+_ENABLE_BRIDGE = os.environ.get("PHOTONFLUX_ENABLE_BRIDGE", "1") == "1"
+# Cap concurrent SSE subscribers: each holds a handler thread for its whole
+# lifetime, so an uncapped public endpoint is a trivial thread/socket DoS.
+_SSE_LIMIT = 32
+_SSE_COUNT = 0
+_SSE_LOCK = threading.Lock()
 
 _MIME = {".html": "text/html", ".js": "text/javascript", ".css": "text/css",
          ".json": "application/json", ".svg": "image/svg+xml",
@@ -129,6 +145,22 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/examples":
             self._json(_examples_index())
             return
+        if path == "/api/schematic":
+            # Live mirror of the browser's active tab (see session.py).
+            # Lock-free w.r.t. _RUN_LOCK so a notebook can read the canvas
+            # while a run is in flight.
+            if not _ENABLE_BRIDGE:
+                self._json(self._bridge_disabled(), 403)
+                return
+            self._json(SESSION.get())
+            return
+        if path == "/api/schematic/events":
+            if not _ENABLE_BRIDGE:
+                # a non-200 also tells EventSource to stop reconnecting
+                self._json(self._bridge_disabled(), 403)
+                return
+            self._sse_events()
+            return
         if path == "/api/progress":
             # Live transient-solve progress, polled by the browser while an
             # /api/run is in flight. Deliberately lock-free (it never touches
@@ -165,6 +197,56 @@ class Handler(BaseHTTPRequestHandler):
         else:
             self._json({"error": "not found"}, 404)
 
+    @staticmethod
+    def _bridge_disabled() -> dict:
+        return {"ok": False, "disabled": True,
+                "error": "the notebook bridge is disabled on this server "
+                         "(PHOTONFLUX_ENABLE_BRIDGE=0)"}
+
+    def _sse_events(self) -> None:
+        """Stream schematic-mirror change events (server-sent events).
+
+        One long-lived response per subscriber (the browser's EventSource and
+        each notebook ``watch()``); ThreadingHTTPServer gives each its own
+        handler thread, which parks in ``SESSION.wait_change``. An event fires
+        on every rev bump; a comment line every ``timeout`` keeps proxies and
+        dead-peer detection honest. Lock-free w.r.t. _RUN_LOCK, so edits
+        propagate while a solve is running."""
+        global _SSE_COUNT
+        with _SSE_LOCK:
+            if _SSE_COUNT >= _SSE_LIMIT:
+                self._json({"ok": False,
+                            "error": "too many event subscribers"}, 503)
+                return
+            _SSE_COUNT += 1
+        try:
+            self._sse_stream()
+        finally:
+            with _SSE_LOCK:
+                _SSE_COUNT -= 1
+
+    def _sse_stream(self) -> None:
+        self.send_response(200)
+        self.send_header("Content-Type", "text/event-stream")
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("Connection", "close")
+        self.end_headers()
+        self.close_connection = True
+        rev = -1  # sentinel: always send one snapshot event immediately
+        try:
+            while True:
+                cur, source = SESSION.wait_change(rev, timeout=15.0)
+                if cur == rev:
+                    self.wfile.write(b": ping\n\n")     # heartbeat
+                else:
+                    rev = cur
+                    data = json.dumps({"rev": rev, "source": source})
+                    self.wfile.write(
+                        f"event: change\ndata: {data}\n\n".encode())
+                self.wfile.flush()
+        except (BrokenPipeError, ConnectionResetError, OSError):
+            return  # subscriber went away — normal teardown
+
     def do_POST(self) -> None:  # noqa: N802
         route = self.path.split("?", 1)[0]
         if route == "/api/cancel":
@@ -176,7 +258,8 @@ class Handler(BaseHTTPRequestHandler):
             progress.PROGRESS.request_cancel()
             self._json({"ok": True})
             return
-        if route not in ("/api/run", "/api/upload", "/api/upload_va"):
+        if route not in ("/api/run", "/api/upload", "/api/upload_va",
+                         "/api/schematic"):
             self._json({"error": "not found"}, 404)
             return
         try:
@@ -185,7 +268,30 @@ class Handler(BaseHTTPRequestHandler):
                 raise ValueError("payload too large")
             payload = json.loads(self.rfile.read(length) or b"{}")
         except (ValueError, json.JSONDecodeError) as exc:
+            # an unread body would desync the keep-alive connection: the next
+            # request on it would parse body bytes as a request line
+            self.close_connection = True
             self._json({"ok": False, "error": f"bad request: {exc}"}, 400)
+            return
+        if route == "/api/schematic":
+            if not _ENABLE_BRIDGE:
+                self._json(self._bridge_disabled(), 403)
+                return
+            doc = payload.get("doc")
+            if not isinstance(doc, dict) or \
+                    not isinstance(doc.get("schematic"), dict):
+                self._json({"ok": False, "error": "doc.schematic required"},
+                           400)
+                return
+            base_rev = payload.get("base_rev")
+            if base_rev is not None and (isinstance(base_rev, bool) or
+                                         not isinstance(base_rev, int)):
+                self._json({"ok": False,
+                            "error": "base_rev must be an integer"}, 400)
+                return
+            res = SESSION.put(doc, str(payload.get("source") or "unknown"),
+                              base_rev)
+            self._json(res, 200 if res["ok"] else 409)
             return
         if route == "/api/upload":
             self._json(self._upload(payload))

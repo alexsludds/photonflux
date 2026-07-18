@@ -41,7 +41,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from . import toolchain
+from . import toolchain, va_hier
 
 __all__ = ["va", "sky130_fet", "sky130_card", "cw_laser", "mzm",
            "field_to_ri", "ri_to_field",
@@ -91,10 +91,19 @@ def va(
         src = base / f"{stem}.va"
         if not src.exists():
             # models/ groups sources into convention subfolders
-            # (optical_power/, optical_field/, util/); resolve by bare name.
-            src = next(iter(sorted(base.glob(f"**/{stem}.va"))), src)
+            # (optical_power/, optical_field/, util/); resolve by bare name,
+            # never into the __jax__ cache (flattened sources live there).
+            src = next(iter(sorted(p for p in base.glob(f"**/{stem}.va")
+                                   if "__jax__" not in p.parts)), src)
     if not src.exists():
         raise FileNotFoundError(src)
+    # hierarchical models (ring_mod.va instantiating its CMT sub-components)
+    # are flattened source-level first: openvaf parses child instances but
+    # silently drops their physics, so it must only ever see flat modules.
+    search = Path(models_dir) if models_dir else toolchain.MODELS_DIR
+    flat = va_hier.flatten_file(src, search, CACHE_DIR / "flat")
+    if flat is not None:
+        src = flat
     _check_va_support(src)
     cls = class_name or _camel(src.stem)
     module = _lower_cached(
@@ -316,6 +325,12 @@ def ri_to_field():
 # lifetime-free ring; localising the round trip into the cavity-mode storage
 # element is what keeps the photon-lifetime dynamics. :func:`ring_modulator`
 # wires the three into a drop-in coherent-field twin of ring_mod.va.
+#
+# ring_mod.va itself is assembled the same way in Verilog-A — a hierarchical
+# module instantiating directional_coupler.va + ring_phase_shifter.va +
+# ring_waveguide.va (flattened source-level by ``va_hier`` before lowering;
+# tests/test_va_hier.py pins netlist-composed .va sub-components == the
+# flattened ring).
 
 _C0 = 299792458.0  # speed of light [m/s]
 

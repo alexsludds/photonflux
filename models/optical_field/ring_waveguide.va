@@ -1,0 +1,33 @@
+`include "discipline.h"
+`include "constants.h"
+
+// Ring waveguide loop (energy storage + round-trip loss CMT sub-component).
+//
+// The waveguide the light actually circulates in, as coupled-mode theory sees
+// it: the round trip localised into a single-mode storage element. It
+// contributes
+//
+//     dA/dt + A/tau_i
+//
+// to the shared cavity node — the ddt() is the photon storage (the photon
+// lifetime), A/tau_i the round-trip propagation loss at the intrinsic rate
+// 1/tau_i = alpha*v_g/2. This is the element that keeps the ring's
+// photon-lifetime dynamics: the coupler and phase shifter are memoryless, and
+// a literal coupler + delay-line feedback loop would need absdelay() (which
+// the VA->JAX lowering rejects) — lumping the round trip here models the same
+// physics without signal history. Verilog-A twin of cx.cavity_mode; see
+// directional_coupler.va for the full ring ODE and the cavity-node
+// convention. ring_mod.va derives 1/tau_i from the physical waveguide
+// (dB/m loss and group velocity).
+module ring_waveguide(are, aim, gnd);
+    inout are, aim, gnd;
+    electrical are, aim, gnd;
+
+    parameter real inv_tau_i = 1.0 from [0:inf);  // intrinsic decay rate 1/tau_i [1/s]
+
+    analog begin
+        // cavity node: dA/dt + A/tau_i
+        I(are, gnd) <+ ddt(V(are, gnd)) + inv_tau_i * V(are, gnd);
+        I(aim, gnd) <+ ddt(V(aim, gnd)) + inv_tau_i * V(aim, gnd);
+    end
+endmodule

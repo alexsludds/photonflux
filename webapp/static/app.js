@@ -44,6 +44,13 @@ let sheet = state;
 let sheetReadOnly = false;   // true inside a built-in composite's internals
 let sheetCat = null;         // catalog overlay for composite pseudo-types
 let undoStack = [], redoStack = [];
+
+// Open documents. Each tab bundles a full editor context; the module globals
+// (state/sheet/undoStack/view/selection/...) are "the active tab, checked
+// out" — snapshotActiveTab()/checkoutTab() swap the bundle on switch.
+let tabs = [];
+let activeTab = 0;
+let tabSeq = 0;
 let view = { x: 60, y: 40, k: 1 };
 
 let mode = { kind: "idle" };     // idle | place | wire | probe | drag | pan
@@ -150,13 +157,174 @@ function redo() {
 // `state` object (undo/redo/load/new). Hierarchy navigation extends this to
 // re-resolve the active breadcrumb level against the new document.
 function resolveSheet() {
+  const t = tabs[activeTab];
+  if (t) t.state = state;     // keep the active record pointing at the live doc
   sheet = state;
   sheetReadOnly = false;
   sheetCat = null;
 }
 
+// Workspace persistence: every open tab's document + analysis/pane state in
+// one blob. Undo stacks and results are session-only, as before. The legacy
+// single-document key ("photonflux_sch") is no longer written but is migrated
+// on boot and left in place so an older build can still find it.
+const WS_KEY = "photonflux_ws_v1";
+
 function autosave() {
-  try { localStorage.setItem("photonflux_sch", JSON.stringify(state)); } catch {}
+  if (!tabs.length) return;   // boot hasn't built the workspace yet
+  snapshotActiveTab();
+  try {
+    localStorage.setItem(WS_KEY, JSON.stringify({
+      active: activeTab,
+      tabs: tabs.map((t) => ({ title: t.title || "", state: t.state,
+        view: t.view, analysis: t.analysis, runCfg: t.runCfg, exprs: t.exprs })),
+    }));
+  } catch {}
+}
+
+// ---------------------------------------------------------------------------
+// schematic tabs
+// ---------------------------------------------------------------------------
+function freshTabRecord() {
+  return {
+    id: ++tabSeq, title: "",
+    state: { instances: {}, wires: [], probes: [], notes: [],
+             globals: { baud: DEFAULT_BAUD } },
+    undoStack: [], redoStack: [],
+    view: null,                       // null -> zoomToFit on first checkout
+    crumb: [], viewStack: [],         // hierarchy breadcrumb (per tab)
+    analysis: null,
+    runCfg: { enabled: false, second: false, colorMode: "shaded",
+              inst: "", param: "", values: "", inst2: "", param2: "", values2: "" },
+    exprs: "",
+    lastResult: null,
+  };
+}
+
+function tabTitle(t) { return t.title || "Untitled"; }
+
+// a document is "empty" when it holds nothing the user could lose
+function docEmpty(s) {
+  return !Object.keys(s.instances || {}).length && !(s.wires || []).length &&
+         !(s.probes || []).length && !(s.notes || []).length;
+}
+
+function snapshotActiveTab() {
+  const t = tabs[activeTab];
+  if (!t) return;
+  t.state = state;
+  t.undoStack = undoStack; t.redoStack = redoStack;
+  t.view = view;
+  t.analysis = collectAnalysis();
+  t.runCfg = readRunCfg();
+  t.exprs = exprText();
+  t.lastResult = lastResult;
+}
+
+// Load a tab record into the module globals. Does NOT snapshot the previous
+// tab — activateTab does; boot and closeTab check out without snapshotting.
+function checkoutTab(i) {
+  activeTab = i;
+  const t = tabs[i];
+  state = t.state;
+  adoptGlobals(state);
+  undoStack = t.undoStack || []; redoStack = t.redoStack || [];
+  selection = null;
+  mode = { kind: "idle" };
+  layers.tool.innerHTML = "";
+  document.querySelectorAll(".pal-item").forEach((el) => el.classList.remove("armed"));
+  setHint("");
+  resolveSheet();
+  if (t.analysis) applyAnalysis(t.analysis);
+  applyRunCfg(t.runCfg);
+  $("expr-text").value = t.exprs || "";
+  syncGlobalsUI();
+  $("eye-ui").value = fmtNum(globalUI());
+  renderInspector();
+  if (t.view) { view = t.view; render(); }
+  else { view = { x: 60, y: 40, k: 1 }; t.view = view; render(); zoomToFit(); }
+  lastResult = t.lastResult || null;
+  clearResults();               // wipe the previous tab's panes unconditionally
+  if (lastResult?.ok) { rerenderResults(); renderLink(); showLog(lastResult); }
+  renderTabStrip();
+}
+
+function activateTab(i) {
+  if (i === activeTab || !tabs[i]) return;
+  snapshotActiveTab();
+  checkoutTab(i);
+  autosave();
+}
+
+function newTab() {
+  snapshotActiveTab();
+  tabs.push(freshTabRecord());
+  checkoutTab(tabs.length - 1);
+  autosave();
+}
+
+function closeTab(i) {
+  const t = tabs[i];
+  if (!t) return;
+  const st = i === activeTab ? state : t.state;
+  if (!docEmpty(st) &&
+      !confirm(`Close "${tabTitle(t)}"? Unsaved changes and undo history are lost.`))
+    return;
+  tabs.splice(i, 1);
+  if (!tabs.length) tabs.push(freshTabRecord());
+  if (i === activeTab) checkoutTab(Math.min(i, tabs.length - 1));
+  else {
+    if (i < activeTab) activeTab--;
+    renderTabStrip();
+  }
+  autosave();
+}
+
+function renderTabStrip() {
+  const holder = $("tabs");
+  holder.innerHTML = "";
+  tabs.forEach((t, i) => {
+    const el = document.createElement("div");
+    el.className = "stab" + (i === activeTab ? " active" : "");
+    el.title = "Double-click to rename";
+    const name = document.createElement("span");
+    name.className = "stab-title";
+    name.textContent = tabTitle(t);
+    const close = document.createElement("span");
+    close.className = "stab-close";
+    close.title = "Close tab";
+    close.textContent = "×";
+    el.appendChild(name);
+    el.appendChild(close);
+    el.addEventListener("mousedown", (ev) => {
+      if (ev.button !== 0 || ev.target === close) return;
+      if (i !== activeTab) activateTab(i);
+    });
+    close.addEventListener("click", () => closeTab(i));
+    name.addEventListener("dblclick", () => beginTabRename(t, name));
+    holder.appendChild(el);
+  });
+}
+
+function beginTabRename(t, nameEl) {
+  const inp = document.createElement("input");
+  inp.className = "stab-rename";
+  inp.value = t.title || "";
+  nameEl.replaceWith(inp);
+  inp.focus();
+  inp.select();
+  let finished = false;
+  const done = (save) => {
+    if (finished) return;
+    finished = true;
+    if (save) { t.title = inp.value.trim(); autosave(); }
+    renderTabStrip();
+  };
+  inp.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") done(true);
+    else if (e.key === "Escape") done(false);
+  });
+  inp.addEventListener("blur", () => done(true));
 }
 
 // ---------------------------------------------------------------------------
@@ -755,7 +923,8 @@ function canvasMenu() {
     { label: "Run simulation", hint: "⌘⏎", disabled: !!runAbort, action: () => runSim() },
     { sep: true },
     { label: "Fit to view", disabled: empty, action: () => fitView() },
-    { label: "Reset zoom", action: () => { view = { x: 60, y: 40, k: 1 }; render(); } },
+    { label: "Reset zoom",
+      action: () => { view.x = 60; view.y = 40; view.k = 1; render(); } },
     { sep: true },
     { label: "Paste", hint: "⌘V", disabled: !clipboard,
       action: () => { lastPastePos = null; pasteClipboard(); } },
@@ -1491,6 +1660,11 @@ function persistRunCfg() {
 }
 function restoreRunCfg() {
   let c; try { c = JSON.parse(localStorage.getItem("photonflux_runcfg")); } catch {}
+  applyRunCfg(c);
+}
+
+// drive the sweep pane from a stored config object (per-tab or legacy key)
+function applyRunCfg(c) {
   refreshRunCfgSelectors();
   if (c) {
     $("rc-enable").checked = !!c.enabled;
@@ -1596,18 +1770,24 @@ function setRunCfgPanel(open) {
 $("btn-runcfg").addEventListener("click", () => {
   setRunCfgPanel($("runcfg-panel").hidden);
 });
+// pane edits also autosave the workspace, so the per-tab runCfg survives a
+// reload without waiting for the next schematic mutation
 $("rc-inst").addEventListener("change", () => {
   fillParamOptions("rc-inst", "rc-param"); updateRunCount(); persistRunCfg();
+  autosave();
 });
 $("rc-inst2").addEventListener("change", () => {
   fillParamOptions("rc-inst2", "rc-param2"); updateRunCount(); persistRunCfg();
+  autosave();
 });
 for (const id of ["rc-enable", "rc-2nd-on", "rc-colormode", "rc-param", "rc-param2"])
   $(id).addEventListener("change", () => {
-    syncRunCfgDisabled(); updateRunCount(); persistRunCfg();
+    syncRunCfgDisabled(); updateRunCount(); persistRunCfg(); autosave();
   });
 for (const id of ["rc-values", "rc-values2"])
-  $(id).addEventListener("input", () => { updateRunCount(); persistRunCfg(); });
+  $(id).addEventListener("input", () => {
+    updateRunCount(); persistRunCfg(); autosave();
+  });
 
 // derived-trace expressions (edited in the fx panel, sent with every run)
 function exprText() { return $("expr-text").value; }
@@ -1619,6 +1799,7 @@ $("btn-exprs").addEventListener("click", () => {
 });
 $("expr-text").addEventListener("change", () => {
   try { localStorage.setItem("photonflux_exprs", exprText()); } catch {}
+  autosave();     // per-tab exprs survive a reload
 });
 try { $("expr-text").value = localStorage.getItem("photonflux_exprs") || ""; } catch {}
 
@@ -1838,6 +2019,9 @@ async function runSim() {
     },
     analysis: collectAnalysis(),
   };
+  // The tab this run belongs to: if the user switches tabs while the solve is
+  // in flight, the result is filed on this record instead of being displayed.
+  const runTab = tabs[activeTab];
   // Swap Run for Stop while the solve is in flight so the user can abort it.
   btn.hidden = true;
   stopBtn.hidden = false;
@@ -1895,6 +2079,13 @@ async function runSim() {
   if (aborted || res.cancelled) {
     status.textContent = `stopped (${dt}s)`;
     status.className = "";
+    return;
+  }
+  if (runTab && tabs[activeTab] !== runTab) {
+    if (res.ok) runTab.lastResult = res;   // keep a prior good result on failure
+    status.textContent = res.ok
+      ? `done in ${dt}s (other tab)` : `failed (${dt}s, other tab)`;
+    status.className = res.ok ? "ok" : "err";
     return;
   }
   lastResult = res;
@@ -1960,6 +2151,19 @@ function probeHidden(probeName) {
 }
 const visibleTraces = (traces) =>
   (traces || []).filter((tr) => !probeHidden(tr.probe || tr.name));
+
+// wipe every results pane (switching to a tab with no cached run)
+function clearResults() {
+  plots.forEach((p) => p.destroy());
+  plots = [];
+  $("tab-plots").innerHTML = "";
+  $("tab-op").innerHTML = "";
+  $("link-report").innerHTML = "";
+  $("log-pre").innerHTML = "";
+  $("run-status").textContent = "";
+  $("run-status").className = "";
+  if (document.querySelector("#tab-eye.active")) renderEye();
+}
 
 // re-render whatever the results panel currently shows, from the cached run
 function rerenderResults() {
@@ -2740,7 +2944,8 @@ function download(name, text, mime) {
 
 function saveJSON() {
   download("circuit.json", JSON.stringify(
-    { title: "photonflux circuit", schematic: state, analysis: collectAnalysis() },
+    { title: tabs[activeTab]?.title || "photonflux circuit",
+      schematic: state, analysis: collectAnalysis() },
     null, 2), "application/json");
 }
 $("btn-save").addEventListener("click", saveJSON);
@@ -2750,7 +2955,13 @@ $("file-load").addEventListener("change", async () => {
   const f = $("file-load").files[0];
   if (!f) return;
   try {
-    loadDocument(JSON.parse(await f.text()));
+    const doc = JSON.parse(await f.text());
+    // don't clobber work in progress: open in a fresh tab unless this one is empty
+    if (!docEmpty(state)) newTab();
+    loadDocument(doc);
+    tabs[activeTab].title = f.name.replace(/\.json$/i, "");
+    renderTabStrip();
+    autosave();
   } catch (e) { setHint(`could not load: ${e}`, true); }
   $("file-load").value = "";
 });
@@ -2759,11 +2970,14 @@ $("btn-new").addEventListener("click", () => {
   commit(() => { state = { instances: {}, wires: [], probes: [], notes: [],
     globals: { baud: DEFAULT_BAUD } }; resolveSheet(); });
   selection = null;
+  const t = tabs[activeTab];
+  if (t) { t.title = ""; renderTabStrip(); }
   renderInspector();
 });
 
 $("btn-undo").addEventListener("click", undo);
 $("btn-redo").addEventListener("click", redo);
+$("btn-newtab").addEventListener("click", newTab);
 
 $("glob-baud").addEventListener("change", () => {
   const v = parseSI($("glob-baud").value);
@@ -2779,14 +2993,7 @@ $("glob-baud").addEventListener("keydown",
 function loadDocument(doc) {
   const sch = doc.schematic || doc;
   commit(() => {
-    state = {
-      instances: sch.instances || {},
-      wires: (sch.wires || []).map((w) =>
-        Array.isArray(w) ? { from: w[0], to: w[1] } : w),
-      probes: sch.probes || [],
-      notes: sch.notes || [],
-      globals: sch.globals || {},
-    };
+    state = normalizeSchematic(sch);
     adoptGlobals(state);
     resolveSheet();
   });
@@ -2853,7 +3060,12 @@ async function loadExamples() {
     if (!sel.value) return;
     try {
       const doc = await (await fetch("/api/examples/" + sel.value)).json();
+      // don't clobber work in progress: open in a fresh tab unless this one is empty
+      if (!docEmpty(state)) newTab();
       loadDocument(doc);
+      tabs[activeTab].title = doc.title || "";
+      renderTabStrip();
+      autosave();
       // The full write-up already lives in the on-schematic notes textbox, so
       // don't also echo the one-line description into the bottom hint bar —
       // that duplicated the same information in two places (ALE-43).
@@ -2916,6 +3128,19 @@ $("btn-upva").addEventListener("click", () => {
   file.click();
 });
 
+// coerce a persisted schematic into the in-memory shape (missing collections
+// default to empty; wires may be legacy [from, to] pairs)
+function normalizeSchematic(s) {
+  return {
+    instances: (s && s.instances) || {},
+    wires: ((s && s.wires) || []).map((w) =>
+      Array.isArray(w) ? { from: w[0], to: w[1] } : w),
+    probes: (s && s.probes) || [],
+    notes: (s && s.notes) || [],
+    globals: (s && s.globals) || {},
+  };
+}
+
 async function boot() {
   CAT = await (await fetch("/api/components")).json();
   ensureSymbols();
@@ -2923,27 +3148,56 @@ async function boot() {
   await loadExamples();
   $("sel-analysis").dispatchEvent(new Event("change"));
 
-  const saved = localStorage.getItem("photonflux_sch");
   let loaded = false;
-  if (saved) {
+  // multi-tab workspace
+  try {
+    const ws = JSON.parse(localStorage.getItem(WS_KEY) || "null");
+    if (ws && Array.isArray(ws.tabs) && ws.tabs.length) {
+      tabs = ws.tabs.map((r) => {
+        const t = freshTabRecord();
+        t.title = r.title || "";
+        t.state = normalizeSchematic(r.state);
+        t.view = r.view || null;
+        t.analysis = r.analysis || null;
+        if (r.runCfg) t.runCfg = r.runCfg;
+        t.exprs = r.exprs || "";
+        return t;
+      });
+      loaded = true;    // before checkout: a render failure must not fall
+      checkoutTab(Math.min(Math.max(0, ws.active | 0), tabs.length - 1));
+    }                   // through and let a later autosave clobber the blob
+  } catch {}
+
+  if (!loaded) {
+    // legacy single-document autosave -> migrate into tab 0 (the old key is
+    // left in place so an older build can still find it)
     try {
-      const sch = JSON.parse(saved);
-      if (Object.keys(sch.instances || {}).length) {
-        state = sch; adoptGlobals(state); resolveSheet();
-        loaded = true; render(); zoomToFit();
-        // analysis config isn't autosaved, but the sweep pane should survive
-        // a plain reload (like the fx panel) — restore it from localStorage
+      const sch = JSON.parse(localStorage.getItem("photonflux_sch") || "null");
+      if (sch && Object.keys(sch.instances || {}).length) {
+        const t = freshTabRecord();
+        t.state = normalizeSchematic(sch);
+        t.exprs = exprText();     // field was seeded from its legacy key above
+        tabs = [t];
+        checkoutTab(0);
+        // analysis config wasn't autosaved, but the sweep pane should survive
+        // a plain reload (like the fx panel) — restore it from its legacy key
         restoreRunCfg();
+        loaded = true;
       }
     } catch {}
   }
+
   if (!loaded) {
     // first visit: show the photodiode + TIA example (loadDocument ->
     // applyAnalysis -> restorePaneFromAnalysis sets the pane from the doc)
+    tabs = [freshTabRecord()];
+    checkoutTab(0);
     try {
       const doc = await (await fetch("/api/examples/01_photodiode_tia")).json();
       loadDocument(doc);
-      undoStack = [];
+      tabs[activeTab].title = doc.title || "";
+      renderTabStrip();
+      undoStack.length = 0;     // a fresh session starts with no undo history
     } catch { render(); }
   }
   renderInspector();

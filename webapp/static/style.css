@@ -355,6 +355,42 @@ body { display: flex; flex-direction: column; }
 #expr-hint { font-size: 10px; color: var(--text-dim); padding-top: 3px; }
 #btn-exprs.active { background: var(--accent); color: #fff; }
 
+/* --- schematic tabs ----------------------------------------------------- */
+#tabbar {
+  display: flex; align-items: center; gap: 2px; padding: 0 8px;
+  background: var(--panel); border-bottom: 1px solid var(--border);
+  flex: 0 0 28px; min-height: 28px;
+}
+#tabs {
+  display: flex; align-items: center; align-self: stretch; gap: 2px;
+  overflow-x: auto; min-width: 0; scrollbar-width: thin;
+}
+.stab {
+  display: inline-flex; align-items: center; align-self: stretch; gap: 6px;
+  padding: 0 6px 0 12px; color: var(--text-dim); cursor: pointer;
+  white-space: nowrap; user-select: none; border-bottom: 2px solid transparent;
+}
+.stab:hover { color: var(--text); }
+.stab.active {
+  color: var(--text); background: var(--panel2);
+  border-bottom-color: var(--accent);
+}
+.stab-close {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 16px; height: 16px; border-radius: 4px; opacity: .55; font-size: 12px;
+}
+.stab-close:hover { opacity: 1; background: var(--border); }
+.stab-rename {
+  background: var(--panel2); color: var(--text);
+  border: 1px solid var(--accent); border-radius: 4px;
+  font: inherit; padding: 1px 4px; width: 110px;
+}
+#btn-newtab {
+  background: none; border: none; color: var(--text-dim); font-size: 15px;
+  padding: 2px 8px; cursor: pointer; border-radius: 4px;
+}
+#btn-newtab:hover { color: var(--text); background: var(--panel2); }
+
 /* --- run-configuration (sweep + overlay) pane -------------------------- */
 #btn-runcfg { padding: 5px 8px !important; }
 #btn-runcfg.active { background: var(--accent); color: #fff; }

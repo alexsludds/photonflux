@@ -22,6 +22,25 @@ S.ground = {
     <line class="${EL}" x1="18" y1="24" x2="22" y2="24"/>`,
 };
 
+// Subcircuit boundary-port markers: a flag whose single pin is the tip.
+// The marker's refdes IS the port name on the parent symbol, so the refdes
+// stays visible (no hideRef).
+function portMarkerGlyph(cls) {
+  return `
+    <path class="${cls}" d="M4 3 L24 3 L34 10 L24 17 L4 17 Z" fill="none"/>
+    <line class="${cls}" x1="34" y1="10" x2="40" y2="10"/>`;
+}
+
+S.subckt_port_e = {
+  w: 40, h: 20, pins: { p: [40, 10] }, label: [0, -4],
+  draw: () => portMarkerGlyph(EL),
+};
+
+S.subckt_port_o = {
+  w: 40, h: 20, pins: { p: [40, 10] }, label: [0, -4],
+  draw: () => portMarkerGlyph(OPT),
+};
+
 S.cw_laser = {
   w: 80, h: 40, pins: { p1: [80, 20], p2: [40, 40] }, label: [0, -6],
   draw: () => `

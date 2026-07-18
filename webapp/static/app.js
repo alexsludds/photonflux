@@ -23,6 +23,7 @@ const ID_PREFIX = {
   sky130_res_po: "R", sky130_res_nd: "R", sky130_res_high_po: "R",
   sky130_res_xhigh_po: "R", sky130_cap_mim: "C", sky130_cap_mim2: "C",
   opamp: "OA", ground: "GND",
+  subckt_port_e: "P", subckt_port_o: "P",
 };
 
 // ---------------------------------------------------------------------------
@@ -34,7 +35,7 @@ let CAT = {};                    // backend catalog: type -> {ports, params, ...
 // fold both derive UI = 1/baud from it, rather than each carrying their own.
 const DEFAULT_BAUD = 10e9;       // 10 GBd -> 100 ps UI
 let state = { instances: {}, wires: [], probes: [], notes: [],
-              globals: { baud: DEFAULT_BAUD } };
+              subcircuits: {}, globals: { baud: DEFAULT_BAUD } };
 // `sheet` is the schematic surface currently being edited and rendered.
 // `state` stays "the whole document" — what undo snapshots, autosave persists
 // and Run serializes. At the top level sheet === state; hierarchy navigation
@@ -51,10 +52,21 @@ let undoStack = [], redoStack = [];
 let tabs = [];
 let activeTab = 0;
 let tabSeq = 0;
+
+// Hierarchy position of the active tab (checked out like the rest):
+// crumb[i] is {kind:"subckt", def, inst?} or {kind:"composite", type, inst};
+// viewStack[i] holds the pan/zoom of the level ABOVE crumb[i], restored on
+// ascend. Empty crumb = top level (sheet === state).
+let crumb = [];
+let viewStack = [];
 let view = { x: 60, y: 40, k: 1 };
 
 let mode = { kind: "idle" };     // idle | place | wire | probe | drag | pan
 let selection = null;            // {kind:"inst"|"wire"|"probe", id}
+let lastCompClick = null;        // {id, t} — manual double-click detection:
+                                 // render() rebuilds the DOM on every select,
+                                 // so a native dblclick never sees two clicks
+                                 // land on one node
 let clipboard = null;            // detached copy of an instance (no id/wires)
 let lastPastePos = null;         // {x,y} of the previous paste, for cascading
 let pointer = null;              // last pointer world coords over the canvas
@@ -109,7 +121,12 @@ function pinPos(inst, pin) {
 // pseudo-types (sheetCat) shadow the real catalog while descended
 function catEntry(type) {
   if (sheetCat && sheetCat[type]) return sheetCat[type];
-  return CAT[type] || null;
+  if (CAT[type]) return CAT[type];
+  if (type && type.startsWith("subckt:")) {
+    const def = state.subcircuits && state.subcircuits[type.slice(7)];
+    if (def) return subcktEntry(type.slice(7), def);
+  }
+  return null;
 }
 
 function portDomain(type, pin) {
@@ -136,6 +153,8 @@ function commit(mutate) {
   if (undoStack.length > 100) undoStack.shift();
   redoStack = [];
   mutate();
+  // editing inside a def can rename/remove its ports; cascade to referrers
+  if (crumb.some((c) => c.kind === "subckt")) pruneDanglingSubcktRefs();
   autosave();
   render();
 }
@@ -153,15 +172,41 @@ function redo() {
   selection = null; resolveSheet(); autosave(); render();
 }
 
-// Recompute sheet/sheetReadOnly/sheetCat after anything that replaces the
-// `state` object (undo/redo/load/new). Hierarchy navigation extends this to
-// re-resolve the active breadcrumb level against the new document.
+// Recompute sheet/sheetReadOnly/sheetCat from the breadcrumb, after anything
+// that replaces the `state` object (undo/redo/load/new) or moves the crumb.
+// Crumb entries that no longer resolve (undo deleted the def or instance)
+// are dropped, landing on the deepest still-valid level.
 function resolveSheet() {
   const t = tabs[activeTab];
   if (t) t.state = state;     // keep the active record pointing at the live doc
-  sheet = state;
-  sheetReadOnly = false;
-  sheetCat = null;
+  let s = state, ro = false, cat = null, ok = 0;
+  for (const c of crumb) {
+    if (ro) break;                       // composite internals are leaves
+    if (c.kind === "subckt") {
+      const def = state.subcircuits && state.subcircuits[c.def];
+      if (!def) break;
+      s = def.schematic;
+      cat = null;
+      ok++;
+    } else if (c.kind === "composite") {
+      const inst = s.instances[c.inst];
+      if (!inst || inst.type !== c.type || !CAT[c.type]?.expand) break;
+      const cs = compositeSheet(c.type, inst);
+      s = cs.sheet;
+      cat = cs.cat;
+      ro = true;
+      ok++;
+    } else break;
+  }
+  if (crumb.length > ok && viewStack.length > ok) {
+    view = viewStack[ok] || view;   // dropped levels: land on the saved view
+  }
+  crumb.length = ok;
+  viewStack.length = Math.min(viewStack.length, ok);
+  sheet = s;
+  sheetReadOnly = ro;
+  sheetCat = cat;
+  renderCrumb();
 }
 
 // Workspace persistence: every open tab's document + analysis/pane state in
@@ -177,7 +222,8 @@ function autosave() {
     localStorage.setItem(WS_KEY, JSON.stringify({
       active: activeTab,
       tabs: tabs.map((t) => ({ title: t.title || "", state: t.state,
-        view: t.view, analysis: t.analysis, runCfg: t.runCfg, exprs: t.exprs })),
+        view: t.view, crumb: t.crumb, viewStack: t.viewStack,
+        analysis: t.analysis, runCfg: t.runCfg, exprs: t.exprs })),
     }));
   } catch {}
 }
@@ -189,7 +235,7 @@ function freshTabRecord() {
   return {
     id: ++tabSeq, title: "",
     state: { instances: {}, wires: [], probes: [], notes: [],
-             globals: { baud: DEFAULT_BAUD } },
+             subcircuits: {}, globals: { baud: DEFAULT_BAUD } },
     undoStack: [], redoStack: [],
     view: null,                       // null -> zoomToFit on first checkout
     crumb: [], viewStack: [],         // hierarchy breadcrumb (per tab)
@@ -206,7 +252,8 @@ function tabTitle(t) { return t.title || "Untitled"; }
 // a document is "empty" when it holds nothing the user could lose
 function docEmpty(s) {
   return !Object.keys(s.instances || {}).length && !(s.wires || []).length &&
-         !(s.probes || []).length && !(s.notes || []).length;
+         !(s.probes || []).length && !(s.notes || []).length &&
+         !Object.keys(s.subcircuits || {}).length;
 }
 
 function snapshotActiveTab() {
@@ -215,6 +262,7 @@ function snapshotActiveTab() {
   t.state = state;
   t.undoStack = undoStack; t.redoStack = redoStack;
   t.view = view;
+  t.crumb = crumb; t.viewStack = viewStack;
   t.analysis = collectAnalysis();
   t.runCfg = readRunCfg();
   t.exprs = exprText();
@@ -234,7 +282,9 @@ function checkoutTab(i) {
   layers.tool.innerHTML = "";
   document.querySelectorAll(".pal-item").forEach((el) => el.classList.remove("armed"));
   setHint("");
+  crumb = t.crumb || []; viewStack = t.viewStack || [];
   resolveSheet();
+  buildPalette();               // per-document subckt defs + marker visibility
   if (t.analysis) applyAnalysis(t.analysis);
   applyRunCfg(t.runCfg);
   $("expr-text").value = t.exprs || "";
@@ -328,6 +378,408 @@ function beginTabRename(t, nameEl) {
 }
 
 // ---------------------------------------------------------------------------
+// hierarchy: breadcrumb navigation (descend into composites / subcircuits)
+// ---------------------------------------------------------------------------
+const subcktName = (type) =>
+  type && type.startsWith("subckt:") ? type.slice(7) : null;
+
+function insideSubckt() {
+  const c = crumb[crumb.length - 1];
+  return c && c.kind === "subckt" ? c.def : null;
+}
+
+function pushLevel(entry) {
+  crumb.push(entry);
+  viewStack.push(view);
+  view = { x: 60, y: 40, k: 1 };
+  selection = null;
+  disarm();
+  resolveSheet();
+  buildPalette();               // marker visibility follows the level
+  renderInspector();
+  render();
+  fitView();
+  autosave();
+}
+
+function descendComposite(id) {
+  const inst = sheet.instances[id];
+  if (!inst || sheetReadOnly || !catEntry(inst.type)?.expand) return;
+  pushLevel({ kind: "composite", type: inst.type, inst: id });
+}
+
+function descendSubckt(id) {
+  const inst = sheet.instances[id];
+  const name = inst && subcktName(inst.type);
+  if (!name || sheetReadOnly || !state.subcircuits?.[name]) return;
+  pushLevel({ kind: "subckt", def: name, inst: id });
+}
+
+// jump so that `n` crumb entries remain (0 = top level)
+function ascendTo(n) {
+  if (n >= crumb.length) return;
+  crumb.length = n;
+  view = viewStack[n] || { x: 60, y: 40, k: 1 };
+  viewStack.length = n;
+  selection = null;
+  disarm();
+  resolveSheet();
+  buildPalette();
+  renderInspector();
+  render();
+  autosave();
+}
+
+function renderCrumb() {
+  const bar = $("crumbbar");
+  if (!bar) return;
+  bar.hidden = !crumb.length;
+  bar.innerHTML = "";
+  if (!crumb.length) return;
+  const mk = (label, n, current) => {
+    const b = document.createElement("button");
+    b.textContent = label;
+    if (current) b.className = "crumb-cur";
+    else b.addEventListener("click", () => ascendTo(n));
+    bar.appendChild(b);
+  };
+  mk("Top", 0, false);
+  crumb.forEach((c, i) => {
+    bar.insertAdjacentHTML("beforeend", '<span class="crumb-sep">&#9656;</span>');
+    const label = c.kind === "composite"
+      ? `${c.inst} (${CAT[c.type]?.label || c.type})`
+      : c.inst ? `${c.inst} (${c.def})` : c.def;
+    mk(label, i + 1, i === crumb.length - 1);
+  });
+  if (sheetReadOnly)
+    bar.insertAdjacentHTML("beforeend", '<span id="crumb-ro">read-only</span>');
+}
+
+// ---------------------------------------------------------------------------
+// hierarchy: read-only view of a built-in composite's expand structure
+// ---------------------------------------------------------------------------
+const splitEp = (ep) => {
+  const i = ep.indexOf(",");
+  return [ep.slice(0, i), ep.slice(i + 1)];
+};
+
+// Synthesize {sheet, cat} for a composite instance from its catalog `expand`
+// block. Ports of the internal pseudo-types are derived from the connection
+// endpoints + port_map (the `_`-prefixed internals have no catalog entries);
+// layout is a BFS layering from the sub the parent's first port maps to.
+function compositeSheet(type, parentInst) {
+  const entry = CAT[type];
+  const expand = entry.expand;
+  const cat = {}, instances = {}, wires = [];
+
+  // --- derive each sub's ports (name -> domain) ---------------------------
+  const subPorts = {};
+  const notePort = (sub, port, domain) => {
+    const ports = (subPorts[sub] = subPorts[sub] || {});
+    if (domain || !ports[port]) ports[port] = domain || ports[port] || "internal";
+  };
+  for (const [a, b] of expand.connections || []) {
+    notePort(...splitEp(a));
+    notePort(...splitEp(b));
+  }
+  const parentDomain = {};
+  for (const p of entry.ports || []) parentDomain[p.name] = p.domain;
+  for (const [uiPort, target] of Object.entries(expand.port_map || {})) {
+    const [ts, tp] = splitEp(target);
+    notePort(ts, tp, parentDomain[uiPort]);
+  }
+
+  // --- pseudo catalog entries + generic symbols ---------------------------
+  for (const [sub, spec] of Object.entries(expand.instances || {})) {
+    const key = `_int:${type}:${sub}`;
+    const all = spec.settings === "ALL";
+    cat[key] = {
+      label: spec.component || sub,
+      glyphLabel: spec.component || sub,
+      category: "Internals",
+      doc: `Internal component of ${entry.label || type}` +
+           (all ? " — carries the parent instance's settings." : "."),
+      ports: Object.entries(subPorts[sub] || {}).map(
+        ([name, domain]) => ({ name, domain })),
+      params: all ? entry.params || [] : [],
+    };
+    if (!S[key]) S[key] = genericSymbol(key, cat[key]);
+    instances[sub] = {
+      type: key, x: 0, y: 0,
+      settings: all ? { ...(parentInst?.settings || {}) }
+                    : { ...(typeof spec.settings === "object" ? spec.settings : {}) },
+    };
+  }
+  for (const [a, b] of expand.connections || []) wires.push({ from: a, to: b });
+
+  // --- BFS layering from the parent's first port --------------------------
+  const adj = {};
+  for (const [a, b] of expand.connections || []) {
+    const sa = splitEp(a)[0], sb = splitEp(b)[0];
+    (adj[sa] = adj[sa] || new Set()).add(sb);
+    (adj[sb] = adj[sb] || new Set()).add(sa);
+  }
+  const subs = Object.keys(expand.instances || {});
+  const layer = {};
+  const firstPort = (entry.ports || [])[0]?.name;
+  const rootEp = firstPort && (expand.port_map || {})[firstPort];
+  const root = rootEp ? splitEp(rootEp)[0] : subs[0];
+  if (root !== undefined) {
+    layer[root] = 0;
+    const q = [root];
+    while (q.length) {
+      const s = q.shift();
+      for (const n of adj[s] || []) {
+        if (layer[n] === undefined) { layer[n] = layer[s] + 1; q.push(n); }
+      }
+    }
+  }
+  let maxLayer = 0;
+  for (const s of subs) {
+    if (layer[s] === undefined) layer[s] = ++maxLayer;
+    maxLayer = Math.max(maxLayer, layer[s]);
+  }
+  const cols = {};
+  for (const s of subs) (cols[layer[s]] = cols[layer[s]] || []).push(s);
+  for (const [l, names] of Object.entries(cols)) {
+    names.forEach((s, r) => {
+      instances[s].x = 80 + (+l) * 220;
+      instances[s].y = 80 + r * 140;
+    });
+  }
+
+  // --- boundary port markers ----------------------------------------------
+  let li = 0, ri = 0;
+  for (const [uiPort, target] of Object.entries(expand.port_map || {})) {
+    const mid = instances[uiPort] ? "port_" + uiPort : uiPort;
+    const dom = parentDomain[uiPort] === "optical" ? "o" : "e";
+    const left = (layer[splitEp(target)[0]] || 0) <= maxLayer / 2;
+    instances[mid] = {
+      type: "subckt_port_" + dom,
+      x: left ? -80 : 80 + (maxLayer + 1) * 220,
+      y: 80 + (left ? li++ : ri++) * 70,
+      settings: {},
+    };
+    wires.push({ from: `${mid},p`, to: target });
+  }
+
+  return { sheet: { instances, wires, probes: [], notes: [] }, cat };
+}
+
+// ---------------------------------------------------------------------------
+// hierarchy: user subcircuit definitions
+// ---------------------------------------------------------------------------
+// A def's ports are its marker instances: left-half markers become left pins
+// (top to bottom), right-half markers right pins — matching how the def's
+// schematic is drawn.
+function subcktPorts(def) {
+  const insts = (def.schematic && def.schematic.instances) || {};
+  const markers = Object.entries(insts)
+    .filter(([, i]) => i.type === "subckt_port_e" || i.type === "subckt_port_o")
+    .map(([id, i]) => ({
+      name: id, x: i.x || 0, y: i.y || 0,
+      domain: i.type === "subckt_port_o" ? "optical" : "electrical",
+    }));
+  if (!markers.length) return { left: [], right: [], ports: [] };
+  const xs = markers.map((m) => m.x);
+  const mid = (Math.min(...xs) + Math.max(...xs)) / 2;
+  const byY = (a, b) => a.y - b.y || a.name.localeCompare(b.name);
+  const left = markers.filter((m) => m.x <= mid).sort(byY);
+  const right = markers.filter((m) => m.x > mid).sort(byY);
+  return { left, right, ports: left.concat(right) };
+}
+
+function subcktEntry(name, def) {
+  return {
+    label: name,
+    category: "Hierarchy",
+    doc: "Subcircuit — double-click an instance to open its schematic.",
+    ports: subcktPorts(def).ports.map((p) => ({ name: p.name, domain: p.domain })),
+    params: [],
+  };
+}
+
+// box symbol with pins on the sides the markers sit on inside the def
+function subcktSymbol(name, def) {
+  const { left, right } = subcktPorts(def);
+  const rows = Math.max(left.length, right.length, 1);
+  const h = Math.max(40, rows * 20 + 20);
+  const pins = {};
+  left.forEach((p, i) => { pins[p.name] = [0, 20 + i * 20]; });
+  right.forEach((p, i) => { pins[p.name] = [100, 20 + i * 20]; });
+  return {
+    w: 100, h, pins, label: [8, -6], pinLabels: true,
+    draw: () => `
+      <rect class="body body-fill" x="12" y="4" width="76" height="${h - 8}" rx="5"/>
+      <rect class="body" x="17" y="9" width="66" height="${h - 18}" rx="3"
+        stroke-dasharray="3 3" fill="none" opacity="0.55"/>
+      ${left.map((p, i) => `<line class="body" x1="0" y1="${20 + i * 20}" x2="12" y2="${20 + i * 20}"/>`).join("")}
+      ${right.map((p, i) => `<line class="body" x1="88" y1="${20 + i * 20}" x2="100" y2="${20 + i * 20}"/>`).join("")}
+      <text x="22" y="${h / 2 + 3}" style="font-size:8px">${name}</text>`,
+  };
+}
+
+// regenerate the active document's subckt symbols (cheap; called from render
+// so they are correct after undo/redo/load/marker edits without bookkeeping)
+function refreshSubcktSymbols() {
+  for (const [name, def] of Object.entries(state.subcircuits || {}))
+    S["subckt:" + name] = subcktSymbol(name, def);
+}
+
+function defUseCount(name) {
+  const t = "subckt:" + name;
+  const count = (s) =>
+    Object.values(s.instances || {}).filter((i) => i.type === t).length;
+  let n = count(state);
+  for (const d of Object.values(state.subcircuits || {})) n += count(d.schematic);
+  return n;
+}
+
+// Would placing an instance of `defName` inside `intoDef` create a cycle?
+// `extraDefs` overlays defs not yet in this document (a clipboard closure),
+// so cross-document pastes are checked against what the paste would import.
+function subcktWouldCycle(defName, intoDef, extraDefs) {
+  const stack = [defName], seen = new Set();
+  while (stack.length) {
+    const d = stack.pop();
+    if (d === intoDef) return true;
+    if (seen.has(d)) continue;
+    seen.add(d);
+    const def = state.subcircuits?.[d] || (extraDefs && extraDefs[d]);
+    for (const i of Object.values(def?.schematic.instances || {})) {
+      const n = subcktName(i.type);
+      if (n) stack.push(n);
+    }
+  }
+  return false;
+}
+
+function createSubcircuit() {
+  if (sheetReadOnly) {
+    setHint("Read-only view — ascend before creating a subcircuit.", true);
+    return;
+  }
+  const name = (prompt("Subcircuit name (letters, digits, _):") || "").trim();
+  if (!name) return;
+  if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) {
+    setHint(`"${name}" is not a valid subcircuit name.`, true);
+    return;
+  }
+  if (state.subcircuits?.[name]) {
+    setHint(`subcircuit "${name}" already exists.`, true);
+    return;
+  }
+  commit(() => {
+    state.subcircuits = state.subcircuits || {};
+    state.subcircuits[name] =
+      { schematic: { instances: {}, wires: [], probes: [], notes: [] } };
+  });
+  pushLevel({ kind: "subckt", def: name });
+  setHint("Place Port markers (Hierarchy section) to define the "
+    + "subcircuit's pins, then build its circuit.");
+}
+
+function renameSubcircuit(oldName) {
+  const name = (prompt(`Rename subcircuit "${oldName}" to:`, oldName) || "").trim();
+  if (!name || name === oldName) return;
+  if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name) || state.subcircuits?.[name]) {
+    setHint(`cannot rename to "${name}" — invalid or already in use.`, true);
+    return;
+  }
+  commit(() => {
+    state.subcircuits[name] = state.subcircuits[oldName];
+    delete state.subcircuits[oldName];
+    const fix = (s) => {
+      for (const i of Object.values(s.instances || {}))
+        if (i.type === "subckt:" + oldName) i.type = "subckt:" + name;
+    };
+    fix(state);
+    for (const d of Object.values(state.subcircuits)) fix(d.schematic);
+    for (const c of crumb) if (c.kind === "subckt" && c.def === oldName) c.def = name;
+  });
+  buildPalette();
+  renderCrumb();
+}
+
+function deleteSubcircuit(name) {
+  const n = defUseCount(name);
+  if (n) {
+    setHint(`subcircuit "${name}" is used by ${n} instance${n === 1 ? "" : "s"} `
+      + `— delete those first.`, true);
+    return;
+  }
+  if (!confirm(`Delete subcircuit definition "${name}"?`)) return;
+  commit(() => {
+    delete state.subcircuits[name];
+    resolveSheet();             // we may have been inside the deleted def
+  });
+  delete S["subckt:" + name];
+  selection = null;
+  buildPalette();
+  renderInspector();
+}
+
+// After edits inside a def, drop parent-side wires/probes that reference a
+// port the def no longer has (marker renamed or deleted) — mirrors how
+// deleting a component cascades to its wires.
+function pruneDanglingSubcktRefs() {
+  const portsOf = {};
+  for (const [n, d] of Object.entries(state.subcircuits || {}))
+    portsOf[n] = new Set(subcktPorts(d).ports.map((p) => p.name));
+  const sweep = (s) => {
+    const bad = (ep) => {
+      const [id, port] = splitEp(ep);
+      const n = subcktName(s.instances[id]?.type || "");
+      return n ? !(portsOf[n] && portsOf[n].has(port)) : false;
+    };
+    s.wires = (s.wires || []).filter((w) => !bad(w.from) && !bad(w.to));
+    s.probes = (s.probes || []).filter((p) => !bad(p.at));
+  };
+  sweep(state);
+  for (const d of Object.values(state.subcircuits || {})) sweep(d.schematic);
+}
+
+// clipboard support: a copied subckt instance carries its definition closure
+// so it can be pasted into another tab's document
+function collectDefClosure(name, out) {
+  if (out[name]) return out;
+  const def = state.subcircuits?.[name];
+  if (!def) return out;
+  out[name] = JSON.parse(JSON.stringify(def));
+  for (const i of Object.values(def.schematic.instances || {})) {
+    const n = subcktName(i.type);
+    if (n) collectDefClosure(n, out);
+  }
+  return out;
+}
+
+// Merge carried defs into this document: missing -> insert, identical ->
+// reuse, conflicting -> insert under a fresh name. Returns {old: new} for
+// the renames so the pasted instance can be retargeted.
+function importDefs(defs) {
+  const renames = {}, toInsert = {};
+  state.subcircuits = state.subcircuits || {};
+  for (const [name, def] of Object.entries(defs)) {
+    const cur = state.subcircuits[name];
+    if (cur && JSON.stringify(cur) === JSON.stringify(def)) continue;
+    if (!cur) { toInsert[name] = def; continue; }
+    let n2, k = 2;
+    do { n2 = `${name}_${k++}`; } while (state.subcircuits[n2] || defs[n2]);
+    renames[name] = n2;
+    toInsert[n2] = def;
+  }
+  for (const [n, def] of Object.entries(toInsert)) {
+    const copy = JSON.parse(JSON.stringify(def));
+    for (const i of Object.values(copy.schematic.instances || {})) {
+      const r = renames[subcktName(i.type) || ""];
+      if (r) i.type = "subckt:" + r;
+    }
+    state.subcircuits[n] = copy;
+  }
+  return renames;
+}
+
+// ---------------------------------------------------------------------------
 // global baud rate (schematic-wide). UI = 1/baud; the PRBS source and the eye
 // diagram both pull from here instead of carrying a per-instance unit interval.
 // ---------------------------------------------------------------------------
@@ -401,6 +853,7 @@ function deleteSelection() {
 // ---------------------------------------------------------------------------
 function render() {
   syncGlobalsUI();
+  refreshSubcktSymbols();
   layers.notes.innerHTML = "";
   layers.comps.innerHTML = "";
   layers.wires.innerHTML = "";
@@ -531,6 +984,16 @@ function render() {
       if (mode.kind === "probe" || mode.kind === "wire" || mode.kind === "place") return;
       ev.stopPropagation();
       selection = { kind: "inst", id };
+      const now = performance.now();
+      if (lastCompClick?.id === id && now - lastCompClick.t < 400) {
+        lastCompClick = null;             // double-click: descend, don't drag
+        if (subcktName(inst.type)) { descendSubckt(id); return; }
+        if (!sheetReadOnly && catEntry(inst.type)?.expand) {
+          descendComposite(id);
+          return;
+        }
+      }
+      lastCompClick = { id, t: now };
       if (sheetReadOnly) { renderInspector(); render(); return; }   // select, no drag
       const [wx, wy] = toWorld(ev);
       mode = { kind: "drag", id, dx: wx - inst.x, dy: wy - inst.y, moved: false,
@@ -662,6 +1125,13 @@ function finishWire(ep) {
 function armPlacement(type) {
   if (sheetReadOnly) {
     setHint("Read-only view — built-in composite internals cannot be edited.", true);
+    return;
+  }
+  const here = insideSubckt();
+  const n = subcktName(type);
+  if (n && here && subcktWouldCycle(n, here)) {
+    setHint(`placing "${n}" inside "${here}" would make the subcircuit `
+      + "contain itself.", true);
     return;
   }
   mode = { kind: "place", type, rot: 0, flip: false };
@@ -859,8 +1329,16 @@ $("canvas-wrap").addEventListener("contextmenu", (ev) => {
 function compMenu(id) {
   const inst = sheet.instances[id];
   if (!inst) return canvasMenu();
+  const canDescend = !sheetReadOnly &&
+    (subcktName(inst.type) || catEntry(inst.type)?.expand);
   return [
     { header: `${id} — ${catEntry(inst.type)?.label || inst.type}` },
+    ...(canDescend ? [{
+      label: subcktName(inst.type) ? "Open subcircuit" : "Descend into internals",
+      hint: "dbl-click",
+      action: () => subcktName(inst.type)
+        ? descendSubckt(id) : descendComposite(id),
+    }, { sep: true }] : []),
     { label: "Rotate 90°", hint: "R",
       action: () => { selection = { kind: "inst", id }; rotateSelected(90); } },
     { label: "Flip horizontal", hint: "F",
@@ -909,10 +1387,11 @@ function portMenu(ep) {
   const probed = sheet.probes.some((p) => p.at === ep);
   return [
     { header: `port: ${id}.${pin}` },
-    { label: "Start wire from here",
+    { label: "Start wire from here", disabled: sheetReadOnly,
       action: () => { mode = { kind: "wire", from: ep };
         setHint("Click a destination port to finish the wire — Esc cancels."); } },
-    { label: probed ? "Already probed" : "Add probe here", disabled: probed,
+    { label: probed ? "Already probed" : "Add probe here",
+      disabled: probed || sheetReadOnly,
       action: () => addProbeAt(ep) },
   ];
 }
@@ -921,6 +1400,8 @@ function canvasMenu() {
   const empty = !Object.keys(sheet.instances).length;
   return [
     { label: "Run simulation", hint: "⌘⏎", disabled: !!runAbort, action: () => runSim() },
+    ...(crumb.length ? [{ label: "Go up one level", hint: "Esc",
+      action: () => ascendTo(crumb.length - 1) }] : []),
     { sep: true },
     { label: "Fit to view", disabled: empty, action: () => fitView() },
     { label: "Reset zoom",
@@ -932,7 +1413,7 @@ function canvasMenu() {
     { label: "Undo", hint: "⌘Z", disabled: !undoStack.length, action: () => undo() },
     { label: "Redo", hint: "⇧⌘Z", disabled: !redoStack.length, action: () => redo() },
     { sep: true },
-    { label: "New schematic", danger: true, disabled: empty,
+    { label: "New schematic", danger: true, disabled: docEmpty(state),
       action: () => $("btn-new").click() },
   ];
 }
@@ -946,7 +1427,16 @@ function copySelection() {
   if (selection?.kind !== "inst") return;
   const src = sheet.instances[selection.id];
   if (!src) return;
+  if (sheetReadOnly) {
+    setHint("Read-only view — composite internals cannot be copied.", true);
+    return;
+  }
   clipboard = JSON.parse(JSON.stringify(src));
+  clipboard.__srcTab = tabs[activeTab]?.id;   // detect same-document pastes
+  // a subckt instance travels with its definition closure so it can be
+  // pasted into another tab's document
+  const n = subcktName(src.type);
+  if (n) clipboard.__defs = collectDefClosure(n, {});
   lastPastePos = null;                    // next paste drops at the pointer
   setHint(`Copied ${catEntry(clipboard.type)?.label || clipboard.type} — ⌘V to paste.`);
 }
@@ -955,7 +1445,21 @@ function copySelection() {
 // paste, then cascading down-right so repeated pastes don't stack.
 function pasteClipboard() {
   if (!clipboard || sheetReadOnly) return;
-  const sym = S[clipboard.type];
+  if ((clipboard.type === "subckt_port_e" || clipboard.type === "subckt_port_o")
+      && !insideSubckt()) {
+    setHint("Port markers belong inside a subcircuit definition.", true);
+    return;
+  }
+  const pasteName = subcktName(clipboard.type);
+  const here = insideSubckt();
+  if (pasteName && here && subcktWouldCycle(pasteName, here, clipboard.__defs)) {
+    setHint(`pasting "${pasteName}" inside "${here}" would make the `
+      + "subcircuit contain itself.", true);
+    return;
+  }
+  const sym = S[clipboard.type] ||
+    (pasteName && clipboard.__defs?.[pasteName] &&
+     subcktSymbol(pasteName, clipboard.__defs[pasteName]));
   if (!sym) return;
   let x, y;
   if (lastPastePos) {
@@ -971,9 +1475,22 @@ function pasteClipboard() {
   const nid = newId(clipboard.type);
   commit(() => {
     const copy = JSON.parse(JSON.stringify(clipboard));
+    delete copy.__defs;
+    delete copy.__srcTab;
+    // Same-document paste of a still-existing def: use the live definition
+    // (the clipboard's snapshot may be stale after edits — importing it
+    // would silently fork the def). Cross-document (or def since deleted):
+    // merge the carried closure.
+    const n = subcktName(copy.type);
+    const sameDoc = clipboard.__srcTab === tabs[activeTab]?.id;
+    if (clipboard.__defs && !(sameDoc && n && state.subcircuits?.[n])) {
+      const renames = importDefs(clipboard.__defs);
+      if (n && renames[n]) copy.type = "subckt:" + renames[n];
+    }
     copy.x = x; copy.y = y;
     sheet.instances[nid] = copy;
   });
+  buildPalette();               // an imported def becomes placeable here too
   lastPastePos = { x, y };
   selection = { kind: "inst", id: nid };
   renderInspector(); render();
@@ -1044,7 +1561,11 @@ window.addEventListener("keydown", (ev) => {
   if (mod && ev.key === "v" && !ev.shiftKey) { ev.preventDefault(); pasteClipboard(); return; }
   if (mod && ev.key === "Enter") { ev.preventDefault(); runSim(); return; }
   switch (ev.key) {
-    case "Escape": if (runAbort) { stopSim(); } else { disarm(); render(); } break;
+    case "Escape":
+      if (runAbort) { stopSim(); }
+      else if (mode.kind !== "idle") { disarm(); render(); }
+      else if (crumb.length) { ascendTo(crumb.length - 1); }
+      break;
     case "Delete": case "Backspace": ev.preventDefault(); deleteSelection(); break;
     case "r": case "R":
       if (mode.kind === "place") { mode.rot = (mode.rot + 90) % 360; }
@@ -1196,6 +1717,11 @@ function renderInspector() {
       html += `<button id="insp-va" class="insp-va-btn"
         title="View ${vaTitle}">&#x1F441; View Verilog-A source</button>`;
     }
+    if (subcktName(inst.type)) {
+      html += `<button id="insp-open-sub" class="insp-va-btn"
+        title="Edit this subcircuit's schematic (double-click the symbol)">
+        &#x2935; Open subcircuit</button>`;
+    }
     html += `<div class="insp-doc">${cat.doc || ""}</div>`;
     body.innerHTML = html;
 
@@ -1287,7 +1813,11 @@ function renderInspector() {
     $("insp-flip-v").onclick = () => flipSelected(true);
     $("insp-del").onclick = deleteSelection;
     if (cat.veriloga) $("insp-va").onclick = () => showVeriloga(inst.type, cat.veriloga);
+    if (subcktName(inst.type)) $("insp-open-sub").onclick = () => descendSubckt(id);
     $("insp-rename").addEventListener("change", () => renameInstance(id, $("insp-rename").value));
+    if (sheetReadOnly)
+      body.querySelectorAll("input,select,textarea,button").forEach(
+        (el) => { el.disabled = true; });
     return;
   }
   if (selection.kind === "wire") {
@@ -1424,9 +1954,11 @@ function buildPalette() {
   let shown = 0;
   const cats = {};
   for (const [type, entry] of Object.entries(CAT)) {
+    // port markers only make sense inside a subcircuit definition
+    if (entry.category === "Hierarchy" && !insideSubckt()) continue;
     (cats[entry.category] = cats[entry.category] || []).push([type, entry]);
   }
-  const order = ["Lasers", "Modulators", "Photonic Passives",
+  const order = ["Hierarchy", "Lasers", "Modulators", "Photonic Passives",
                  "Detectors & Bridges", "Channels", "Sources", "Electrical",
                  "Amplifiers & EQ", "SKY130 FETs", "SKY130 Passives",
                  "Reference"];
@@ -1457,6 +1989,62 @@ function buildPalette() {
       shown++;
     }
   }
+  // subcircuit definitions of the active document
+  const defs = Object.entries(state.subcircuits || {})
+    .filter(([name]) => fuzzyMatch(q, name) || fuzzyMatch(q, "subcircuit"));
+  if (defs.length || fuzzyMatch(q, "subcircuit") || fuzzyMatch(q, "new")) {
+    const h = document.createElement("div");
+    h.className = "pal-cat"; h.textContent = "Subcircuits";
+    holder.appendChild(h);
+    for (const [name, def] of defs) {
+      const sym = subcktSymbol(name, def);
+      const item = document.createElement("div");
+      item.className = "pal-item";
+      item.dataset.type = "subckt:" + name;
+      item.title = "Click to place; right-click to open, rename or delete "
+        + "the definition.";
+      const scale = Math.min(28 / sym.w, 24 / sym.h, 0.6);
+      item.innerHTML = `
+        <svg width="34" height="26" viewBox="0 0 34 26">
+          <g class="comp" transform="translate(${17 - sym.w * scale / 2},${13 - sym.h * scale / 2}) scale(${scale})">
+            ${sym.draw()}</g></svg>
+        <span class="pal-label">${name}</span>`;
+      item.addEventListener("click", () => {
+        if (mode.kind === "place" && mode.type === "subckt:" + name) disarm();
+        else armPlacement("subckt:" + name);
+      });
+      item.addEventListener("contextmenu", (ev) => {
+        ev.preventDefault();
+        showContextMenu(ev.clientX, ev.clientY, [
+          { header: `subcircuit: ${name}` },
+          { label: "Open schematic", action: () => {
+              if (!insideSubckt() && !sheetReadOnly)
+                pushLevel({ kind: "subckt", def: name });
+            }, disabled: !!crumb.length },
+          { label: "Rename…", action: () => renameSubcircuit(name) },
+          { sep: true },
+          { label: "Delete definition", danger: true,
+            action: () => deleteSubcircuit(name) },
+        ]);
+      });
+      holder.appendChild(item);
+      shown++;
+    }
+    const add = document.createElement("div");
+    add.className = "pal-item";
+    add.title = "Create a subcircuit definition and open it for editing";
+    add.innerHTML = `
+      <svg width="34" height="26" viewBox="0 0 34 26">
+        <rect class="comp" x="6" y="4" width="22" height="18" rx="3"
+          fill="none" stroke="var(--text-dim)" stroke-dasharray="3 2"/>
+        <text x="17" y="17" text-anchor="middle"
+          style="font-size:11px;fill:var(--text-dim)">+</text></svg>
+      <span class="pal-label">New subcircuit&hellip;</span>`;
+    add.addEventListener("click", createSubcircuit);
+    holder.appendChild(add);
+    shown++;
+  }
+
   // probe tool
   if (fuzzyMatch(q, "probe") || fuzzyMatch(q, "measure")) {
     const h = document.createElement("div");
@@ -2003,19 +2591,26 @@ function stopSim() {
 
 async function runSim() {
   const btn = $("btn-run"), stopBtn = $("btn-stop"), status = $("run-status");
+  // PRBS sources pull their unit interval from the global baud rate: inject
+  // UI = 1/baud here (inside subcircuit definitions too) so the backend
+  // waveform builder, eye and BER post-proc all see one consistent rate.
+  const stripSch = (s) => ({
+    instances: Object.fromEntries(Object.entries(s.instances).map(
+      ([id, i]) => [id, { type: i.type, settings: i.type === "prbs"
+        ? { ...(i.settings || {}), ui: globalUI() } : (i.settings || {}) }])),
+    wires: s.wires.map((w) => [w.from, w.to]),
+    probes: (s.probes || []).map((p) => ({ name: p.name, at: p.at,
+      ...(p.spectrum ? { spectrum: true,
+        ...(p.specStart != null ? { spec_start: p.specStart } : {}),
+        ...(p.specStop != null ? { spec_stop: p.specStop } : {}) } : {}) })),
+  });
   const payload = {
     schematic: {
-      // PRBS sources pull their unit interval from the global baud rate: inject
-      // UI = 1/baud here so the backend waveform builder, eye and BER post-proc
-      // all see one consistent rate.
-      instances: Object.fromEntries(Object.entries(state.instances).map(
-        ([id, i]) => [id, { type: i.type, settings: i.type === "prbs"
-          ? { ...(i.settings || {}), ui: globalUI() } : (i.settings || {}) }])),
-      wires: state.wires.map((w) => [w.from, w.to]),
-      probes: state.probes.map((p) => ({ name: p.name, at: p.at,
-        ...(p.spectrum ? { spectrum: true,
-          ...(p.specStart != null ? { spec_start: p.specStart } : {}),
-          ...(p.specStop != null ? { spec_stop: p.specStop } : {}) } : {}) })),
+      ...stripSch(state),
+      ...(Object.keys(state.subcircuits || {}).length ? {
+        subcircuits: Object.fromEntries(Object.entries(state.subcircuits).map(
+          ([n, d]) => [n, { schematic: stripSch(d.schematic) }])),
+      } : {}),
     },
     analysis: collectAnalysis(),
   };
@@ -2113,8 +2708,25 @@ async function runSim() {
 $("btn-run").addEventListener("click", runSim);
 $("btn-stop").addEventListener("click", stopSim);
 
-function probeColor(name) {
+// Find the probe behind a trace name. Traces from probes inside subcircuit
+// definitions arrive namespaced ("U1__popt"); fall back to the def probe so
+// its color / hide flag still apply (shared by every instance's copy).
+function findProbe(name) {
   const p = state.probes.find((q) => q.name === name);
+  if (p) return p;
+  const i = name.lastIndexOf("__");
+  if (i > 0) {
+    const base = name.slice(i + 2);
+    for (const d of Object.values(state.subcircuits || {})) {
+      const q = (d.schematic.probes || []).find((r) => r.name === base);
+      if (q) return q;
+    }
+  }
+  return null;
+}
+
+function probeColor(name) {
+  const p = findProbe(name);
   return p ? p.color : "#d6d6e3";
 }
 
@@ -2146,7 +2758,7 @@ function traceStroke(tr) {
 // the backend so AC pairing / op-point math is unaffected). A trace maps to
 // its probe via `probe` (stepped families, AC) or `name` (plain sweep/tran).
 function probeHidden(probeName) {
-  const p = state.probes.find((q) => q.name === probeName);
+  const p = findProbe(probeName);
   return !!(p && p.hide);
 }
 const visibleTraces = (traces) =>
@@ -2967,11 +3579,15 @@ $("file-load").addEventListener("change", async () => {
 });
 
 $("btn-new").addEventListener("click", () => {
+  crumb.length = 0;
+  viewStack.length = 0;
+  resolveSheet();               // leave any read-only level BEFORE committing
   commit(() => { state = { instances: {}, wires: [], probes: [], notes: [],
-    globals: { baud: DEFAULT_BAUD } }; resolveSheet(); });
+    subcircuits: {}, globals: { baud: DEFAULT_BAUD } }; resolveSheet(); });
   selection = null;
   const t = tabs[activeTab];
   if (t) { t.title = ""; renderTabStrip(); }
+  buildPalette();
   renderInspector();
 });
 
@@ -2991,12 +3607,16 @@ $("glob-baud").addEventListener("keydown",
   (e) => { if (e.key === "Enter") e.target.blur(); });
 
 function loadDocument(doc) {
+  crumb.length = 0;
+  viewStack.length = 0;
+  resolveSheet();               // leave any read-only level BEFORE committing
   const sch = doc.schematic || doc;
   commit(() => {
     state = normalizeSchematic(sch);
     adoptGlobals(state);
     resolveSheet();
   });
+  buildPalette();               // the loaded document's subckt defs
   selection = null;
   applyAnalysis(doc.analysis);
   $("eye-ui").value = fmtNum(globalUI());   // eye folds at the loaded baud rate
@@ -3094,7 +3714,7 @@ function genericSymbol(type, entry) {
       <rect class="body body-fill" x="12" y="4" width="76" height="${h - 8}" rx="5"/>
       ${left.map((p, i) => `<line class="body" x1="0" y1="${20 + i * 20}" x2="12" y2="${20 + i * 20}"/>`).join("")}
       ${right.map((p, i) => `<line class="body" x1="88" y1="${20 + i * 20}" x2="100" y2="${20 + i * 20}"/>`).join("")}
-      <text x="18" y="${h / 2 + 3}" style="font-size:8px">${type.replace(/^uva_/, "")}</text>`,
+      <text x="18" y="${h / 2 + 3}" style="font-size:8px">${entry.glyphLabel || type.replace(/^uva_/, "")}</text>`,
   };
 }
 
@@ -3130,13 +3750,22 @@ $("btn-upva").addEventListener("click", () => {
 
 // coerce a persisted schematic into the in-memory shape (missing collections
 // default to empty; wires may be legacy [from, to] pairs)
-function normalizeSchematic(s) {
+function normalizeSheet(s) {
   return {
     instances: (s && s.instances) || {},
     wires: ((s && s.wires) || []).map((w) =>
       Array.isArray(w) ? { from: w[0], to: w[1] } : w),
     probes: (s && s.probes) || [],
     notes: (s && s.notes) || [],
+  };
+}
+
+function normalizeSchematic(s) {
+  return {
+    ...normalizeSheet(s),
+    subcircuits: Object.fromEntries(
+      Object.entries((s && s.subcircuits) || {}).map(
+        ([n, d]) => [n, { schematic: normalizeSheet(d && d.schematic) }])),
     globals: (s && s.globals) || {},
   };
 }
@@ -3158,6 +3787,8 @@ async function boot() {
         t.title = r.title || "";
         t.state = normalizeSchematic(r.state);
         t.view = r.view || null;
+        t.crumb = Array.isArray(r.crumb) ? r.crumb : [];
+        t.viewStack = Array.isArray(r.viewStack) ? r.viewStack : [];
         t.analysis = r.analysis || null;
         if (r.runCfg) t.runCfg = r.runCfg;
         t.exprs = r.exprs || "";

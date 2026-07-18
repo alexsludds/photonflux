@@ -1,0 +1,147 @@
+{
+  "title": "Hierarchical RX front-end (subcircuits)",
+  "group": "Links & receivers",
+  "description": "Two instances of one user subcircuit (photodiode + TIA) demonstrate schematic hierarchy: double-click U1 or U2 to open the shared rx_frontend definition, edit it, and both instances follow. Probes inside the definition are reported per instance (U1__popt, U2__popt).",
+  "schematic": {
+    "notes": [
+      {
+        "x": 40,
+        "y": -95,
+        "title": "Hierarchical RX front-end — what this testbench does",
+        "lines": [
+          "rx_frontend is a user SUBCIRCUIT: photodiode + TIA behind optical",
+          "port `pin` and electrical port `vout`. U1 and U2 are two instances",
+          "of the same definition — double-click one to descend into it (the",
+          "breadcrumb takes you back up; Esc also ascends).",
+          "U1 receives the pulsed path (LAS1 -> MOD1), U2 a plain CW laser.",
+          "The probe popt inside the definition is measured once per instance",
+          "and shows up as U1__popt / U2__popt beside the top-level vout1/vout2.",
+          "",
+          "Try: open U1, set TIA1.gain_ohm = 1000, ascend, Run — both",
+          "receivers' output swings grow together (one shared definition)."
+        ]
+      }
+    ],
+    "instances": {
+      "LAS1": {
+        "type": "cw_laser",
+        "x": 40,
+        "y": 60,
+        "rot": 0,
+        "settings": { "wavelength_nm": 1310.0, "power": 0.018 }
+      },
+      "MOD1": {
+        "type": "pulse_mod",
+        "x": 240,
+        "y": 60,
+        "rot": 0,
+        "settings": { "p_on": 0.018, "p_off": 0.003 }
+      },
+      "U1": {
+        "type": "subckt:rx_frontend",
+        "x": 440,
+        "y": 50,
+        "rot": 0,
+        "settings": {}
+      },
+      "LAS2": {
+        "type": "cw_laser",
+        "x": 40,
+        "y": 260,
+        "rot": 0,
+        "settings": { "wavelength_nm": 1310.0, "power": 0.010 }
+      },
+      "U2": {
+        "type": "subckt:rx_frontend",
+        "x": 440,
+        "y": 250,
+        "rot": 0,
+        "settings": {}
+      },
+      "GND1": {
+        "type": "ground",
+        "x": 60,
+        "y": 150,
+        "rot": 0,
+        "settings": {}
+      },
+      "GND2": {
+        "type": "ground",
+        "x": 60,
+        "y": 350,
+        "rot": 0,
+        "settings": {}
+      }
+    },
+    "wires": [
+      { "from": "LAS1,p1", "to": "MOD1,pin" },
+      { "from": "MOD1,pout", "to": "U1,pin" },
+      { "from": "LAS1,p2", "to": "GND1,p1" },
+      { "from": "LAS2,p1", "to": "U2,pin" },
+      { "from": "LAS2,p2", "to": "GND2,p1" }
+    ],
+    "probes": [
+      { "name": "vout1", "at": "U1,vout", "color": "#6ecbf5" },
+      { "name": "vout2", "at": "U2,vout", "color": "#8fd18f" }
+    ],
+    "subcircuits": {
+      "rx_frontend": {
+        "schematic": {
+          "notes": [],
+          "instances": {
+            "pin": {
+              "type": "subckt_port_o",
+              "x": 0,
+              "y": 100,
+              "rot": 0,
+              "settings": {}
+            },
+            "vout": {
+              "type": "subckt_port_e",
+              "x": 480,
+              "y": 100,
+              "rot": 0,
+              "settings": {}
+            },
+            "PD1": {
+              "type": "photodiode",
+              "x": 120,
+              "y": 80,
+              "rot": 0,
+              "settings": {}
+            },
+            "TIA1": {
+              "type": "tia",
+              "x": 300,
+              "y": 80,
+              "rot": 0,
+              "settings": { "gain_ohm": 200.0 }
+            },
+            "GND1": {
+              "type": "ground",
+              "x": 160,
+              "y": 220,
+              "rot": 0,
+              "settings": {}
+            }
+          },
+          "wires": [
+            { "from": "pin,p", "to": "PD1,po_p" },
+            { "from": "PD1,cat", "to": "TIA1,inp" },
+            { "from": "PD1,po_n", "to": "GND1,p1" },
+            { "from": "PD1,an", "to": "GND1,p1" },
+            { "from": "TIA1,out", "to": "vout,p" }
+          ],
+          "probes": [
+            { "name": "popt", "at": "PD1,po_p", "color": "#fbbf24" }
+          ]
+        }
+      }
+    }
+  },
+  "analysis": {
+    "mode": "transient",
+    "t_stop": 4e-09,
+    "points": 800
+  }
+}

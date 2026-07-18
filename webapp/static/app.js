@@ -35,6 +35,14 @@ let CAT = {};                    // backend catalog: type -> {ports, params, ...
 const DEFAULT_BAUD = 10e9;       // 10 GBd -> 100 ps UI
 let state = { instances: {}, wires: [], probes: [], notes: [],
               globals: { baud: DEFAULT_BAUD } };
+// `sheet` is the schematic surface currently being edited and rendered.
+// `state` stays "the whole document" — what undo snapshots, autosave persists
+// and Run serializes. At the top level sheet === state; hierarchy navigation
+// repoints it (a subcircuit definition, or a synthesized read-only view of a
+// built-in composite's internals) without touching the document root.
+let sheet = state;
+let sheetReadOnly = false;   // true inside a built-in composite's internals
+let sheetCat = null;         // catalog overlay for composite pseudo-types
 let undoStack = [], redoStack = [];
 let view = { x: 60, y: 40, k: 1 };
 
@@ -90,8 +98,15 @@ function pinPos(inst, pin) {
   return localToWorld(inst, S[inst.type], ...S[inst.type].pins[pin]);
 }
 
+// catalog entry for a type as seen from the current sheet: composite
+// pseudo-types (sheetCat) shadow the real catalog while descended
+function catEntry(type) {
+  if (sheetCat && sheetCat[type]) return sheetCat[type];
+  return CAT[type] || null;
+}
+
 function portDomain(type, pin) {
-  const e = CAT[type];
+  const e = catEntry(type);
   const p = e && e.ports.find((p) => p.name === pin);
   return p ? p.domain : "electrical";
 }
@@ -106,6 +121,10 @@ function toWorld(ev) {
 // state mutation + undo
 // ---------------------------------------------------------------------------
 function commit(mutate) {
+  if (sheetReadOnly) {
+    setHint("Read-only view — built-in composite internals cannot be edited.", true);
+    return;
+  }
   undoStack.push(JSON.stringify(state));
   if (undoStack.length > 100) undoStack.shift();
   redoStack = [];
@@ -118,13 +137,22 @@ function undo() {
   if (!undoStack.length) return;
   redoStack.push(JSON.stringify(state));
   state = JSON.parse(undoStack.pop());
-  selection = null; autosave(); render();
+  selection = null; resolveSheet(); autosave(); render();
 }
 function redo() {
   if (!redoStack.length) return;
   undoStack.push(JSON.stringify(state));
   state = JSON.parse(redoStack.pop());
-  selection = null; autosave(); render();
+  selection = null; resolveSheet(); autosave(); render();
+}
+
+// Recompute sheet/sheetReadOnly/sheetCat after anything that replaces the
+// `state` object (undo/redo/load/new). Hierarchy navigation extends this to
+// re-resolve the active breadcrumb level against the new document.
+function resolveSheet() {
+  sheet = state;
+  sheetReadOnly = false;
+  sheetCat = null;
 }
 
 function autosave() {
@@ -171,29 +199,29 @@ function syncGlobalsUI() {
 function newId(type) {
   const prefix = ID_PREFIX[type] || "U";
   let n = 1;
-  while (state.instances[prefix + n]) n++;
+  while (sheet.instances[prefix + n]) n++;
   return prefix + n;
 }
 
 function freshProbeName() {
   let n = 1;
-  while (state.probes.some((p) => p.name === "probe" + n)) n++;
+  while (sheet.probes.some((p) => p.name === "probe" + n)) n++;
   return "probe" + n;
 }
 
 function deleteSelection() {
-  if (!selection) return;
+  if (!selection || sheetReadOnly) return;
   const sel = selection;
   commit(() => {
     if (sel.kind === "inst") {
-      delete state.instances[sel.id];
-      state.wires = state.wires.filter(
+      delete sheet.instances[sel.id];
+      sheet.wires = sheet.wires.filter(
         (w) => w.from.split(",")[0] !== sel.id && w.to.split(",")[0] !== sel.id);
-      state.probes = state.probes.filter((p) => p.at.split(",")[0] !== sel.id);
+      sheet.probes = sheet.probes.filter((p) => p.at.split(",")[0] !== sel.id);
     } else if (sel.kind === "wire") {
-      state.wires.splice(sel.id, 1);
+      sheet.wires.splice(sel.id, 1);
     } else if (sel.kind === "probe") {
-      state.probes.splice(sel.id, 1);
+      sheet.probes.splice(sel.id, 1);
     }
   });
   selection = null;
@@ -213,20 +241,20 @@ function render() {
     "transform", `translate(${view.x},${view.y}) scale(${view.k})`);
 
   // --- notes (render-only text annotations, painted behind the circuit) -----
-  for (const note of state.notes || []) renderNote(note);
+  for (const note of sheet.notes || []) renderNote(note);
 
   // wired-port + junction bookkeeping
   const useCount = {};
-  for (const w of state.wires) {
+  for (const w of sheet.wires) {
     useCount[w.from] = (useCount[w.from] || 0) + 1;
     useCount[w.to] = (useCount[w.to] || 0) + 1;
   }
 
   // --- wires ---------------------------------------------------------------
-  state.wires.forEach((w, i) => {
-    const [x1, y1] = pinPos(state.instances[w.from.split(",")[0]], w.from.split(",")[1]);
-    const [x2, y2] = pinPos(state.instances[w.to.split(",")[0]], w.to.split(",")[1]);
-    const dom = portDomain(state.instances[w.from.split(",")[0]].type, w.from.split(",")[1]);
+  sheet.wires.forEach((w, i) => {
+    const [x1, y1] = pinPos(sheet.instances[w.from.split(",")[0]], w.from.split(",")[1]);
+    const [x2, y2] = pinPos(sheet.instances[w.to.split(",")[0]], w.to.split(",")[1]);
+    const dom = portDomain(sheet.instances[w.from.split(",")[0]].type, w.from.split(",")[1]);
     const d = wirePath(x1, y1, x2, y2, dom);
     const g = document.createElementNS(svg.namespaceURI, "g");
     g.dataset.wire = i;
@@ -243,7 +271,7 @@ function render() {
   });
 
   // --- components ----------------------------------------------------------
-  for (const [id, inst] of Object.entries(state.instances)) {
+  for (const [id, inst] of Object.entries(sheet.instances)) {
     const sym = S[inst.type];
     if (!sym) continue;
     const compClass = "comp" +
@@ -273,7 +301,7 @@ function render() {
     const [lx, ly] = sym.label || [0, -6];
     if (!sym.hideRef) {
       const hp = HEADLINE_PARAM[inst.type];
-      const cat = CAT[inst.type];
+      const cat = catEntry(inst.type);
       let valTxt = "";
       if (inst.type === "prbs") {
         valTxt = `${fmtSI(globalUI())}s`;   // UI pulled from the global baud rate
@@ -335,6 +363,7 @@ function render() {
       if (mode.kind === "probe" || mode.kind === "wire" || mode.kind === "place") return;
       ev.stopPropagation();
       selection = { kind: "inst", id };
+      if (sheetReadOnly) { renderInspector(); render(); return; }   // select, no drag
       const [wx, wy] = toWorld(ev);
       mode = { kind: "drag", id, dx: wx - inst.x, dy: wy - inst.y, moved: false,
                snapshot: JSON.stringify(state) };
@@ -348,7 +377,7 @@ function render() {
   for (const [ep, n] of Object.entries(useCount)) {
     if (n < 2) continue;
     const [id, pin] = ep.split(",");
-    const inst = state.instances[id];
+    const inst = sheet.instances[id];
     if (!inst) continue;
     const [x, y] = pinPos(inst, pin);
     const dom = portDomain(inst.type, pin);
@@ -360,9 +389,9 @@ function render() {
   }
 
   // --- probes -----------------------------------------------------------------
-  state.probes.forEach((p, i) => {
+  sheet.probes.forEach((p, i) => {
     const [id, pin] = p.at.split(",");
-    const inst = state.instances[id];
+    const inst = sheet.instances[id];
     if (!inst) return;
     const [x, y] = pinPos(inst, pin);
     const g = document.createElementNS(svg.namespaceURI, "g");
@@ -429,10 +458,11 @@ function wirePath(x1, y1, x2, y2, dom) {
 // interaction: wiring / placing / probing
 // ---------------------------------------------------------------------------
 function onPortMouseDown(ep) {
+  if (sheetReadOnly) return;
   if (mode.kind === "probe") {
     const name = freshProbeName();
-    const color = PROBE_COLORS[state.probes.length % PROBE_COLORS.length];
-    commit(() => state.probes.push({ name, at: ep, color }));
+    const color = PROBE_COLORS[sheet.probes.length % PROBE_COLORS.length];
+    commit(() => sheet.probes.push({ name, at: ep, color }));
     setHint("Probe placed. Click another port, or Esc to exit probe mode.");
     return;
   }
@@ -446,26 +476,30 @@ function onPortMouseDown(ep) {
 
 function finishWire(ep) {
   const from = mode.from;
-  const dFrom = portDomain(state.instances[from.split(",")[0]].type, from.split(",")[1]);
-  const dTo = portDomain(state.instances[ep.split(",")[0]].type, ep.split(",")[1]);
-  const isGnd = (e) => state.instances[e.split(",")[0]].type === "ground";
+  const dFrom = portDomain(sheet.instances[from.split(",")[0]].type, from.split(",")[1]);
+  const dTo = portDomain(sheet.instances[ep.split(",")[0]].type, ep.split(",")[1]);
+  const isGnd = (e) => sheet.instances[e.split(",")[0]].type === "ground";
   if (dFrom !== dTo && !isGnd(from) && !isGnd(ep)) {
     setHint(`Cannot connect ${dFrom} to ${dTo} — use a photodiode or modulator to bridge domains.`, true);
     return;
   }
-  const dup = state.wires.some((w) =>
+  const dup = sheet.wires.some((w) =>
     (w.from === from && w.to === ep) || (w.from === ep && w.to === from));
   mode = { kind: "idle" };
   layers.tool.innerHTML = "";
-  if (!dup) commit(() => state.wires.push({ from, to: ep }));
+  if (!dup) commit(() => sheet.wires.push({ from, to: ep }));
   setHint("");
 }
 
 function armPlacement(type) {
+  if (sheetReadOnly) {
+    setHint("Read-only view — built-in composite internals cannot be edited.", true);
+    return;
+  }
   mode = { kind: "place", type, rot: 0, flip: false };
   document.querySelectorAll(".pal-item").forEach((el) =>
     el.classList.toggle("armed", el.dataset.type === type));
-  setHint(`Placing ${CAT[type]?.label || type} — click to drop, `
+  setHint(`Placing ${catEntry(type)?.label || type} — click to drop, `
     + `R rotates, F flips, Esc cancels.`);
 }
 
@@ -491,7 +525,7 @@ svg.addEventListener("mousedown", (ev) => {
     const type = mode.type, rot = mode.rot, flip = !!mode.flip;
     const id = newId(type);
     commit(() => {
-      state.instances[id] = {
+      sheet.instances[id] = {
         type, x: snap(wx - S[type].w / 2), y: snap(wy - S[type].h / 2),
         rot, ...(flip ? { flip: true } : {}), settings: {},
       };
@@ -518,7 +552,7 @@ svg.addEventListener("mousemove", (ev) => {
   }
   if (mode.kind === "drag") {
     const [wx, wy] = toWorld(ev);
-    const inst = state.instances[mode.id];
+    const inst = sheet.instances[mode.id];
     const nx = snap(wx - mode.dx), ny = snap(wy - mode.dy);
     if (nx !== inst.x || ny !== inst.y) {
       if (!mode.moved) { undoStack.push(mode.snapshot); redoStack = []; mode.moved = true; }
@@ -541,7 +575,7 @@ svg.addEventListener("mousemove", (ev) => {
   if (mode.kind === "wire") {
     const [wx, wy] = toWorld(ev);
     const from = mode.from;
-    const inst = state.instances[from.split(",")[0]];
+    const inst = sheet.instances[from.split(",")[0]];
     const [x1, y1] = pinPos(inst, from.split(",")[1]);
     const dom = portDomain(inst.type, from.split(",")[1]);
     layers.tool.innerHTML =
@@ -655,10 +689,10 @@ $("canvas-wrap").addEventListener("contextmenu", (ev) => {
 });
 
 function compMenu(id) {
-  const inst = state.instances[id];
+  const inst = sheet.instances[id];
   if (!inst) return canvasMenu();
   return [
-    { header: `${id} — ${CAT[inst.type]?.label || inst.type}` },
+    { header: `${id} — ${catEntry(inst.type)?.label || inst.type}` },
     { label: "Rotate 90°", hint: "R",
       action: () => { selection = { kind: "inst", id }; rotateSelected(90); } },
     { label: "Flip horizontal", hint: "F",
@@ -688,7 +722,7 @@ function wireMenu(i) {
 }
 
 function probeMenu(i) {
-  const p = state.probes[i];
+  const p = sheet.probes[i];
   if (!p) return canvasMenu();
   return [
     { header: `probe: ${p.name}` },
@@ -704,7 +738,7 @@ function probeMenu(i) {
 
 function portMenu(ep) {
   const [id, pin] = ep.split(",");
-  const probed = state.probes.some((p) => p.at === ep);
+  const probed = sheet.probes.some((p) => p.at === ep);
   return [
     { header: `port: ${id}.${pin}` },
     { label: "Start wire from here",
@@ -716,7 +750,7 @@ function portMenu(ep) {
 }
 
 function canvasMenu() {
-  const empty = !Object.keys(state.instances).length;
+  const empty = !Object.keys(sheet.instances).length;
   return [
     { label: "Run simulation", hint: "⌘⏎", disabled: !!runAbort, action: () => runSim() },
     { sep: true },
@@ -741,17 +775,17 @@ function canvasMenu() {
 // copy outlive the source and land near the pointer.
 function copySelection() {
   if (selection?.kind !== "inst") return;
-  const src = state.instances[selection.id];
+  const src = sheet.instances[selection.id];
   if (!src) return;
   clipboard = JSON.parse(JSON.stringify(src));
   lastPastePos = null;                    // next paste drops at the pointer
-  setHint(`Copied ${CAT[clipboard.type]?.label || clipboard.type} — ⌘V to paste.`);
+  setHint(`Copied ${catEntry(clipboard.type)?.label || clipboard.type} — ⌘V to paste.`);
 }
 
 // paste a fresh instance from the clipboard: at the pointer for the first
 // paste, then cascading down-right so repeated pastes don't stack.
 function pasteClipboard() {
-  if (!clipboard) return;
+  if (!clipboard || sheetReadOnly) return;
   const sym = S[clipboard.type];
   if (!sym) return;
   let x, y;
@@ -769,7 +803,7 @@ function pasteClipboard() {
   commit(() => {
     const copy = JSON.parse(JSON.stringify(clipboard));
     copy.x = x; copy.y = y;
-    state.instances[nid] = copy;
+    sheet.instances[nid] = copy;
   });
   lastPastePos = { x, y };
   selection = { kind: "inst", id: nid };
@@ -778,14 +812,14 @@ function pasteClipboard() {
 
 // clone an instance offset slightly down-right and select the copy
 function duplicateInstance(id) {
-  const src = state.instances[id];
-  if (!src) return;
+  const src = sheet.instances[id];
+  if (!src || sheetReadOnly) return;
   const nid = newId(src.type);
   commit(() => {
     const copy = JSON.parse(JSON.stringify(src));
     copy.x = snap(src.x + 20);
     copy.y = snap(src.y + 20);
-    state.instances[nid] = copy;
+    sheet.instances[nid] = copy;
   });
   selection = { kind: "inst", id: nid };
   renderInspector(); render();
@@ -793,19 +827,19 @@ function duplicateInstance(id) {
 
 // place a probe at a specific endpoint (mirrors probe-mode placement)
 function addProbeAt(ep) {
-  if (state.probes.some((p) => p.at === ep)) return;
+  if (sheet.probes.some((p) => p.at === ep)) return;
   const name = freshProbeName();
-  const color = PROBE_COLORS[state.probes.length % PROBE_COLORS.length];
-  commit(() => state.probes.push({ name, at: ep, color }));
+  const color = PROBE_COLORS[sheet.probes.length % PROBE_COLORS.length];
+  commit(() => sheet.probes.push({ name, at: ep, color }));
 }
 
 // zoom/pan so every instance fits within the canvas viewport
 function fitView() {
-  const ids = Object.keys(state.instances);
+  const ids = Object.keys(sheet.instances);
   if (!ids.length) return;
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
   for (const id of ids) {
-    const inst = state.instances[id], sym = S[inst.type];
+    const inst = sheet.instances[id], sym = S[inst.type];
     if (!sym) continue;
     for (const [cx, cy] of [[0, 0], [sym.w, 0], [0, sym.h], [sym.w, sym.h]]) {
       const [wx, wy] = localToWorld(inst, sym, cx, cy);
@@ -857,6 +891,7 @@ window.addEventListener("keydown", (ev) => {
       }
       break;
     case "p": case "P":
+      if (sheetReadOnly) break;
       mode = { kind: "probe" };
       setHint("Probe mode — click a port to attach a probe. Esc exits.");
       break;
@@ -874,7 +909,7 @@ window.addEventListener("keydown", (ev) => {
 function rotateSelected(deg) {
   const id = selection.id;
   commit(() => {
-    const inst = state.instances[id];
+    const inst = sheet.instances[id];
     inst.rot = ((inst.rot || 0) + deg + 360) % 360;
   });
   renderInspector();
@@ -885,7 +920,7 @@ function rotateSelected(deg) {
 function flipSelected(vertical) {
   const id = selection.id;
   commit(() => {
-    const inst = state.instances[id];
+    const inst = sheet.instances[id];
     inst.flip = !inst.flip;
     if (!inst.flip) delete inst.flip;   // keep JSON clean when unset
     if (vertical) inst.rot = ((inst.rot || 0) + 180) % 360;
@@ -940,8 +975,8 @@ function renderInspector() {
   }
   if (selection.kind === "inst") {
     const id = selection.id;
-    const inst = state.instances[id];
-    const cat = CAT[inst.type] || { params: [], doc: "", label: inst.type };
+    const inst = sheet.instances[id];
+    const cat = catEntry(inst.type) || { params: [], doc: "", label: inst.type };
     let html = `
       <div class="insp-title"><input id="insp-rename" value="${id}"
         style="width:100%;background:var(--panel2);color:var(--text);
@@ -1087,7 +1122,7 @@ function renderInspector() {
     return;
   }
   if (selection.kind === "wire") {
-    const w = state.wires[selection.id];
+    const w = sheet.wires[selection.id];
     body.innerHTML = `
       <div class="insp-title">Wire</div>
       <div class="insp-type">${w.from} &#8596; ${w.to}</div>
@@ -1096,9 +1131,9 @@ function renderInspector() {
     return;
   }
   if (selection.kind === "probe") {
-    const p = state.probes[selection.id];
+    const p = sheet.probes[selection.id];
     const [pi, pp] = (p.at || "").split(",");
-    const isOptical = portDomain(state.instances[pi]?.type, pp) === "optical";
+    const isOptical = portDomain(sheet.instances[pi]?.type, pp) === "optical";
     const winRow = isOptical && p.spectrum ? `
       <div class="insp-row"><label for="insp-pspec-start">Window start</label>
         <input id="insp-pspec-start" placeholder="0"
@@ -1176,15 +1211,15 @@ function renderInspector() {
 function renameInstance(oldId, newId_) {
   newId_ = newId_.trim();
   if (newId_ === oldId) return;
-  if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(newId_) || state.instances[newId_]) {
+  if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(newId_) || sheet.instances[newId_]) {
     renderInspector(); return;
   }
   commit(() => {
-    state.instances[newId_] = state.instances[oldId];
-    delete state.instances[oldId];
+    sheet.instances[newId_] = sheet.instances[oldId];
+    delete sheet.instances[oldId];
     const fix = (ep) => ep.split(",")[0] === oldId ? newId_ + "," + ep.split(",")[1] : ep;
-    state.wires = state.wires.map((w) => ({ from: fix(w.from), to: fix(w.to) }));
-    state.probes.forEach((p) => { p.at = fix(p.at); });
+    sheet.wires = sheet.wires.map((w) => ({ from: fix(w.from), to: fix(w.to) }));
+    sheet.probes.forEach((p) => { p.at = fix(p.at); });
   });
   selection = { kind: "inst", id: newId_ };
   renderInspector();
@@ -2722,7 +2757,7 @@ $("file-load").addEventListener("change", async () => {
 
 $("btn-new").addEventListener("click", () => {
   commit(() => { state = { instances: {}, wires: [], probes: [], notes: [],
-    globals: { baud: DEFAULT_BAUD } }; });
+    globals: { baud: DEFAULT_BAUD } }; resolveSheet(); });
   selection = null;
   renderInspector();
 });
@@ -2753,6 +2788,7 @@ function loadDocument(doc) {
       globals: sch.globals || {},
     };
     adoptGlobals(state);
+    resolveSheet();
   });
   selection = null;
   applyAnalysis(doc.analysis);
@@ -2762,7 +2798,7 @@ function loadDocument(doc) {
 }
 
 function zoomToFit() {
-  const insts = Object.values(state.instances);
+  const insts = Object.values(sheet.instances);
   if (!insts.length) return;
   let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9;
   for (const i of insts) {
@@ -2770,7 +2806,7 @@ function zoomToFit() {
     x0 = Math.min(x0, i.x - 20); y0 = Math.min(y0, i.y - 30);
     x1 = Math.max(x1, i.x + sym.w + 20); y1 = Math.max(y1, i.y + sym.h + 30);
   }
-  for (const note of state.notes || []) {
+  for (const note of sheet.notes || []) {
     const rows = (note.title ? 1 : 0) +
       (note.lines || String(note.text || "").split("\n")).length;
     const longest = (note.lines || String(note.text || "").split("\n"))
@@ -2893,7 +2929,8 @@ async function boot() {
     try {
       const sch = JSON.parse(saved);
       if (Object.keys(sch.instances || {}).length) {
-        state = sch; adoptGlobals(state); loaded = true; render(); zoomToFit();
+        state = sch; adoptGlobals(state); resolveSheet();
+        loaded = true; render(); zoomToFit();
         // analysis config isn't autosaved, but the sweep pane should survive
         // a plain reload (like the fx panel) — restore it from localStorage
         restoreRunCfg();

@@ -70,6 +70,180 @@ def _port_domain(ep: str, instances: dict) -> str:
     return next(p["domain"] for p in entry["ports"] if p["name"] == port)
 
 
+# ---------------------------------------------------------------------------
+# user-subcircuit flattening
+#
+# The editor stores user subcircuits as named definitions under
+# schematic["subcircuits"] and references them with instances typed
+# "subckt:<def>". A definition's boundary ports are marker instances
+# (subckt_port_e / subckt_port_o) whose instance name is the port name.
+# flatten_schematic() inlines every reference recursively — instances and
+# probes are namespaced "<parent>__<child>", marker instances dissolve into
+# net aliases — so the netlister below only ever sees flat primitives.
+# ---------------------------------------------------------------------------
+
+_SUBCKT_RE = re.compile(r"^subckt:([A-Za-z_][A-Za-z0-9_]*)$")
+_PORT_MARKERS = ("subckt_port_e", "subckt_port_o")
+_MAX_SUBCKT_DEPTH = 16
+
+
+def _split_ep(ep: str) -> tuple[str, str]:
+    inst, _, port = str(ep).partition(",")
+    return inst, port
+
+
+def flatten_schematic(sch: dict) -> dict:
+    """Inline subckt:* instances; returns a flat schematic dict.
+
+    Idempotent fast path: a schematic with no subckt instances and no port
+    markers is returned unchanged (minus a leftover "subcircuits" key), so
+    the sweep engines' recursive run() calls re-enter for free.
+    """
+    defs = sch.get("subcircuits") or {}
+
+    def _type(i: dict) -> str:
+        return str(i.get("type") or "")
+
+    def _has_hier(s: dict) -> bool:
+        return any(_SUBCKT_RE.match(_type(i)) or _type(i) in _PORT_MARKERS
+                   for i in (s.get("instances") or {}).values())
+
+    if not _has_hier(sch):
+        if "subcircuits" in sch:
+            sch = {k: v for k, v in sch.items() if k != "subcircuits"}
+        return sch
+
+    out_inst: dict[str, dict] = {}
+    out_wires: list[tuple[str, str]] = []
+    out_probes: list[dict] = []
+    port_anchor: dict[str, str] = {}   # "<prefix><inst>__<port>" -> flat ep
+
+    def _norm_wires(s: dict):
+        for w in s.get("wires") or []:
+            if isinstance(w, dict):
+                yield str(w.get("from")), str(w.get("to"))
+            else:
+                yield str(w[0]), str(w[1])
+
+    def emit(prefix: str, schem: dict, stack: tuple[str, ...]) -> None:
+        if len(stack) > _MAX_SUBCKT_DEPTH:
+            raise NetlistError(
+                f"subcircuit nesting deeper than {_MAX_SUBCKT_DEPTH} levels "
+                "— check for unintended recursion")
+        insts = schem.get("instances") or {}
+        markers = {n for n, i in insts.items() if _type(i) in _PORT_MARKERS}
+        subs: dict[str, str] = {}
+        for n, i in insts.items():
+            m = _SUBCKT_RE.match(_type(i))
+            if m:
+                subs[n] = m.group(1)
+        if not prefix and markers:
+            raise NetlistError(
+                "port markers belong inside a subcircuit definition, not on "
+                "the top-level schematic: " + ", ".join(sorted(markers)))
+
+        # children first, so their boundary anchors exist for rewriting
+        for n, dname in subs.items():
+            if dname in stack:
+                raise NetlistError(
+                    "subcircuit cycle: " + " -> ".join(stack + (dname,)))
+            d = defs.get(dname)
+            if d is None:
+                raise NetlistError(
+                    f"{prefix}{n}: unknown subcircuit {dname!r}")
+            emit(prefix + n + "__", d.get("schematic") or {},
+                 stack + (dname,))
+
+        # a marker dissolves into whichever non-marker endpoint it touches
+        # (chains of markers are followed; every wire endpoint on the marker
+        # is later rewritten to the same anchor, which keeps its nets joined)
+        wires = list(_norm_wires(schem))
+        madj: dict[str, list[str]] = {}
+        for a, b in wires:
+            ia, ib = _split_ep(a)[0], _split_ep(b)[0]
+            if ia in markers:
+                madj.setdefault(ia, []).append(b)
+            if ib in markers:
+                madj.setdefault(ib, []).append(a)
+
+        def marker_anchor(mname: str, seen: frozenset) -> str | None:
+            for other in madj.get(mname, []):
+                oi = _split_ep(other)[0]
+                if oi in markers:
+                    if oi not in seen:
+                        r = marker_anchor(oi, seen | {oi})
+                        if r is not None:
+                            return r
+                else:
+                    return other
+            return None
+
+        def rewrite_ep(ep: str) -> str:
+            name, port = _split_ep(ep)
+            if name in markers:
+                a = marker_anchor(name, frozenset({name}))
+                if a is None:
+                    raise NetlistError(
+                        f"port marker {prefix}{name!r} is not wired to any "
+                        "component inside its subcircuit (marker-to-marker "
+                        "feed-through shorts are not supported)")
+                return rewrite_ep(a)
+            if name in subs:
+                key = prefix + name + "__" + port
+                a = port_anchor.get(key)
+                if a is None:
+                    raise NetlistError(
+                        f"{prefix}{name}: port {port!r} of subcircuit "
+                        f"{subs[name]!r} is missing or not connected "
+                        "internally")
+                return a
+            return prefix + name + "," + port
+
+        # boundary anchors this level exports to its parent
+        if prefix:
+            for mname in markers:
+                a = marker_anchor(mname, frozenset({mname}))
+                if a is not None:
+                    port_anchor[prefix + mname] = rewrite_ep(a)
+
+        for n, i in insts.items():
+            if n in markers or n in subs:
+                continue
+            fq = prefix + n
+            if fq in out_inst:
+                raise NetlistError(
+                    f"instance name collision after flattening: {fq!r}")
+            # copy, don't alias: two instances of one def would otherwise
+            # share settings dicts, so patching one (sweeps, pulse mode)
+            # would silently patch its siblings too
+            out_inst[fq] = {**i, "settings": dict(i.get("settings") or {})}
+        for a, b in wires:
+            ra, rb = rewrite_ep(a), rewrite_ep(b)
+            if ra != rb:                      # drop marker self-loops
+                out_wires.append((ra, rb))
+        for p in schem.get("probes") or []:
+            q = dict(p)
+            q["name"] = prefix + str(p.get("name") or "")
+            q["at"] = rewrite_ep(str(p.get("at") or ""))
+            out_probes.append(q)
+
+    emit("", sch, ())
+
+    seen_probes: set[str] = set()
+    for p in out_probes:
+        if p["name"] in seen_probes:
+            raise NetlistError(
+                f"probe name collision after flattening: {p['name']!r}")
+        seen_probes.add(p["name"])
+
+    flat = {k: v for k, v in sch.items()
+            if k not in ("instances", "wires", "probes", "subcircuits")}
+    flat["instances"] = out_inst
+    flat["wires"] = [[a, b] for a, b in out_wires]
+    flat["probes"] = out_probes
+    return flat
+
+
 DEFAULT_WAVE_SPAN = 2.56e-8   # pattern-source coverage when no t_stop known
 _C_LIGHT = 299792458.0        # optical-frequency <-> wavelength conversions
 
@@ -1719,7 +1893,12 @@ def run(payload: dict) -> dict:
 
 def _run_inner(payload: dict) -> dict:
     try:
-        sch = payload.get("schematic") or {}
+        # Inline user subcircuits before any engine dispatch: the sweep
+        # overlay's recursive run() calls and its by-name settings patching
+        # then operate on the flat schematic (top-level primitive names
+        # survive flattening unchanged; subckt shells have no params).
+        sch = flatten_schematic(payload.get("schematic") or {})
+        payload["schematic"] = sch
         analysis = payload.get("analysis") or {"mode": "dc"}
         mode = analysis.get("mode", "dc")
         # Generic parameter-sweep overlay (transient/noise/pulse, and 2-axis

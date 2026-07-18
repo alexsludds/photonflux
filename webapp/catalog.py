@@ -1292,6 +1292,27 @@ CATALOG.update({
         "ports": _ports("p1:e"),
         "params": [],
     },
+    # --- subcircuit port markers (hierarchy) ----------------------------------
+    # Boundary ports of a user subcircuit definition: the marker's instance
+    # name is the port name shown on the parent symbol. Netlist-virtual — the
+    # editor only offers them inside a definition, and simulate's
+    # flatten_schematic aliases them away before compilation.
+    "subckt_port_e": {
+        "label": "Port (electrical)",
+        "category": "Hierarchy",
+        "doc": "Electrical boundary port of a subcircuit definition; rename "
+               "the marker to name the port.",
+        "ports": _ports("p:e"),
+        "params": [],
+    },
+    "subckt_port_o": {
+        "label": "Port (optical)",
+        "category": "Hierarchy",
+        "doc": "Optical boundary port of a subcircuit definition; rename "
+               "the marker to name the port.",
+        "ports": _ports("p:o"),
+        "params": [],
+    },
 })
 
 

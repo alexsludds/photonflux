@@ -54,11 +54,12 @@ CATALOG: dict[str, dict] = {
     "cw_laser": {
         "label": "CW Laser",
         "category": "Lasers",
-        "doc": "CW laser: constant field E = sqrt(P)*exp(j*phase) across p1/p2 "
-               "(ground p2). All modulation belongs in modulators. For DWDM, "
-               "set ref_wavelength_nm to a shared reference so several lasers "
-               "at different wavelengths become distinct tones on one bus, "
-               "f_off = c*(1/ref - 1/wavelength); 0 = single-carrier (default).",
+        "doc": "CW laser: constant field $E = \\sqrt{P}\\,e^{j\\phi}$ across "
+               "p1/p2 (ground p2). All modulation belongs in modulators. For "
+               "DWDM, set ref_wavelength_nm to a shared reference so several "
+               "lasers at different wavelengths become distinct tones on one "
+               "bus, $f_{off} = c\\,(1/\\lambda_{ref} - 1/\\lambda)$; "
+               "0 = single-carrier (default).",
         "ports": _ports("p1:o p2:o"),
         "params": [
             _p("wavelength_nm", 1310.0, "nm", "Wavelength"),
@@ -734,7 +735,7 @@ CATALOG: dict[str, dict] = {
                "meters (SI suffixes work: 100u, 1.5m, 2). wavelength_nm is "
                "a live parameter — DC-sweep it with instance \"*\" to trace "
                "spectral responses; interferometer FSR follows the *group* "
-               "index: FSR = lam^2/(n_group*dL).",
+               "index: $\\text{FSR} = \\lambda^2/(n_g\\,\\Delta L)$.",
         "ports": _ports("p1:o p2:o"),
         "params": [
             # UI is SI meters; circulax wants um -> mapped in simulate.py
@@ -753,7 +754,7 @@ CATALOG: dict[str, dict] = {
         "doc": "Lossless Y-junction; split_ratio of input power goes to p2, "
                "the rest to p3. Reciprocal: used in reverse (feed p2/p3, "
                "take p1) it is the coherent combiner of an MZI — "
-               "E_p1 = sqrt(r)*E_p2 + j*sqrt(1-r)*E_p3.",
+               "$E_{p1} = \\sqrt{r}\\,E_{p2} + j\\sqrt{1-r}\\,E_{p3}$.",
         "ports": _ports("p1:o p2:o p3:o"),
         "params": [_p("split_ratio", 0.5, "", "Split ratio -> p2", min=0.0, max=1.0)],
     },
@@ -772,11 +773,11 @@ CATALOG: dict[str, dict] = {
         "label": "Photodiode",
         "category": "Detectors & Bridges",
         "doc": "PIN photodiode bridge: matched optical absorber (po_p/po_n), "
-               "photocurrent Iph = R*|E|^2 + Idk into an/cat with junction "
-               "capacitance Cj. Optional intrinsic (transit-time) bandwidth "
-               "f_3dB (two real poles; 0 = unlimited) and soft output "
-               "saturation current (0 = off). Shot noise 2q*Iph is used by "
-               "the noise analyses.",
+               "photocurrent $I_{ph} = R\\,|E|^2 + I_{dk}$ into an/cat with "
+               "junction capacitance Cj. Optional intrinsic (transit-time) "
+               "bandwidth f_3dB (two real poles; 0 = unlimited) and soft "
+               "output saturation current (0 = off). Shot noise $2qI_{ph}$ "
+               "is used by the noise analyses.",
         "ports": _ports("po_p:o po_n:o an:e cat:e"),
         "params": [
             _p("R", 0.8, "A/W", "Responsivity"),
@@ -824,13 +825,15 @@ CATALOG: dict[str, dict] = {
         "label": "Fiber (dispersion)",
         "category": "Channels",
         "doc": "Chromatic dispersion on the coherent field: the all-pass "
-               "exp(-j*(beta2/2*w^2 + beta3/6*w^3)*L) (+ flat attenuation) "
-               "vector-fitted over +-fit_bw with a causal transit delay "
+               "$\\exp(-j(\\tfrac{\\beta_2}{2}\\omega^2 + "
+               "\\tfrac{\\beta_3}{6}\\omega^3)L)$ (+ flat attenuation) "
+               "vector-fitted over $\\pm$fit_bw with a causal transit delay "
                "(waveforms arrive later — that's the fiber's latency). "
                "C-band: set D (and optionally slope S). O-band / near the "
                "zero-dispersion wavelength: set lambda0_nm > 0 and S (read "
-               "as S0) — D(lambda) then follows the G.652 profile "
-               "S0/4*(l - l0^4/l^3) and the beta3 slope term dominates, so "
+               "as S0) — $D(\\lambda)$ then follows the G.652 profile "
+               "$\\tfrac{S_0}{4}(\\lambda - \\lambda_0^4/\\lambda^3)$ and the "
+               "beta3 slope term dominates, so "
                "the model stays correct where D ~ 0. Compile-time fit; the "
                "log reports D, beta2*L, beta3*L and fit error. Keep fit_bw "
                "~3x the signal bandwidth.",
@@ -880,8 +883,9 @@ CATALOG: dict[str, dict] = {
                "paths. R = 0 is a transparent thru, R -> 1 a hard mirror "
                "(clamped at 0.995 for conditioning). Two of these around a "
                "waveguide make a Fabry-Perot cavity solved self-consistently "
-               "by the nodal field solve (example 35): FSR = "
-               "lam^2/(2*n_group*L), finesse = pi*sqrt(r1*r2*a)/(1-r1*r2*a).",
+               "by the nodal field solve (example 35): "
+               "$\\text{FSR} = \\lambda^2/(2 n_g L)$, "
+               "$\\mathcal{F} = \\pi\\sqrt{r_1 r_2 a}/(1 - r_1 r_2 a)$.",
         "ports": _ports("p1:o p2:o"),
         "params": [
             _p("R", 0.9, "", "Power reflectivity"),
@@ -914,7 +918,8 @@ CATALOG: dict[str, dict] = {
                "signal bandwidth cuts the sidebands and closes the eye). Three "
                "ports: pin (input), drop (the selected channel, Butterworth "
                "lowpass in the shifted frame), and thru (the power-"
-               "complementary same-pole highpass, |H_drop|^2+|H_thru|^2 = 1 — "
+               "complementary same-pole highpass, "
+               "$|H_{drop}|^2 + |H_{thru}|^2 = 1$ — "
                "a unitary add-drop like a real lossless filter). FWHM = "
                "bandwidth_nm at -3 dB; higher order = flatter top / steeper "
                "skirts. Tune center_nm relative to lambda_nm (the reference/"
@@ -952,10 +957,12 @@ CATALOG: dict[str, dict] = {
         "label": "CTLE",
         "category": "Amplifiers & EQ",
         "doc": "Continuous-time linear equalizer, 1 zero / 2 poles: "
-               "A_dc*(1+s/wz)/((1+s/wp1)(1+s/wp2)). The zero is placed "
-               "peaking_db below f_p1 and A_dc = 1/peaking so the peaked "
-               "band sits at ~0 dB while low frequencies are attenuated — "
-               "the standard receive-side ISI equalizer shape. "
+               "$$H(s) = \\frac{A_{dc}\\,(1 + s/\\omega_z)}"
+               "{(1 + s/\\omega_{p1})(1 + s/\\omega_{p2})}$$ "
+               "The zero is placed peaking_db below $f_{p1}$ and "
+               "$A_{dc} = 1/\\text{peaking}$ so the peaked band sits at "
+               "~0 dB while low frequencies are attenuated — the standard "
+               "receive-side ISI equalizer shape. "
                "High-impedance input, driven output.",
         "ports": _ports("inp:e out:e"),
         "params": [
@@ -1117,7 +1124,7 @@ CATALOG: dict[str, dict] = {
     "diode": {
         "label": "Diode",
         "category": "Electrical",
-        "doc": "Shockley diode: I = Is*(exp(Vd/(n*Vt)) - 1). p1 = anode.",
+        "doc": "Shockley diode: $I = I_s\\,(e^{V_d/(n V_t)} - 1)$. p1 = anode.",
         "ports": _ports("p1:e p2:e"),
         "params": [
             _p("Is", 1e-12, "A", "Saturation current"),

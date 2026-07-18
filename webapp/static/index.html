@@ -132,11 +132,13 @@
     <button id="btn-upva"
       title="Upload a Verilog-A model: compiled via openvaf/bosdi to a JAX component and added to the palette (all ports electrical; bridge power-domain optical ports with the Field/Power adapters)">
       + Upload .va&hellip;</button>
+    <input id="palette-search" type="text" placeholder="Search parts&hellip; (i)"
+      autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
     <div id="palette-items"></div>
     <div class="palette-hint">
       Click a part, then click the canvas to place it.<br>
       <b>Click a port</b> to start a wire.<br>
-      <b>P</b>: probe &nbsp;<b>R</b>: rotate &nbsp;<b>Del</b>: delete<br>
+      <b>I</b>: search &nbsp;<b>P</b>: probe &nbsp;<b>R</b>: rotate &nbsp;<b>Del</b>: delete<br>
       Wheel: zoom &nbsp; drag background: pan
     </div>
   </aside>

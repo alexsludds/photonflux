@@ -1,0 +1,64 @@
+`include "discipline.h"
+`include "constants.h"
+
+// Bus<->ring directional coupler (coherent-field CMT sub-component).
+//
+// The point coupler of a microring, as temporal coupled-mode theory sees it:
+// it exchanges energy between the bus field s and the circulating cavity
+// field A at the external rate 1/tau_e set by the bus power coupling
+// (1/tau_e = kappa2/(2*T_rt)), and taps the through port. Its contributions,
+//
+//     cavity node:   A/tau_e - j*kappa^2 * s_in     (kappa^2 = 2/tau_e)
+//     through port:  s_out = s_in + j*A
+//
+// are one third of the CMT ring ODE
+//
+//     dA/dt = (j*delta - 1/tau) A + j*kappa^2 s_in ,   s_out = s_in + j*A
+//
+// the rest coming from the elements sharing the cavity node: ring_waveguide.va
+// (storage + round-trip loss) and ring_phase_shifter.va (EO detuning).
+// ring_mod.va instantiates all three; this is the Verilog-A twin of
+// cx.directional_coupler (tests/test_ring_decomposition.py pins the physics).
+// For a lossless point coupler energy conservation fixes kappa^2 = 2/tau_e,
+// so the single rate parameter sets both the coupling loss and the
+// drive/output strength.
+//
+// Coherent-field convention: optical ports are Ereal/Eimag node pairs with
+// |E|^2 = optical power [W]. The bus input is read at infinite impedance; the
+// through port is driven — never tie two driven outputs to the same node.
+// (are, aim) is the shared cavity node (units sqrt(W), A = kappa*a): every
+// element on the ring contributes a current to it and Kirchhoff sums them
+// into the cavity ODE. Contributions are left row-unscaled (unlike the old
+// monolithic ring_mod.va, which multiplied rows by tau) — no element knows
+// the total lifetime; the solver conditioning is unaffected in practice
+// (machine-precision equivalence pinned by the decomposition tests).
+module directional_coupler(in_re, in_im, out_re, out_im, are, aim, gnd);
+    inout in_re, in_im, out_re, out_im, are, aim, gnd;
+    electrical in_re, in_im, out_re, out_im, are, aim, gnd;
+
+    // reactive dummy: with NO ddt() anywhere in a module, bosdi's emitted
+    // custom-JVP returns a float64 reactive primal with a complex tangent
+    // and the circulax complex assembly rejects it. One always-zero RC state
+    // keeps the reactive side dtype-honest (see mirror.va); it never couples
+    // to the optics. (Inside ring_mod.va the ring elements carry ddt(), but
+    // this model must also lower standalone.)
+    electrical dmy;
+
+    parameter real inv_tau_e = 1.0 from (0:inf);  // external decay rate 1/tau_e [1/s]
+
+    real krate;
+
+    analog begin
+        I(dmy, gnd) <+ 1e-12 * ddt(V(dmy, gnd)) + V(dmy, gnd);
+
+        krate = 2.0 * inv_tau_e;                  // kappa^2 (lossless coupler)
+
+        // cavity node: A/tau_e - j*kappa^2*s_in
+        I(are, gnd) <+ inv_tau_e * V(are, gnd) + krate * V(in_im, gnd);
+        I(aim, gnd) <+ inv_tau_e * V(aim, gnd) - krate * V(in_re, gnd);
+
+        // through port: s_out = s_in + j*A
+        V(out_re, gnd) <+ V(in_re, gnd) - V(aim, gnd);
+        V(out_im, gnd) <+ V(in_im, gnd) + V(are, gnd);
+    end
+endmodule

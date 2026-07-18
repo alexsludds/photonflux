@@ -1,0 +1,56 @@
+`include "discipline.h"
+`include "constants.h"
+
+`define P_C0 2.99792458e8   // speed of light [m/s]
+
+// Intracavity electro-optic phase shifter (cavity-detuning CMT sub-component).
+//
+// The depletion phase shifter of a microring modulator: the electrode voltage
+// moves the resonance linearly,
+//
+//     lambda_res(V) = lambda_res_nm + dl_dv_pm * V ,
+//
+// i.e. it sets the coupled-mode detuning
+//
+//     delta(V) = 2*pi*c * (1/lambda_nm - 1/lambda_res(V))
+//
+// and contributes -j*delta(V)*A to the shared cavity node — the electro-optic
+// drive term of the CMT ring ODE (see directional_coupler.va for the full
+// equation and the cavity-node convention). This is the Verilog-A twin of
+// cx.ring_phase_shifter.
+//
+// NB this is the *cavity-detuning* phase shifter — it modulates the resonance
+// of a stored mode, so its effect integrates over the photon lifetime. The
+// standalone phase_shifter.va is the memoryless field rotator
+// E_out = e^{j*phi} E_in. Both are "EO phase shifters"; only this one lives
+// inside a cavity.
+//
+// Electrical port (vp, vn): reverse-biased junction = capacitance cj plus
+// leakage rleak — the load a real driver actually sees. The parent ring
+// derives cj from the per-length junction capacitance times the ring
+// circumference (see ring_mod.va).
+module ring_phase_shifter(are, aim, vp, vn, gnd);
+    inout are, aim, vp, vn, gnd;
+    electrical are, aim, vp, vn, gnd;
+
+    parameter real lambda_nm     = 1310.0 from (0:inf);  // laser wavelength [nm]
+    parameter real lambda_res_nm = 1310.0 from (0:inf);  // aligned resonance [nm]
+    parameter real dl_dv_pm      = 45.0;                 // resonance shift [pm/V]
+    parameter real cj            = 0.0    from [0:inf);  // junction capacitance [F]
+    parameter real rleak         = 1e8    from (0:inf);  // junction leakage [ohm]
+
+    real lam_res_eff, delta;
+
+    analog begin
+        // voltage-tuned resonance and detuning delta = w_light - w_res(V)
+        lam_res_eff = lambda_res_nm * 1e-9 + dl_dv_pm * 1e-12 * V(vp, vn);
+        delta = 2.0 * `M_PI * `P_C0 * (1.0 / (lambda_nm * 1e-9) - 1.0 / lam_res_eff);
+
+        // cavity node: -j*delta*A
+        I(are, gnd) <+ delta * V(aim, gnd);
+        I(aim, gnd) <+ -delta * V(are, gnd);
+
+        // electrical port: reverse-biased junction = capacitance + leakage
+        I(vp, vn) <+ cj * ddt(V(vp, vn)) + V(vp, vn) / rleak;
+    end
+endmodule

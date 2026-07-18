@@ -8,15 +8,29 @@
 // PN-junction propagation loss, bus power coupling, junction capacitance per
 // unit length, and the electro-optic detuning rate.
 //
-// Coherent-field convention: optical ports are Ereal/Eimag node pairs with
-// |E|^2 = optical power [W] (same normalisation as the circulax field nodes).
+// Hierarchical model: the ring is assembled from its three coherent-field
+// CMT sub-components, joined on one internal cavity node (are, aim) — the
+// circulating field A = kappa*a in sqrt(W):
 //
-// Optics: single-mode coupled-mode theory (Little/Manolatou). The intracavity
-// field a obeys
+//     directional_coupler.va — bus<->ring point coupler + through-port tap
+//                              (external rate 1/tau_e)
+//     ring_phase_shifter.va  — intracavity EO detuning delta(V) + the
+//                              junction load the driver sees
+//     ring_waveguide.va      — the ring waveguide loop: photon storage
+//                              (dA/dt) + round-trip loss (rate 1/tau_i)
+//
+// Kirchhoff's sum on the cavity node reproduces the single-mode
+// coupled-mode-theory ODE (Little/Manolatou) of the old monolithic model
+// exactly (machine precision, tests/test_ring_decomposition.py):
 //
 //     da/dt = (j*delta - 1/tau) a + j*kappa*s_in ,   s_out = s_in + j*kappa*a
 //
-// with the decay rates derived from the device:
+// with the decay rates derived from the device below. This mirrors the
+// Python-level decomposition (cx.ring_modulator, ALE-52); the sub-components
+// are ordinary standalone models too. NB the VA->JAX lowering has no
+// structural hierarchy of its own (openvaf drops child instances), so
+// cx.va() flattens this file source-level before compiling — see
+// photonflux/va_hier.py for the supported hierarchy subset.
 //
 //     L      = 2*pi*radius                    round-trip length
 //     T_rt   = L * n_g / c                    round-trip time
@@ -39,18 +53,13 @@
 // it does not enter the aligned single-mode dynamics). The depletion phase
 // shifter then moves it linearly: lambda_res(V) = lambda_res_nm + dl_dv_pm*V.
 //
-// Electrical port: junction capacitance cj_ff_um * L plus leakage — the load
-// a driver actually sees.
-//
-// Implementation notes: the internal state A = kappa*a (units sqrt(W), same
-// scale as the port fields) keeps node values O(0.01); the two rate-equation
-// rows are multiplied through by tau so all row entries are O(1) — the same
-// scaling idiom as laser_rate.va.
+// Coherent-field convention: optical ports are Ereal/Eimag node pairs with
+// |E|^2 = optical power [W] (same normalisation as the circulax field nodes).
 module ring_mod(in_re, in_im, out_re, out_im, vp, vn, gnd);
     inout in_re, in_im, out_re, out_im, vp, vn, gnd;
     electrical in_re, in_im, out_re, out_im, vp, vn, gnd;
 
-    // internal: intracavity field A = kappa*a (Are, Aim in sqrt(W))
+    // shared cavity node: intracavity field A = kappa*a (Are, Aim in sqrt(W))
     electrical are, aim;
 
     parameter real lambda_nm     = 1310.0 from (0:inf);  // laser wavelength [nm]
@@ -64,40 +73,27 @@ module ring_mod(in_re, in_im, out_re, out_im, vp, vn, gnd);
     parameter real cj_ff_um      = 0.5    from [0:inf);  // junction cap [fF/um]
     parameter real rleak         = 1e8    from (0:inf);  // junction leakage [ohm]
 
-    real circ, v_g, t_rt, alpha_m;
-    real inv_tau_i, inv_tau_e, inv_tau, tau, tk2, cj;
-    real lam_res_eff, delta;
+    // device geometry -> CMT decay rates (constant expressions of the
+    // parameters, so they are legal in the instance overrides below)
+    localparam real circ      = 2.0 * `M_PI * radius_um * 1e-6;      // [m]
+    localparam real v_g       = `P_C0 / n_g;
+    localparam real t_rt      = circ / v_g;
+    localparam real alpha_m   = loss_db_m * `M_LN10 / 10.0;          // power attenuation [1/m]
+    localparam real inv_tau_i = alpha_m * v_g / 2.0;                 // amplitude decay, loss
+    localparam real inv_tau_e = kappa2 / (2.0 * t_rt);               // amplitude decay, coupling
+    localparam real cj        = cj_ff_um * 1e-15 * radius_um * 2.0 * `M_PI;  // [F]
 
-    analog begin
-        // device geometry -> CMT decay rates
-        circ      = 2.0 * `M_PI * radius_um * 1e-6;      // [m]
-        v_g       = `P_C0 / n_g;
-        t_rt      = circ / v_g;
-        alpha_m   = loss_db_m * ln(10.0) / 10.0;         // power attenuation [1/m]
-        inv_tau_i = alpha_m * v_g / 2.0;                 // amplitude decay, loss
-        inv_tau_e = kappa2 / (2.0 * t_rt);               // amplitude decay, coupling
-        inv_tau   = inv_tau_i + inv_tau_e;
-        tau       = 1.0 / inv_tau;
-        tk2       = tau * 2.0 * inv_tau_e;               // tau*kappa^2 (=1 at critical)
-        cj        = cj_ff_um * 1e-15 * radius_um * 2.0 * `M_PI;  // [F]
+    // bus<->ring coupler: couples s_in into the cavity, taps the through port
+    directional_coupler #(.inv_tau_e(inv_tau_e))
+        cpl(.in_re(in_re), .in_im(in_im), .out_re(out_re), .out_im(out_im),
+            .are(are), .aim(aim), .gnd(gnd));
 
-        // voltage-tuned resonance and detuning delta = w_light - w_res(V)
-        lam_res_eff = lambda_res_nm * 1e-9 + dl_dv_pm * 1e-12 * V(vp, vn);
-        delta = 2.0 * `M_PI * `P_C0 * (1.0 / (lambda_nm * 1e-9) - 1.0 / lam_res_eff);
+    // intracavity depletion phase shifter: EO detuning + junction load
+    ring_phase_shifter #(.lambda_nm(lambda_nm), .lambda_res_nm(lambda_res_nm),
+                         .dl_dv_pm(dl_dv_pm), .cj(cj), .rleak(rleak))
+        ps(.are(are), .aim(aim), .vp(vp), .vn(vn), .gnd(gnd));
 
-        // CMT rate equations for A = kappa*a, rows scaled by tau:
-        //   dA_re/dt = -A_re/tau - delta*A_im - kappa^2 * s_im
-        //   dA_im/dt = -A_im/tau + delta*A_re + kappa^2 * s_re
-        I(are, gnd) <+ tau * ddt(V(are, gnd)) + V(are, gnd)
-                       + tau * delta * V(aim, gnd) + tk2 * V(in_im, gnd);
-        I(aim, gnd) <+ tau * ddt(V(aim, gnd)) + V(aim, gnd)
-                       - tau * delta * V(are, gnd) - tk2 * V(in_re, gnd);
-
-        // through port: s_out = s_in + j*A
-        V(out_re, gnd) <+ V(in_re, gnd) - V(aim, gnd);
-        V(out_im, gnd) <+ V(in_im, gnd) + V(are, gnd);
-
-        // electrical port: reverse-biased junction = capacitance + leakage
-        I(vp, vn) <+ cj * ddt(V(vp, vn)) + V(vp, vn) / rleak;
-    end
+    // ring waveguide loop: photon storage + round-trip loss
+    ring_waveguide #(.inv_tau_i(inv_tau_i))
+        wg(.are(are), .aim(aim), .gnd(gnd));
 endmodule

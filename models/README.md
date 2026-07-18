@@ -28,7 +28,10 @@ first use) are automatic.
 | model | what it is |
 |---|---|
 | `laser_cw.va` | CW source emitting an E-field with thermally-driven phase |
-| `ring_mod.va` | Si microring modulator: coupled-mode-theory all-pass ring from the physical device (radius, group index, junction dB/m, bus κ², pm/V, fF/µm) — coupling condition + photon-lifetime bandwidth |
+| `ring_mod.va` | Si microring modulator: coupled-mode-theory all-pass ring from the physical device (radius, group index, junction dB/m, bus κ², pm/V, fF/µm) — coupling condition + photon-lifetime bandwidth. **Hierarchical**: instantiates `directional_coupler.va` + `ring_phase_shifter.va` + `ring_waveguide.va` on a shared cavity node (flattened source-level by `cx.va`, see below) |
+| `directional_coupler.va` | bus↔ring point coupler (CMT sub-component): couples the bus field into the shared cavity node at rate 1/τ_e and taps the through port `s_out = s_in + j·A` |
+| `ring_phase_shifter.va` | intracavity EO phase shifter (CMT sub-component): electrode voltage sets the cavity detuning δ(V) — the *cavity-detuning* element, distinct from the memoryless field rotator `phase_shifter.va` — plus the junction cap + leakage load the driver sees |
+| `ring_waveguide.va` | ring waveguide loop (CMT sub-component): photon storage `dA/dt` + round-trip loss at rate 1/τ_i — the element that keeps the photon-lifetime dynamics |
 | `ring_mod_inj.va` | carrier-injection twin of `ring_mod.va`: forward-biased PIN, lifetime-limited bandwidth, FCD blue shift + FCA loss |
 | `waveguide_nl.va` | nonlinear waveguide segment: TPA (exact closed form), FCA (lumped population, lifetime `tau_fc`), Kerr SPM + free-carrier dispersion — the instantaneous phase makes multi-tone inputs **four-wave-mix** at the textbook efficiency (`examples/wg_fwm.py` pins every scaling). Trapezoidal z-lumping, 1/N² NLSE convergence. Unidirectional |
 | `soa.va` | semiconductor optical amplifier: lumped Agrawal-Olsson gain reservoir, **bidirectional** (forward/backward share the reservoir), α_H chirp, deterministic ASE seed for lasing start-up |
@@ -58,3 +61,17 @@ The **module name** is the component type name — keep it unique. (Historically
 it also had to avoid ngspice builtin model types like `res`/`nmos`, which is why
 the resistor model is `res_va`; the circulax flow no longer uses ngspice to
 simulate, but the convention is kept so the models stay portable.)
+
+### Hierarchical models
+
+A model may instantiate other library models (see `ring_mod.va`). openvaf
+parses child instances but silently drops their physics, so `cx.va` flattens
+the hierarchy at the source level first (`photonflux/va_hier.py`) — the
+children are inlined into one flat module before compilation. The supported
+subset is deliberately small and fails loudly outside it: one module per file
+(name = file stem), **named** port connections and parameter overrides only
+(`mod #(.p(expr)) inst(.port(net), ...);`), every child port connected, and
+`localparam real` chains for deriving override expressions from the parent's
+parameters. Contributions accumulate (`<+`), so children sharing an internal
+node Kirchhoff-sum into it — that is how `ring_mod.va`'s three sub-components
+form the cavity ODE.

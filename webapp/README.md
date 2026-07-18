@@ -431,7 +431,11 @@ from `/api/progress`; interrupting the kernel cancels the run server-side.
 loop) and `s.push(builder)` drops the result on the canvas for hand-tidying.
 Importing `photonflux.nb` needs only numpy — no JAX in the kernel; runs
 execute server-side through the same caches as the Run button, serialized
-behind it. `examples/notebook_live_bench.ipynb` is the guided tour.
+behind it. `examples/notebook_live_bench.ipynb` is the guided tour, and
+`examples/notebooks/` holds analysis notebooks that pin the built-in
+testbenches against theory through this bridge (FET gm/Id + f_T extraction,
+the EO comb vs CMT, FWM scalings, the Vernier and Fabry-Perot design
+spaces, diff-pair and ring-oscillator hand analysis).
 
 The mirror is one process-global document — right for the single-user local
 server, wrong for a shared host (it would leak schematics between visitors),

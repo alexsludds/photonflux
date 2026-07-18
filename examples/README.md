@@ -43,6 +43,17 @@ with a strong `vsin` tone; its through-port spectrum probe shows the EO comb.
 # ...each script prints its own output path
 ```
 
+## Analysis notebooks
+
+[`notebooks/`](notebooks/) holds Jupyter companions to the web-app
+testbenches: each pulls a built-in example through the notebook bridge
+(`photonflux.nb`), runs it on the dev server, and pins the result against
+theory — SKY130 FET characterization ($g_m/I_D$, $f_T$), the EO comb vs
+coupled-mode theory, four-wave-mixing scalings, the Vernier and Fabry-Perot
+design spaces, and diff-pair / ring-oscillator pen-and-paper analysis. See
+[`notebooks/README.md`](notebooks/README.md); `notebook_live_bench.ipynb`
+in this directory is the interactive tour of the bridge itself.
+
 ## Shared helpers (not runnable examples)
 
 - [`_cavity.py`](_cavity.py) — staircase bias source, an infinite-impedance

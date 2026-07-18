@@ -88,10 +88,14 @@ def si(v) -> float:
 
 
 def _maybe_si(v):
-    """`si()` for scalars, pass-through for everything else (bools, lists,
-    already-numeric settings)."""
+    """`si()` for SI-suffixed strings ("2m", "50G"), pass-through for
+    everything else — genuine string settings (a PRBS source's ``mode``,
+    a PWL source's ``data``) must survive untouched."""
     if isinstance(v, str):
-        return si(v)
+        try:
+            return si(v)
+        except ValueError:
+            return v
     return v
 
 
@@ -470,30 +474,48 @@ class Session:
         live-bench loop usually wants to draw once before the first edit).
         Reconnects across dev-server restarts; stop with Ctrl-C / break."""
         last = -1
+        prime_from_stream = False
         if not initial:
             # prime with the current rev *now* (not on first next()) so the
             # subscription's connect snapshot is never mistaken for an edit
             try:
                 last = self._req("/api/schematic").get("rev", 0)
             except SessionError:
-                last = 0
-        return self._watch(sources, debounce, last)
+                # server not up yet: let the connect snapshot prime instead
+                prime_from_stream = True
+        return self._watch(sources, debounce, last,
+                           bypass_first=initial,
+                           prime_from_stream=prime_from_stream)
 
-    def _watch(self, sources: tuple, debounce: float, last: int):
+    def _watch(self, sources: tuple, debounce: float, last: int,
+               bypass_first: bool, prime_from_stream: bool):
         while True:
             try:
                 for ev in self._sse("/api/schematic/events"):
                     rev = ev.get("rev", 0)
+                    if prime_from_stream:       # late prime (see watch())
+                        prime_from_stream = False
+                        last = rev
+                        continue
                     if rev == last or not rev:
                         continue
                     last = rev
-                    if sources and ev.get("source") not in sources:
+                    # initial=True: the connect snapshot is the state the
+                    # caller asked to see first — its last *writer* may be
+                    # anyone (often ourselves, right after a push), so the
+                    # source filter only applies from the second event on
+                    if not bypass_first and sources and \
+                            ev.get("source") not in sources:
                         continue
                     if debounce:
                         time.sleep(debounce)
                     sch = self.pull(required=False)
-                    if sch is None or (sources and sch.source not in sources):
+                    if sch is None:
                         continue
+                    if not bypass_first and sources and \
+                            sch.source not in sources:
+                        continue
+                    bypass_first = False
                     last = max(last, sch.rev)
                     yield sch
             except (SessionError, OSError, ValueError):

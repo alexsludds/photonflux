@@ -433,6 +433,11 @@ Importing `photonflux.nb` needs only numpy — no JAX in the kernel; runs
 execute server-side through the same caches as the Run button, serialized
 behind it. `examples/notebook_live_bench.ipynb` is the guided tour.
 
+The mirror is one process-global document — right for the single-user local
+server, wrong for a shared host (it would leak schematics between visitors),
+so like VA upload it has a deployment knob: `PHOTONFLUX_ENABLE_BRIDGE=0`
+disables the three endpoints (the container image does).
+
 ## How it maps onto circulax
 
 The frontend posts `{schematic: {instances, wires, probes}, analysis}` to

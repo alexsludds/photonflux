@@ -268,7 +268,8 @@ function autosave() {
 // apply's own autosave/renderInspector would otherwise schedule, breaking the
 // echo loop.
 const MIRROR_SOURCE = "browser";
-let mirror = { rev: 0, timer: null, applying: false, lastPushed: "" };
+let mirror = { rev: 0, timer: null, applying: false, lastPushed: "",
+               disabled: false };   // set on 403: bridge off on this server
 
 function mirrorDoc() {
   const t = tabs[activeTab];
@@ -277,7 +278,7 @@ function mirrorDoc() {
 }
 
 function schedulePushMirror() {
-  if (mirror.applying || !tabs.length) return;
+  if (mirror.applying || mirror.disabled || !tabs.length) return;
   clearTimeout(mirror.timer);
   mirror.timer = setTimeout(pushMirror, 250);
 }
@@ -288,10 +289,16 @@ async function pushMirror() {
   catch { return; }
   if (body === mirror.lastPushed) return;   // selection-only re-renders etc.
   try {
-    const resp = await (await fetch("/api/schematic", {
+    const r = await fetch("/api/schematic", {
       method: "POST", headers: { "Content-Type": "application/json" }, body,
-    })).json();
-    if (resp.ok) { mirror.rev = resp.rev; mirror.lastPushed = body; }
+    });
+    if (r.status === 403) { mirror.disabled = true; return; }
+    const resp = await r.json();
+    if (resp.ok) {
+      // max(): a slow push response must not rewind past an applied doc
+      mirror.rev = Math.max(mirror.rev, resp.rev);
+      mirror.lastPushed = body;
+    }
   } catch {}  // server briefly away (dev reload) — the EventSource re-seeds
 }
 

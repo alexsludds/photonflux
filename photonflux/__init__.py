@@ -38,12 +38,19 @@ __all__ = [
 # has numpy. Every public name resolves exactly as before, just on first use.
 _LAZY = {
     "cx": ("photonflux.cx", None),
+    "nb": ("photonflux.nb", None),
+    "signals": ("photonflux.signals", None),
+    "toolchain": ("photonflux.toolchain", None),
     "prbs": ("photonflux.signals", "prbs"),
     "sample_centers": ("photonflux.signals", "sample_centers"),
     "doctor": ("photonflux.toolchain", "doctor"),
     "doctor_report": ("photonflux.toolchain", "doctor_report"),
     "sky130_lib": ("photonflux.toolchain", "sky130_lib"),
 }
+
+
+def __dir__():
+    return sorted(set(globals()) | set(_LAZY))
 
 
 def __getattr__(name: str):

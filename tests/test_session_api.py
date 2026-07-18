@@ -124,6 +124,42 @@ def test_stale_base_rev_conflicts(srv):
     assert code == 200 and res["rev"] == 3
 
 
+def test_malformed_base_rev_is_a_400_not_a_crash(srv):
+    _post(srv, "/api/schematic", {"source": "browser", "doc": _doc()})
+    for bad in ["abc", [1], 2.5, True]:
+        code, res = _post(srv, "/api/schematic",
+                          {"source": "notebook", "doc": _doc(),
+                           "base_rev": bad})
+        assert code == 400 and not res["ok"], f"base_rev={bad!r}"
+    # the handler thread survived: a normal request still works
+    assert _get(srv, "/api/schematic")["rev"] == 1
+
+
+def test_bridge_disable_knob(srv, monkeypatch):
+    monkeypatch.setattr(server, "_ENABLE_BRIDGE", False)
+    code, res = _post(srv, "/api/schematic", {"source": "browser",
+                                              "doc": _doc()})
+    assert code == 403 and res["disabled"]
+    with pytest.raises(urllib.error.HTTPError) as ei:
+        urllib.request.urlopen(srv + "/api/schematic", timeout=5)
+    assert ei.value.code == 403
+    with pytest.raises(urllib.error.HTTPError) as ei:
+        urllib.request.urlopen(srv + "/api/schematic/events", timeout=5)
+    assert ei.value.code == 403
+
+
+def test_sse_subscriber_cap(srv, monkeypatch):
+    monkeypatch.setattr(server, "_SSE_LIMIT", 1)
+    s = nb.Session(srv)
+    events = s._sse("/api/schematic/events")
+    with ThreadPoolExecutor(1) as ex:
+        ex.submit(next, events).result(timeout=5)   # stream 1 is live
+        with pytest.raises(urllib.error.HTTPError) as ei:
+            urllib.request.urlopen(srv + "/api/schematic/events", timeout=5)
+        assert ei.value.code == 503
+    events.close()
+
+
 def test_sse_stream_reports_changes(srv):
     s = nb.Session(srv)
     events = s._sse("/api/schematic/events")
@@ -222,6 +258,29 @@ def test_client_watch_yields_on_browser_edit(srv):
     assert sch.source == "browser"
     assert sch["LAS.wavelength_nm"] == 1550.0
     w.close()
+
+
+def test_watch_initial_yields_own_push(srv):
+    # the live-bench flow: push, then watch(initial=True) must yield the
+    # current state even though its last writer is ourselves ("notebook")
+    s = nb.Session(srv)
+    s.push(_doc())
+    w = s.watch(initial=True)
+    with ThreadPoolExecutor(1) as ex:
+        sch = ex.submit(next, w).result(timeout=5)
+    assert sch.source == "notebook" and "LAS" in sch.instances
+    w.close()
+
+
+def test_string_settings_survive(srv):
+    b = nb.Builder()
+    b.add("cw_laser", ref="PRBS", mode="pam4", power="1m")
+    d = b.doc()
+    settings = d["schematic"]["instances"]["PRBS"]["settings"]
+    assert settings["mode"] == "pam4" and settings["power"] == 1e-3
+    sch = nb.Schematic(_doc())
+    sch["LAS.note"] = "quadrature bias"      # non-numeric string: untouched
+    assert sch["LAS.note"] == "quadrature bias"
 
 
 def test_selected_roundtrip(srv):

@@ -249,7 +249,13 @@ function render() {
     g.setAttribute("class", compClass);
     g.dataset.id = id;
     g.setAttribute("transform", compTransform(inst, sym));
-    g.innerHTML = sym.draw();
+    // Transparent bounding-box rect so the whole symbol is clickable, not just
+    // its stroked lines (mirrors the `.wire-hit` fat-stroke trick for wires).
+    // Drawn first → sits beneath the glyph and the later-appended port circles,
+    // so ports still win the click while empty interior space selects the body.
+    g.innerHTML =
+      `<rect class="comp-hit" x="0" y="0" width="${sym.w}" height="${sym.h}"/>`
+      + sym.draw();
 
     // Text (refdes/value/pin labels) lives in a separate, un-transformed
     // overlay so it always renders upright and unmirrored, positioned by
@@ -320,8 +326,11 @@ function render() {
     g.addEventListener("mousedown", (ev) => {
       if (ev.button !== 0) return;       // right/middle click: leave for contextmenu
       if (ev.target.classList.contains("port")) return;
-      ev.stopPropagation();
+      // In place/wire/probe modes let the event bubble to the svg handler so you
+      // can still drop a new component (or route) over an existing symbol's now
+      // fully-clickable bounding box, instead of the click being swallowed here.
       if (mode.kind === "probe" || mode.kind === "wire" || mode.kind === "place") return;
+      ev.stopPropagation();
       selection = { kind: "inst", id };
       const [wx, wy] = toWorld(ev);
       mode = { kind: "drag", id, dx: wx - inst.x, dy: wy - inst.y, moved: false,

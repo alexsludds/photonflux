@@ -1,0 +1,152 @@
+{
+  "title": "APD receiver — avalanche gain & excess noise",
+  "group": "Links & receivers",
+  "description": "APD photodiode + TIA link. Sweep the APD gain M to see the receiver sensitivity optimum: SNR improves with M while thermal-limited, then degrades once the M^2 F(M) excess noise dominates.",
+  "schematic": {
+    "notes": [
+      {
+        "x": 40,
+        "y": -96,
+        "title": "APD receiver — avalanche gain vs excess noise",
+        "lines": [
+          "Same OOK link as the photodiode+TIA example, but the receiver is an",
+          "AVALANCHE photodiode (APD1). Its internal gain M multiplies the",
+          "primary photocurrent R*P by M, so vout ~= -M*R*P*TIA1.gain_ohm — the",
+          "recovered swing scales directly with M.",
+          "",
+          "But multiplication amplifies shot noise SUPER-linearly: the McIntyre",
+          "excess factor F(M) = k*M + (2 - 1/M)(1 - k) makes the shot-noise PSD",
+          "2q*Iprim*M^2*F(M). Run with noise seeds on and sweep M = 1, 5, 10,",
+          "20, 40 (APD1.M): the noise on vout grows faster than the signal past",
+          "the noise-optimal M* (here ~10), so the eye first opens then closes.",
+          "That thermal-limited -> excess-noise-limited crossover is the whole",
+          "point of an APD receiver.",
+          "",
+          "k_ion (ionization ratio) sets how fast F(M) grows: k=0.1-0.3",
+          "(InP/InGaAs) is far quieter at high M than k~1 (symmetric ionization)."
+        ]
+      }
+    ],
+    "instances": {
+      "LAS1": {
+        "type": "cw_laser",
+        "x": 40,
+        "y": 200,
+        "rot": 0,
+        "settings": {
+          "wavelength_nm": 1310.0,
+          "power": 0.0006
+        }
+      },
+      "MOD1": {
+        "type": "pulse_mod",
+        "x": 240,
+        "y": 200,
+        "rot": 0,
+        "settings": {
+          "p_on": 0.0006,
+          "p_off": 0.0001
+        }
+      },
+      "FIB1": {
+        "type": "waveguide",
+        "x": 380,
+        "y": 210,
+        "rot": 0,
+        "settings": {
+          "length_m": 0.0015,
+          "loss_dB_cm": 20.0
+        }
+      },
+      "APD1": {
+        "type": "apd",
+        "x": 500,
+        "y": 200,
+        "rot": 0,
+        "settings": {
+          "R": 0.8,
+          "M": 10.0,
+          "k_ion": 0.2,
+          "Idk_bulk": 1e-09,
+          "Idk_surf": 1e-09,
+          "Cj": 5e-14
+        }
+      },
+      "TIA1": {
+        "type": "tia",
+        "x": 640,
+        "y": 200,
+        "rot": 0,
+        "settings": {
+          "gain_ohm": 2000.0,
+          "in_noise": 1.5e-11
+        }
+      },
+      "GND1": {
+        "type": "ground",
+        "x": 60,
+        "y": 284,
+        "rot": 0,
+        "settings": {}
+      },
+      "GND2": {
+        "type": "ground",
+        "x": 510,
+        "y": 310,
+        "rot": 0,
+        "settings": {}
+      }
+    },
+    "wires": [
+      {
+        "from": "LAS1,p1",
+        "to": "MOD1,pin"
+      },
+      {
+        "from": "MOD1,pout",
+        "to": "FIB1,p1"
+      },
+      {
+        "from": "FIB1,p2",
+        "to": "APD1,po_p"
+      },
+      {
+        "from": "APD1,cat",
+        "to": "TIA1,inp"
+      },
+      {
+        "from": "LAS1,p2",
+        "to": "GND1,p1"
+      },
+      {
+        "from": "APD1,po_n",
+        "to": "GND2,p1"
+      },
+      {
+        "from": "APD1,an",
+        "to": "GND2,p1"
+      }
+    ],
+    "probes": [
+      {
+        "name": "popt_rx",
+        "at": "APD1,po_p",
+        "color": "#fbbf24"
+      },
+      {
+        "name": "vout",
+        "at": "TIA1,out",
+        "color": "#6ecbf5"
+      }
+    ]
+  },
+  "analysis": {
+    "mode": "transient",
+    "t_stop": 4e-09,
+    "points": 800,
+    "noise": {
+      "seeds": 8,
+      "bw": 50000000000.0
+    }
+  }
+}

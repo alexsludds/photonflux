@@ -837,6 +837,38 @@ CATALOG: dict[str, dict] = {
             _p("isat", 0.0, "A", "Saturation (0 = off)"),
         ],
     },
+    "apd": {
+        "label": "APD Photodiode",
+        "category": "Detectors & Bridges",
+        "doc": "Avalanche photodiode bridge: a PIN detector followed by "
+               "avalanche multiplication. The primary photocurrent $R\\,|E|^2$ "
+               "and the bulk dark current are multiplied by the avalanche gain "
+               "$M$; the surface dark current bypasses the multiplication "
+               "region, so the DC output is $I = M(R P + I_{dk,bulk}) + "
+               "I_{dk,surf}$. Multiplication amplifies the shot noise "
+               "SUPER-linearly: the excess-noise factor $F(M) = kM + "
+               "(2 - 1/M)(1 - k)$ (McIntyre, ionization ratio $k$) makes the "
+               "shot-noise PSD $2q\\,I_{prim}\\,M^2 F(M)$ — so a receiver "
+               "sensitivity sweep vs $M$ shows a noise-optimal $M^*$ (thermal-"
+               "limited below, excess-noise-limited above). A gain-bandwidth "
+               "product gbp caps the effective bandwidth to $\\sim$gbp$/M$ "
+               "above the transit-time corner $M_0 = $gbp$/f_{3dB}$ (0 = off). "
+               "Shot noise feeds the transient noise seeds (like the PIN "
+               "photodiode); use it in place of the photodiode in a receiver "
+               "link.",
+        "ports": _ports("po_p:o po_n:o an:e cat:e"),
+        "params": [
+            _p("R", 0.8, "A/W", "Responsivity (unmult.)"),
+            _p("M", 10.0, "", "Avalanche gain M", min=1.0),
+            _p("k_ion", 0.3, "", "Ionization ratio k", min=0.0, max=1.0),
+            _p("Idk_bulk", 1e-9, "A", "Dark current (mult.)"),
+            _p("Idk_surf", 1e-9, "A", "Surface dark (unmult.)"),
+            _p("Cj", 100e-15, "F", "Junction cap."),
+            _p("f3db", 0.0, "Hz", "Transit BW (0 = inf)"),
+            _p("gbp", 0.0, "Hz", "Gain-BW product (0 = off)"),
+            _p("isat", 0.0, "A", "Saturation (0 = off)"),
+        ],
+    },
     "channel": {
         "label": "Copper Channel",
         "category": "Channels",
@@ -1451,6 +1483,72 @@ def _photodiode():
     return Photodiode
 
 
+def _apd_tau(f3db, gbp, Mc):
+    """Effective transit/gain-bandwidth pole time constant for the APD.
+
+    Two identical real poles give a -3 dB corner at the smaller of the
+    transit-time bandwidth ``f3db`` and the gain-bandwidth-limited ``gbp/M``
+    (each 0 = unlimited). Above the corner gain M0 = gbp/f3db the effective
+    bandwidth falls as gbp/M; below it the transit time dominates. tau = 0
+    (no extra dynamics) when both are unset.
+    """
+    import jax.numpy as jnp
+
+    f_gb = jnp.where(gbp > 0.0, gbp / Mc, jnp.inf)
+    f_tr = jnp.where(f3db > 0.0, f3db, jnp.inf)
+    f_eff = jnp.minimum(f_gb, f_tr)
+    return jnp.where(jnp.isfinite(f_eff),
+                     0.6436 / (2.0 * jnp.pi * jnp.maximum(f_eff, 1.0)), 0.0)
+
+
+def _apd():
+    import jax.numpy as jnp
+    from circulax.components.base_component import Signals, States, component
+
+    @component(ports=("po_p", "po_n", "an", "cat"), states=("x1", "x2"))
+    def APD(
+        signals: Signals,
+        s: States,
+        R: float = 0.8,
+        M: float = 10.0,
+        k_ion: float = 0.3,
+        Idk_bulk: float = 1e-9,
+        Idk_surf: float = 1e-9,
+        Cj: float = 100e-15,
+        f3db: float = 0.0,
+        gbp: float = 0.0,
+        isat: float = 0.0,
+        Yopt: float = 1.0,
+    ) -> tuple[dict, dict]:
+        e = signals.po_p - signals.po_n
+        i_opt = Yopt * e
+        power = jnp.abs(e) ** 2
+        # avalanche gain multiplies the primary photocurrent and the bulk dark
+        # current; the surface dark current bypasses the multiplication region
+        Mc = jnp.maximum(M, 1.0)
+        i_prim = R * power + Idk_bulk
+        i_mult = Mc * i_prim + Idk_surf
+        # gain-bandwidth tradeoff: effective bandwidth ~ gbp/M above the corner
+        tau = _apd_tau(f3db, gbp, Mc)
+        f_x1 = s.x1 - i_mult
+        f_x2 = s.x2 - s.x1
+        i_bw = s.x2.real
+        # soft output saturation (space-charge screening); isat = 0 -> off
+        i_out = jnp.where(
+            isat > 0.0,
+            jnp.maximum(isat, 1e-30) * jnp.tanh(
+                i_bw / jnp.maximum(isat, 1e-30)),
+            i_bw)
+        f = {"po_p": i_opt, "po_n": -i_opt, "cat": i_out, "an": -i_out,
+             "x1": f_x1, "x2": f_x2}
+        vj = signals.cat - signals.an
+        q = {"cat": Cj * vj, "an": -Cj * vj,
+             "x1": tau * s.x1, "x2": tau * s.x2}
+        return f, q
+
+    return APD
+
+
 def _tia():
     """Behavioural TIA macro, parameter names mirroring the user's tia.py.
 
@@ -2029,6 +2127,68 @@ def _photodiode_noisy(bank, dt_n):
     return PhotodiodeShot
 
 
+def _apd_noisy(bank, dt_n):
+    import jax
+    import jax.numpy as jnp
+    from circulax.components.base_component import Signals, States, source
+
+    nval = _noise_reader(bank, dt_n)
+    q_e = 1.602176634e-19
+
+    @source(ports=("po_p", "po_n", "an", "cat"), states=("x1", "x2"))
+    def APDShot(
+        signals: Signals,
+        s: States,
+        t: float,
+        R: float = 0.8,
+        M: float = 10.0,
+        k_ion: float = 0.3,
+        Idk_bulk: float = 1e-9,
+        Idk_surf: float = 1e-9,
+        Cj: float = 100e-15,
+        f3db: float = 0.0,
+        gbp: float = 0.0,
+        isat: float = 0.0,
+        Yopt: float = 1.0,
+        seed_idx: float = 0.0,
+    ) -> tuple[dict, dict]:
+        e = signals.po_p - signals.po_n
+        i_opt = Yopt * e
+        power = jnp.abs(e) ** 2
+        Mc = jnp.maximum(M, 1.0)
+        i_prim = R * power + Idk_bulk
+        i_mult = Mc * i_prim + Idk_surf
+        tau = _apd_tau(f3db, gbp, Mc)
+        f_x1 = s.x1 - i_mult
+        f_x2 = s.x2 - s.x1
+        i_bw = s.x2.real
+        # McIntyre excess noise: multiplication amplifies the shot noise
+        # super-linearly. The multiplied primary shot-noise PSD is
+        # S_i = 2 q I_prim M^2 F(M), F(M) = k M + (2 - 1/M)(1 - k); the surface
+        # dark current is not multiplied and adds plain 2 q Idk_surf. Scale to
+        # sqrt(S_i/(2 dt_n)) per unit-variance sample -> sqrt(q S/(2q) / dt_n).
+        # The amplitude is held out of the Jacobian (stop_gradient) exactly as
+        # the PIN photodiode: d(sqrt I)/dI diverges at I -> 0 and stalls Newton.
+        F = k_ion * Mc + (2.0 - 1.0 / Mc) * (1.0 - k_ion)
+        i_prim_qs = jax.lax.stop_gradient(jnp.maximum(i_prim, 0.0))
+        s_over_2q = i_prim_qs * Mc * Mc * F + jnp.maximum(Idk_surf, 0.0)
+        i_shot = jnp.sqrt(q_e * s_over_2q / dt_n) * nval(t, seed_idx)
+        i_tot = i_bw + i_shot
+        i_out = jnp.where(
+            isat > 0.0,
+            jnp.maximum(isat, 1e-30) * jnp.tanh(
+                i_tot / jnp.maximum(isat, 1e-30)),
+            i_tot)
+        f = {"po_p": i_opt, "po_n": -i_opt, "cat": i_out, "an": -i_out,
+             "x1": f_x1, "x2": f_x2}
+        vj = signals.cat - signals.an
+        q = {"cat": Cj * vj, "an": -Cj * vj,
+             "x1": tau * s.x1, "x2": tau * s.x2}
+        return f, q
+
+    return APDShot
+
+
 def _tia_noisy(bank, dt_n):
     import jax.numpy as jnp
     from circulax.components.base_component import Signals, States, source
@@ -2118,6 +2278,7 @@ def _ase_src_noisy(bank, dt_n):
 
 
 _NOISY_BUILDERS = {"cwn": _cw_laser_noisy, "pdn": _photodiode_noisy,
+                   "apdn": _apd_noisy,
                    "ase": _ase_src_noisy,
                    "tian": _tia_noisy}
 
@@ -2292,6 +2453,7 @@ def build_models(sky130_geoms: dict[str, tuple[str, float, float]] | None = None
         "opt_mirror": _opt_mirror(),
         "opt_term": _opt_term(),
         "photodiode": _photodiode(),
+        "apd": _apd(),
         "_f2ri": cx.field_to_ri(),
         "_f2ri_m": _field_to_ri_matched(),
         "_ri2f": cx.ri_to_field(),

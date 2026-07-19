@@ -231,6 +231,8 @@ def schematic_to_netlist(sch: dict, wave_span: float = DEFAULT_WAVE_SPAN,
                 cx_instances[name] = {"component": _make_noisy(name, "cwn")}
             elif noise_cfg and ctype == "photodiode":
                 cx_instances[name] = {"component": _make_noisy(name, "pdn")}
+            elif noise_cfg and ctype == "apd":
+                cx_instances[name] = {"component": _make_noisy(name, "apdn")}
             elif noise_cfg and ctype == "ase_src":
                 cx_instances[name] = {"component": _make_noisy(name, "ase")}
             elif (noise_cfg and ctype == "tia"
@@ -1012,8 +1014,9 @@ def _run_noise(circuit, meta, analysis, log) -> dict:
     PSD is the sum of |z_p - z_n|^2 * S_i over sources. Included: resistor
     thermal 4kT/R (ideal + PDK-measured), TIA input-referred current noise,
     diode shot 2qId at the operating point. FET channel noise and optical
-    (photodiode) noise are not included here — use transient noise seeds
-    for the optical chain.
+    (PIN photodiode / APD) noise are not included here — the optical chain is
+    complex-valued, so its shot noise (incl. the APD's M^2 F(M) excess noise)
+    rides the transient noise seeds instead.
     """
     import numpy as np
 

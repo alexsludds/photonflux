@@ -461,6 +461,24 @@ S.photodiode = {
     <line class="${EL}" x1="44" y1="40" x2="60" y2="40"/>`,
 };
 
+S.apd = {
+  w: 60, h: 60, pins: { po_p: [0, 20], po_n: [0, 40], cat: [60, 20], an: [60, 40] },
+  label: [8, -6], pinLabels: true,
+  draw: () => `
+    <line class="${OPT}" x1="0" y1="20" x2="18" y2="20"/>
+    <line class="${OPT}" x1="0" y1="40" x2="18" y2="40"/>
+    <path class="${OPT}" d="M6 26 l8 6 m-8 -6 l3 5 m-3 -5 l5 2" stroke-width="1.1"/>
+    <path class="${EL}" d="M24 16 L 24 44 L 44 30 Z" fill="none"/>
+    <line class="${EL}" x1="44" y1="18" x2="44" y2="42"/>
+    <line class="${EL}" x1="20" y1="14" x2="24" y2="16"/>
+    <line class="${EL}" x1="24" y1="16" x2="28" y2="14"/>
+    <line class="${EL}" x1="20" y1="46" x2="24" y2="44"/>
+    <line class="${EL}" x1="24" y1="44" x2="28" y2="46"/>
+    <line class="${EL}" x1="44" y1="20" x2="60" y2="20"/>
+    <line class="${EL}" x1="44" y1="40" x2="60" y2="40"/>
+    <text x="30" y="34" style="font-size:9px">&#215;M</text>`,
+};
+
 // --- electrical two-terminal glyphs (drawn horizontal, pins left/right) ----
 
 S.resistor = {
@@ -739,7 +757,7 @@ const HEADLINE_PARAM = {
   waveguide: "length_m", splitter: "split_ratio", dir_coupler: "coupling",
   grating: "center_wavelength_nm", opt_filter: "center_nm", opt_mirror: "R",
   circulator: "iso_db",
-  photodiode: "R", vdc: "V", vpulse: "v2", vsin: "V", idc: "I",
+  photodiode: "R", apd: "M", vdc: "V", vpulse: "v2", vsin: "V", idc: "I",
   resistor: "R", capacitor: "C", inductor: "L", diode: "Is",
   nmos: "W", pmos: "W", opamp: "A", tia: "gain_ohm", ctle: "peaking_db",
   rx_ffe: "n_taps", rx_dfe: "n_taps",

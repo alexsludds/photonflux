@@ -404,6 +404,56 @@ CATALOG: dict[str, dict] = {
             },
         },
     },
+    "edfa": {
+        "label": "EDFA (VA)",
+        "category": "Lasers",
+        "doc": "models/optical_field/edfa.va — erbium-doped fibre amplifier: "
+               "the pumped, ms-timescale twin of the SOA. Pump-driven "
+               "Agrawal-Olsson gain reservoir tau_c*dh/dt = h0(P_pump) - h - "
+               "(G-1)*P/p_sat, G = e^h: h0 is linear in pump power (transparent "
+               "at p_pump_tr, peak g0_db at p_pump_op). UNIDIRECTIONAL "
+               "(fin->fout; EDFAs run behind isolators). The gain is "
+               "WAVELENGTH-DEPENDENT: a detuned one-pole filter gives a "
+               "Lorentzian gain peak at lambda_peak with -3 dB width gain_bw_nm, "
+               "so on a shared DWDM bus (lambda_ref = the cw_laser WDM "
+               "reference) each carrier is amplified by G/(1+(tau_bw*(w-w_pk))^2) "
+               "— a real per-channel gain tilt. Set gain_bw_nm wide for a flat "
+               "amplifier. p_sat saturates on the TOTAL input power, so all WDM "
+               "channels share one inversion (homogeneous): drop channels and "
+               "the survivors surge over ~tau_c (~10 ms). p_ase is a "
+               "deterministic ASE seed (like the SOA's p_seed); for stochastic "
+               "noise-figure studies cascade the ASE Noise Source at the "
+               "configured PSD. gnd must be grounded.",
+        "stiff": True,
+        "ports": _ports("fin:o fout:o gnd:e"),
+        "params": [
+            _p("g0_db", 30.0, "dB", "Peak gain at p_pump_op"),
+            _p("p_pump_mw", 100.0, "mW", "Pump power"),
+            _p("p_pump_op_mw", 100.0, "mW", "Pump giving g0_db"),
+            _p("p_pump_tr_mw", 8.0, "mW", "Transparency pump"),
+            _p("p_sat", 5e-3, "W", "Saturation power"),
+            _p("tau_c", 10e-3, "s", "Erbium lifetime"),
+            _p("lambda_ref_nm", 1550.0, "nm", "DWDM reference"),
+            _p("lambda_peak_nm", 1532.0, "nm", "Gain-peak wavelength"),
+            _p("gain_bw_nm", 30.0, "nm", "Gain bandwidth (-3 dB)"),
+            _p("alpha_h", 0.0, "", "Linewidth-enh. factor"),
+            _p("p_ase", 1e-9, "W", "ASE seed power"),
+        ],
+        "expand": {
+            "instances": {
+                "fi": {"component": "_f2ri"},
+                "amp": {"component": "_edfa_va", "settings": "ALL"},
+                "fo": {"component": "_ri2f"},
+            },
+            "connections": [
+                ("fi,re", "amp,fi_re"), ("fi,im", "amp,fi_im"),
+                ("amp,fo_re", "fo,re"), ("amp,fo_im", "fo,im"),
+            ],
+            "port_map": {
+                "fin": "fi,c", "fout": "fo,c", "gnd": "amp,gnd",
+            },
+        },
+    },
     "ase_src": {
         "label": "ASE Noise Source",
         "category": "Lasers",
@@ -2255,6 +2305,7 @@ def build_models(sky130_geoms: dict[str, tuple[str, float, float]] | None = None
         "_ring_inj_va": cx.va("ring_mod_inj"),
         "_seg_va": cx.va("mzm_seg"),
         "_soa_va": cx.va("soa"),
+        "_edfa_va": cx.va("edfa"),
         "_mirror_va": cx.va("mirror"),
         "_circ_va": cx.va("circulator"),
         "_ringcomb_va": cx.va("ring_filter"),

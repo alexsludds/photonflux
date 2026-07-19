@@ -638,6 +638,18 @@ S.fiber_cd = {
       stroke-width="1" opacity="0.8"/>`,
 };
 
+S.fiber_nl = {
+  w: 80, h: 26, pins: { p1: [0, 13], p2: [80, 13] }, label: [10, -8],
+  draw: () => `
+    <line class="${OPT}" x1="0" y1="13" x2="20" y2="13"/>
+    <circle class="${OPT}" cx="29" cy="13" r="8" stroke-width="1.3"/>
+    <circle class="${OPT}" cx="40" cy="13" r="8" stroke-width="1.3"/>
+    <circle class="${OPT}" cx="51" cy="13" r="8" stroke-width="1.3"/>
+    <line class="${OPT}" x1="59" y1="13" x2="80" y2="13"/>
+    <text x="40" y="10" text-anchor="middle" class="${OPT}"
+      style="font-size:8px" stroke="none">&#967;&#8323;</text>`,
+};
+
 S.tia = {
   w: 80, h: 50,
   pins: { inp: [0, 25], out: [80, 25] },
@@ -722,6 +734,7 @@ const HEADLINE_PARAM = {
   nmos: "W", pmos: "W", opamp: "A", tia: "gain_ohm", ctle: "peaking_db",
   rx_ffe: "n_taps", rx_dfe: "n_taps",
   channel: "loss_db", s2p_channel: "z0", fiber_cd: "length_km",
+  fiber_nl: "gamma_per_W_km",
   sky130_nfet: "w_um", sky130_nfet_lvt: "w_um", sky130_nfet_5v: "w_um",
   sky130_nfet_nvt: "w_um", sky130_pfet: "w_um", sky130_pfet_lvt: "w_um",
   sky130_pfet_hvt: "w_um", sky130_pfet_5v: "w_um",

@@ -305,3 +305,50 @@ def test_schematic_save_load(tmp_path):
     assert back["LAS.power"] == 0.002
     with pytest.raises(KeyError, match="no setting"):
         back["LAS.missing"]
+
+
+def _spectrum_plot(probe: str, wl, db) -> dict:
+    return {"x": list(wl), "xlabel": "wavelength [nm]", "xunit": "nm",
+            "ydb": True, "yunit": "dB",
+            "traces": [{"name": f"{probe} spectrum", "domain": "optical",
+                        "unit": "dB", "values": list(db)}]}
+
+
+def test_result_spectrum_helper():
+    raw = {"ok": True, "kind": "transient", "x": [0.0, 1e-12],
+           "traces": [{"name": "p_comb", "domain": "optical", "unit": "mW",
+                       "values": [1.0, 1.0]}],
+           "extra_plots": [_spectrum_plot("p_comb", [1309.9, 1310.0, 1310.1],
+                                          [-40.0, 0.0, -38.0])]}
+    res = nb.Result(raw)
+    assert res.spectra == ["p_comb"]
+    wl, db = res.spectrum()                      # sole spectrum: no name
+    np.testing.assert_allclose(wl, [1309.9, 1310.0, 1310.1])
+    np.testing.assert_allclose(db, [-40.0, 0.0, -38.0])
+    wl2, _ = res.spectrum("p_comb")              # by probe name
+    np.testing.assert_allclose(wl2, wl)
+    # the merged .traces view still exists, but spectrum() is the safe path
+    assert "p_comb spectrum" in res.names
+
+    raw["extra_plots"].append(_spectrum_plot("p_drop", [1310.0], [0.0]))
+    two = nb.Result(raw)
+    assert two.spectra == ["p_comb", "p_drop"]
+    with pytest.raises(KeyError, match="several spectrum probes"):
+        two.spectrum()
+    with pytest.raises(KeyError, match="no optical spectrum"):
+        two.spectrum("p_nope")
+
+    # one probe name shadowing another: exact match wins over prefix
+    raw["extra_plots"].append(_spectrum_plot("p_comb2", [1311.0], [0.0]))
+    three = nb.Result(raw)
+    wl3, _ = three.spectrum("p_comb")
+    np.testing.assert_allclose(wl3, [1309.9, 1310.0, 1310.1])
+    wl4, _ = three.spectrum("p_comb2")
+    np.testing.assert_allclose(wl4, [1311.0])
+    with pytest.raises(KeyError, match="ambiguous"):
+        three.spectrum("p_c")                    # prefix-only, two matches
+
+    dry = nb.Result({"ok": True, "kind": "transient", "traces": []})
+    assert dry.spectra == []
+    with pytest.raises(KeyError, match="no optical spectra"):
+        dry.spectrum()

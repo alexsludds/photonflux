@@ -290,6 +290,55 @@ class Result:
                            f"(have: {self.names or '—'})")
         return out
 
+    def _spectrum_plots(self) -> list[dict]:
+        return [ep for ep in (self.raw.get("extra_plots") or [])
+                if ep.get("xunit") == "nm"]
+
+    @property
+    def spectra(self) -> list[str]:
+        """Probe names that produced an optical-spectrum plot (probes with
+        the "spectrum" flag set in the browser; transient runs only)."""
+        out = []
+        for ep in self._spectrum_plots():
+            for t in ep.get("traces") or []:
+                n = str(t.get("name", ""))
+                out.append(n[: -len(" spectrum")]
+                           if n.endswith(" spectrum") else n)
+        return out
+
+    def spectrum(self, name: str | None = None
+                 ) -> tuple[np.ndarray, np.ndarray]:
+        """One optical spectrum as ``(wavelength_nm, dB)`` arrays.
+
+        The server FFTs the complex field envelope of each spectrum-flagged
+        probe and normalises to that probe's peak; the plot has its own
+        wavelength axis (NOT ``Result.x``, which stays the time axis).
+        ``name`` is the probe name; omit it when the run has exactly one."""
+        plots = self._spectrum_plots()
+        if name is not None:
+            def match(ep, exact):
+                return any(str(t.get("name", "")) in (name, f"{name} spectrum")
+                           if exact else str(t.get("name", "")).startswith(name)
+                           for t in ep.get("traces") or [])
+            plots = ([ep for ep in plots if match(ep, True)]      # exact first,
+                     or [ep for ep in plots if match(ep, False)])  # then prefix
+        if not plots:
+            raise KeyError(f"no optical spectrum {name!r} "
+                           f"(have: {self.spectra or '—'} — the probe needs "
+                           "its spectrum flag set, and only transient runs "
+                           "produce spectra)" if name else
+                           "no optical spectra in this result (flag a probe "
+                           "as spectrum in the browser, or set "
+                           "\"spectrum\": true on it — transient runs only)")
+        if len(plots) > 1:
+            raise KeyError(f"{name!r} is ambiguous: several spectrum probes "
+                           f"match ({self.spectra})" if name is not None else
+                           "several spectrum probes "
+                           f"({self.spectra}) — pass the probe name")
+        ep = plots[0]
+        return (np.asarray(ep["x"], float),
+                np.asarray(ep["traces"][0]["values"], float))
+
     def plot(self, *names, ax=None, **kw):
         """Plot traces (all of them by default) against the shared x-axis.
         Returns the matplotlib axes; ``**kw`` passes through to ``ax.plot``."""

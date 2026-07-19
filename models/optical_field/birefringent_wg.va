@@ -1,0 +1,64 @@
+`include "discipline.h"
+`include "constants.h"
+
+// Birefringent straight waveguide for dual-polarization coherent fields.
+//
+// A length L of waveguide whose TE (X) and TM (Y) modes see different
+// effective indices n_te != n_tm, so the two polarizations accumulate
+// different propagation phase over the same physical length:
+//
+//   phi_x = 2*pi * n_te * L / lambda ,   Ex_out = s * e^{j*phi_x} * Ex_in
+//   phi_y = 2*pi * n_tm * L / lambda ,   Ey_out = s * e^{j*phi_y} * Ey_in
+//
+// The differential phase phi_x - phi_y = 2*pi * dn_eff * L / lambda (with
+// dn_eff = n_te - n_tm) is the modal birefringence — the static, deterministic
+// core of polarization-mode dispersion. s = 10^(-loss_db_m*L/20) is a common
+// propagation loss on both polarizations. Placed in one arm of an MZI, the
+// TE and TM transmission fringes are offset by the differential phase
+// (tests/test_polarization.py pins the offset vs dn_eff).
+//
+// This is the memoryless, single-wavelength birefringence element. True
+// wavelength-dependent group-delay PMD (a DGD *delay* between the axes)
+// belongs in the vector-fitted LTI fibre path (webapp/lti.py), because the
+// VA->JAX lowering has no transport delay (see docs/polarization.md).
+//
+// Dual-pol convention: Jones vector as two Ereal/Eimag node pairs, X = TE,
+// Y = TM, |Ex|^2 + |Ey|^2 = power [W]. Inputs at infinite impedance; outputs
+// driven — never tie two driven outputs to the same node.
+module birefringent_wg(xin_re, xin_im, yin_re, yin_im,
+                       xout_re, xout_im, yout_re, yout_im, gnd);
+    inout xin_re, xin_im, yin_re, yin_im,
+          xout_re, xout_im, yout_re, yout_im, gnd;
+    electrical xin_re, xin_im, yin_re, yin_im,
+               xout_re, xout_im, yout_re, yout_im, gnd;
+
+    // reactive dummy (see mirror.va).
+    electrical dmy;
+
+    parameter real lambda_nm = 1550.0 from (0:inf);  // wavelength [nm]
+    parameter real length_um = 1000.0 from [0:inf);  // length [um]
+    parameter real n_te      = 2.40;                 // TE (X) effective index
+    parameter real n_tm      = 2.38;                 // TM (Y) effective index
+    parameter real loss_db_m = 0.0   from [0:inf);   // propagation loss [dB/m]
+
+    real lam, len, phix, phiy, s, cx, sx, cy, sy;
+
+    analog begin
+        I(dmy, gnd) <+ 1e-12 * ddt(V(dmy, gnd)) + V(dmy, gnd);
+
+        lam  = lambda_nm * 1e-9;
+        len  = length_um * 1e-6;
+        phix = 2.0 * `M_PI * n_te * len / lam;
+        phiy = 2.0 * `M_PI * n_tm * len / lam;
+        s    = pow(10.0, -(loss_db_m * len) / 20.0);
+        cx   = s * cos(phix);  sx = s * sin(phix);
+        cy   = s * cos(phiy);  sy = s * sin(phiy);
+
+        // Ex_out = s * e^{j*phi_x} * Ex_in
+        V(xout_re, gnd) <+ cx * V(xin_re, gnd) - sx * V(xin_im, gnd);
+        V(xout_im, gnd) <+ sx * V(xin_re, gnd) + cx * V(xin_im, gnd);
+        // Ey_out = s * e^{j*phi_y} * Ey_in
+        V(yout_re, gnd) <+ cy * V(yin_re, gnd) - sy * V(yin_im, gnd);
+        V(yout_im, gnd) <+ sy * V(yin_re, gnd) + cy * V(yin_im, gnd);
+    end
+endmodule

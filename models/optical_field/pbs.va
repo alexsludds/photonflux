@@ -1,0 +1,63 @@
+`include "discipline.h"
+`include "constants.h"
+
+// Polarization beam splitter (PBS) for dual-polarization coherent fields.
+//
+// One Jones input, two Jones outputs. The transmit port (out1) carries the TE
+// (X) component; the reflect/cross port (out2) carries the TM (Y) component —
+// each output stays in its own polarization slot so a downstream combiner
+// (pbc.va) can put the link back together:
+//
+//   out1 = ( tx*Ex_in ,  lk*Ey_in )     (TE port)
+//   out2 = ( lk*Ex_in ,  tx*Ey_in )     (TM port)
+//
+// A finite polarization extinction ratio is set by er_db: lk = 10^(-er_db/20)
+// is the amplitude that leaks into the wrong port and tx = sqrt(1 - lk^2)
+// keeps each port power-normalised, so er_db -> inf gives the ideal PBS
+// (out1 = (Ex, 0), out2 = (0, Ey)). s = 10^(-il_db/20) is a common excess loss
+// on both ports. With an X-polarized input rotated by an angle t upstream, the
+// two output powers follow Malus' law: |out1|^2 = cos^2(t), |out2|^2 = sin^2(t)
+// (examples/pol_malus.py / tests/test_polarization.py pin this).
+//
+// Dual-pol convention: Jones vector as two Ereal/Eimag node pairs, X = TE,
+// Y = TM, |Ex|^2 + |Ey|^2 = power [W]. Inputs at infinite impedance; outputs
+// driven — never tie two driven outputs to the same node.
+module pbs(xin_re, xin_im, yin_re, yin_im,
+           o1x_re, o1x_im, o1y_re, o1y_im,
+           o2x_re, o2x_im, o2y_re, o2y_im, gnd);
+    inout xin_re, xin_im, yin_re, yin_im,
+          o1x_re, o1x_im, o1y_re, o1y_im,
+          o2x_re, o2x_im, o2y_re, o2y_im, gnd;
+    electrical xin_re, xin_im, yin_re, yin_im,
+               o1x_re, o1x_im, o1y_re, o1y_im,
+               o2x_re, o2x_im, o2y_re, o2y_im, gnd;
+
+    // reactive dummy (see mirror.va): keeps the reactive side dtype-honest in
+    // a module with no ddt() on the optics.
+    electrical dmy;
+
+    parameter real er_db  = 300.0 from (0:inf);  // polarization extinction [dB]
+    parameter real il_db  = 0.0   from [0:inf);  // common insertion loss [dB]
+
+    real s, lk, tx;
+
+    analog begin
+        I(dmy, gnd) <+ 1e-12 * ddt(V(dmy, gnd)) + V(dmy, gnd);
+
+        s  = pow(10.0, -il_db / 20.0);
+        lk = pow(10.0, -er_db / 20.0);
+        tx = s * sqrt(1.0 - lk * lk);
+        lk = s * lk;
+
+        // out1 (TE port): transmit X, leak a little Y
+        V(o1x_re, gnd) <+ tx * V(xin_re, gnd);
+        V(o1x_im, gnd) <+ tx * V(xin_im, gnd);
+        V(o1y_re, gnd) <+ lk * V(yin_re, gnd);
+        V(o1y_im, gnd) <+ lk * V(yin_im, gnd);
+        // out2 (TM port): transmit Y, leak a little X
+        V(o2x_re, gnd) <+ lk * V(xin_re, gnd);
+        V(o2x_im, gnd) <+ lk * V(xin_im, gnd);
+        V(o2y_re, gnd) <+ tx * V(yin_re, gnd);
+        V(o2y_im, gnd) <+ tx * V(yin_im, gnd);
+    end
+endmodule

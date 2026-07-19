@@ -1,0 +1,47 @@
+`include "discipline.h"
+`include "constants.h"
+
+// Polarization-dependent loss (PDL) element for dual-polarization fields.
+//
+// A partial polarizer: the TE (X) and TM (Y) components are attenuated by
+// different amounts, so the element has a low-loss and a high-loss axis. It
+// lumps the PDL of a real passive (a coupler, an isolator, a length of PM
+// fibre) onto one component:
+//
+//   Ex_out = 10^(-il_db/20)            * Ex_in     (low-loss / TE axis)
+//   Ey_out = 10^(-(il_db + pdl_db)/20) * Ey_in     (extra pdl_db on TM axis)
+//
+// il_db is the common insertion loss on both axes; pdl_db is the differential
+// loss (the PDL figure), applied to the TM (Y) axis. pdl_db = 0 -> polarization
+// independent. An ideal (single-axis) polarizer is the pdl_db -> inf limit.
+//
+// Dual-pol convention: Jones vector as two Ereal/Eimag node pairs, X = TE,
+// Y = TM, |Ex|^2 + |Ey|^2 = power [W]. Inputs at infinite impedance; outputs
+// driven — never tie two driven outputs to the same node.
+module pdl(xin_re, xin_im, yin_re, yin_im,
+           xout_re, xout_im, yout_re, yout_im, gnd);
+    inout xin_re, xin_im, yin_re, yin_im,
+          xout_re, xout_im, yout_re, yout_im, gnd;
+    electrical xin_re, xin_im, yin_re, yin_im,
+               xout_re, xout_im, yout_re, yout_im, gnd;
+
+    // reactive dummy (see mirror.va).
+    electrical dmy;
+
+    parameter real il_db  = 0.0 from [0:inf);  // common insertion loss [dB]
+    parameter real pdl_db = 3.0 from [0:inf);  // differential loss on TM axis [dB]
+
+    real sx, sy;
+
+    analog begin
+        I(dmy, gnd) <+ 1e-12 * ddt(V(dmy, gnd)) + V(dmy, gnd);
+
+        sx = pow(10.0, -il_db / 20.0);
+        sy = pow(10.0, -(il_db + pdl_db) / 20.0);
+
+        V(xout_re, gnd) <+ sx * V(xin_re, gnd);
+        V(xout_im, gnd) <+ sx * V(xin_im, gnd);
+        V(yout_re, gnd) <+ sy * V(yin_re, gnd);
+        V(yout_im, gnd) <+ sy * V(yin_im, gnd);
+    end
+endmodule

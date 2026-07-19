@@ -1,0 +1,58 @@
+`include "discipline.h"
+`include "constants.h"
+
+// Polarization rotator for dual-polarization coherent fields.
+//
+// Rotates the Jones vector (Ex, Ey) by a fixed angle theta in the transverse
+// plane — a half-wave plate set to theta/2, a fibre polarization controller
+// section, or an integrated TE<->TM mode rotator, idealised to a pure
+// (lossless by default) rotation:
+//
+//   [ Ex_out ]   [ cos(th)  -sin(th) ] [ Ex_in ]
+//   [ Ey_out ] = [ sin(th)   cos(th) ] [ Ey_in ]
+//
+// The rotation is a real orthogonal matrix, so it acts identically on the real
+// and imaginary parts of each field component. s = 10^(-il_db/20) is an
+// optional excess insertion loss (il_db = 0 -> ideal, unity transmission).
+//
+// Dual-pol convention: every optical net carries a Jones vector as two
+// Ereal/Eimag node pairs — X = (x*_re, x*_im) is the TE component, Y = (y*_re,
+// y*_im) is the TM component, with |Ex|^2 + |Ey|^2 = optical power [W] (same
+// normalisation as the scalar phase_shifter.va / mirror.va, which are just the
+// X/TE channel). Inputs are read at infinite impedance; outputs are driven —
+// never tie two driven outputs to the same node.
+module polarization_rotator(xin_re, xin_im, yin_re, yin_im,
+                            xout_re, xout_im, yout_re, yout_im, gnd);
+    inout xin_re, xin_im, yin_re, yin_im,
+          xout_re, xout_im, yout_re, yout_im, gnd;
+    electrical xin_re, xin_im, yin_re, yin_im,
+               xout_re, xout_im, yout_re, yout_im, gnd;
+
+    // reactive dummy: with NO ddt() anywhere in a module, bosdi's emitted
+    // custom-JVP returns a float64 reactive primal with a complex tangent and
+    // the circulax complex assembly rejects it. One always-zero RC state keeps
+    // the reactive side dtype-honest; it never couples to the optics
+    // (see mirror.va).
+    electrical dmy;
+
+    parameter real theta_deg = 45.0;              // rotation angle [deg]
+    parameter real il_db     = 0.0 from [0:inf);  // excess insertion loss [dB]
+
+    real th, s, c, sn;
+
+    analog begin
+        I(dmy, gnd) <+ 1e-12 * ddt(V(dmy, gnd)) + V(dmy, gnd);
+
+        th = theta_deg * `M_PI / 180.0;
+        s  = pow(10.0, -il_db / 20.0);
+        c  = s * cos(th);
+        sn = s * sin(th);
+
+        // Ex_out = c*Ex_in - sn*Ey_in
+        V(xout_re, gnd) <+ c * V(xin_re, gnd) - sn * V(yin_re, gnd);
+        V(xout_im, gnd) <+ c * V(xin_im, gnd) - sn * V(yin_im, gnd);
+        // Ey_out = sn*Ex_in + c*Ey_in
+        V(yout_re, gnd) <+ sn * V(xin_re, gnd) + c * V(yin_re, gnd);
+        V(yout_im, gnd) <+ sn * V(xin_im, gnd) + c * V(yin_im, gnd);
+    end
+endmodule

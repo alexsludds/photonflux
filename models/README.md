@@ -41,6 +41,26 @@ first use) are automatic.
 | `ring_kerr.va` | add-drop ring whose **five FSR-spaced modes mix through the intracavity χ(3)** — the modal Lugiato-Lefever equations (machine-generated triple sum), so SPM, XPM and **four-wave mixing between resonances** emerge from one Kerr coefficient (`examples/ring_fwm.py` pins everything) |
 | `ring_selfheat.va` | self-heating twin of `ring_mod.va`: the CMT all-pass ring plus a one-pole thermal reservoir (`tau_th·dΔT/dt + ΔT = R_th·P_absorbed`) — the absorbed circulating power heats the ring and thermo-optically (dn/dT>0) red-shifts the resonance, a nonlinear feedback loop that is **bistable**. The laser wavelength is an input node (`lam_nm`) so a testbench can ramp it; a slow forward+backward sweep traces a hysteresis loop (`examples/ring_selfheat.py`) |
 
+### Dual-polarization (Jones-vector) field models
+
+Every optical net is a Jones vector carried as **two** Ereal/Eimag pairs —
+`X = (x*_re, x*_im)` is the TE component, `Y = (y*_re, y*_im)` the TM
+component, with `|Ex|² + |Ey|² = power [W]`. The scalar models above are the
+X/TE channel of this convention and keep working unchanged (a Y net a scalar
+component never touches stays at 0). See `docs/polarization.md` for the design.
+
+| model | what it is |
+|---|---|
+| `polarization_rotator.va` | fixed-angle Jones rotation `[Ex;Ey] ← R(θ)[Ex;Ey]` — a half-wave plate / TE↔TM mode rotator, lossless by default (`theta_deg`, `il_db`) |
+| `pbs.va` | polarization beam splitter: TE (X) → port 1, TM (Y) → port 2, with a finite extinction ratio `er_db`. An X input rotated by θ upstream splits by Malus' law, `cos²θ`/`sin²θ` |
+| `pbc.va` | polarization beam combiner: the reciprocal of `pbs.va` — X taken from port 1, Y from port 2, multiplexed onto one net |
+| `birefringent_wg.va` | birefringent straight waveguide: TE/TM see different `n_eff`, so `Δφ = 2π·Δn_eff·L/λ` — the static core of PMD; in one MZI arm it offsets the TE and TM fringes (`examples/pol_malus.py`) |
+| `pdl.va` | polarization-dependent loss: a common `il_db` plus a differential `pdl_db` on the TM axis (a partial polarizer) |
+
+The `examples/pol_malus.py` study and `tests/test_polarization.py` pin the two
+acceptance-criteria testbenches: a rotator + PBS + PBC Malus-law split, and a
+birefringent-waveguide MZI whose TE/TM fringes are offset by `Δn_eff`.
+
 The laser examples (`examples/soa_fp_laser.py`, `examples/soa_vernier_laser.py`)
 compose `soa.va` + `mirror.va` (+ `ring_filter.va`) into cavities: lasing —
 threshold, gain clamping, Vernier mode selection — emerges from the closed loop

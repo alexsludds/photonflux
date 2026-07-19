@@ -1,0 +1,115 @@
+`include "discipline.h"
+`include "constants.h"
+
+`define P_C0 2.99792458e8   // speed of light [m/s]
+
+// Traveling-wave ACTIVE gain slice: the tw_seg.va field stencil with a LOCAL
+// carrier reservoir per slice. Cascade M of these (optionally interleaved with
+// Bragg slices, or made an active grating by giving them kappa) to build FP /
+// DFB / DBR lasers whose gain is spatially resolved — each slice saturates on
+// its OWN circulating power, so longitudinal spatial hole burning emerges.
+//
+// Field envelopes (forward R on fr, backward S on bl), method of lines in z:
+//
+//   tau_s dR/dt + (R - R_left)  = dz*[ (gamma - j*delta) R + j*kappa S ]
+//   tau_s dS/dt + (S - S_right) = dz*[ (gamma - j*delta) S + j*kappa R ]
+//
+//   * gamma [1/m] is the saturable AMPLITUDE gain from the local reservoir
+//     (below): single-pass power gain over a length L is exp(2*gamma_bar*L),
+//     so 2*gamma*L plays the role of the SOA log-gain h.
+//   * delta = delta0 + alpha_h*gamma folds in the linewidth-enhancement chirp:
+//     the reservoir's index change red/blue-shifts the field with the gain
+//     (Henry alpha_h). delta0 is the static frame->Bragg detuning.
+//   * kappa [1/m] Bragg coupling (0 = plain gain section; >0 = index-coupled
+//     active DFB grating).
+//   * tau_s = dz/v_g slice transit time (the ddt gives the cavity its memory).
+//
+// Local reservoir (state gamma on node ng), Agrawal-Olsson style but per slice
+// and expressed directly as amplitude-gain-per-length:
+//
+//   tau_c dgamma/dt = gamma0(I) - gamma*(1 + P_loc/p_sat)
+//
+//   gamma0(I) = g_unsat_pm * (I - i_tr)/(i_op - i_tr)   unsaturated, linear in
+//               bias (transparent at i_tr, g_unsat_pm at i_op; an absorber below
+//               transparency), and P_loc = |R|^2 + |S|^2 is the LOCAL power in
+//               this slice — that locality is the spatial hole burning.
+//
+// Electrical port (an, cat): linearised diode Idrv = (V - Von)/Rs clamped at 0,
+// the laser_dml / soa convention. p_seed is a small distributed field floor
+// that seeds and phase-pins lasing (deterministic ASE stand-in; set 0 and inject
+// real noise for mode-competition studies as in soa_vernier_laser.py).
+//
+// Ports (coherent field, Ereal/Eimag pairs, |E|^2 = power [W]):
+//   fl = forward in (left, read)   fr = forward out (right, driven soft node R)
+//   br = backward in (right, read) bl = backward out (left, driven soft node S)
+// Never load fr/bl with a finite impedance; ground unused inputs.
+module tw_gain_seg(fl_re, fl_im, fr_re, fr_im, bl_re, bl_im, br_re, br_im,
+                   an, cat, gnd);
+    inout fl_re, fl_im, fr_re, fr_im, bl_re, bl_im, br_re, br_im, an, cat, gnd;
+    electrical fl_re, fl_im, fr_re, fr_im, bl_re, bl_im, br_re, br_im,
+               an, cat, gnd;
+
+    electrical ng;                 // internal: local amplitude gain gamma [1/m]
+
+    parameter real lambda_nm       = 1310.0 from (0:inf); // optical frame [nm]
+    parameter real lambda_bragg_nm = 1310.0 from (0:inf); // Bragg wavelength [nm]
+    parameter real n_g       = 3.7    from (0:inf);  // group index
+    parameter real dz        = 10u    from (0:inf);  // slice length [m]
+    parameter real g_unsat_pm = 5000.0;              // unsat amplitude gain @ i_op [1/m]
+    parameter real i_op_ma   = 80.0   from (0:inf);  // operating current [mA]
+    parameter real i_tr_ma   = 8.0    from [0:inf);  // transparency current [mA]
+    parameter real p_sat     = 10m    from (0:inf);  // saturation power [W]
+    parameter real tau_c     = 0.3n   from (0:inf);  // carrier lifetime [s]
+    parameter real alpha_h   = 0.0;                  // linewidth-enhancement factor
+    parameter real kappa_pm  = 0.0;                  // Bragg coupling [1/m]
+    parameter real loss_pm   = 0.0;                  // internal amplitude loss [1/m]
+    parameter real p_seed    = 1e-12  from [0:inf);  // distributed ASE seed [W]
+    parameter real Von       = 1.2;                  // diode turn-on [V]
+    parameter real Rs        = 3.0    from (0:inf);  // series resistance [ohm]
+
+    real idrv, v_g, tau_s, delta0, a, kap, gam, g0, ploc, deleff, eseed;
+
+    analog begin
+        // ---- electrical port: linearised diode -------------------------
+        idrv = (V(an, cat) - Von) / Rs;
+        if (idrv < 0.0) idrv = 0.0;
+        I(an, cat) <+ idrv;
+
+        v_g    = `P_C0 / n_g;
+        tau_s  = dz / v_g;
+        delta0 = 2.0 * `M_PI * n_g * (1.0 / (lambda_nm * 1e-9)
+                                      - 1.0 / (lambda_bragg_nm * 1e-9));
+        a      = dz;
+        kap    = kappa_pm;
+
+        // ---- local carrier reservoir -> amplitude gain gamma -----------
+        g0   = g_unsat_pm * (idrv * 1e3 - i_tr_ma) / (i_op_ma - i_tr_ma);
+        ploc = V(fr_re, gnd)*V(fr_re, gnd) + V(fr_im, gnd)*V(fr_im, gnd)
+             + V(bl_re, gnd)*V(bl_re, gnd) + V(bl_im, gnd)*V(bl_im, gnd);
+        // tau_c*dgamma/dt = gamma0 - gamma*(1 + P_loc/p_sat)   (row unscaled)
+        I(ng, gnd) <+ tau_c * ddt(V(ng, gnd))
+                      + V(ng, gnd) * (1.0 + ploc / p_sat) - g0;
+
+        gam    = V(ng, gnd) - loss_pm;          // net amplitude gain [1/m]
+        // alpha_h chirp tracks the CARRIER-induced index, i.e. the reservoir
+        // gain V(ng) (not gam) — loss_pm is a background loss with no carriers
+        deleff = delta0 + alpha_h * V(ng, gnd); // gain-coupled chirp
+        eseed  = sqrt(p_seed);
+
+        // forward field R (fr), fed from the left neighbour fl
+        I(fr_re, gnd) <+ tau_s * ddt(V(fr_re, gnd)) + (V(fr_re, gnd) - V(fl_re, gnd))
+                         - a * (gam * V(fr_re, gnd) + deleff * V(fr_im, gnd)
+                                - kap * V(bl_im, gnd)) - eseed;
+        I(fr_im, gnd) <+ tau_s * ddt(V(fr_im, gnd)) + (V(fr_im, gnd) - V(fl_im, gnd))
+                         - a * (gam * V(fr_im, gnd) - deleff * V(fr_re, gnd)
+                                + kap * V(bl_re, gnd));
+
+        // backward field S (bl), fed from the right neighbour br
+        I(bl_re, gnd) <+ tau_s * ddt(V(bl_re, gnd)) + (V(bl_re, gnd) - V(br_re, gnd))
+                         - a * (gam * V(bl_re, gnd) + deleff * V(bl_im, gnd)
+                                - kap * V(fr_im, gnd)) - eseed;
+        I(bl_im, gnd) <+ tau_s * ddt(V(bl_im, gnd)) + (V(bl_im, gnd) - V(br_im, gnd))
+                         - a * (gam * V(bl_im, gnd) - deleff * V(bl_re, gnd)
+                                + kap * V(fr_re, gnd));
+    end
+endmodule

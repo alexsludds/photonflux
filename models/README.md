@@ -42,6 +42,32 @@ first use) are automatic.
 | `ring_kerr.va` | add-drop ring whose **five FSR-spaced modes mix through the intracavity χ(3)** — the modal Lugiato-Lefever equations (machine-generated triple sum), so SPM, XPM and **four-wave mixing between resonances** emerge from one Kerr coefficient (`examples/ring_fwm.py` pins everything) |
 | `ring_selfheat.va` | self-heating twin of `ring_mod.va`: the CMT all-pass ring plus a one-pole thermal reservoir (`tau_th·dΔT/dt + ΔT = R_th·P_absorbed`) — the absorbed circulating power heats the ring and thermo-optically (dn/dT>0) red-shifts the resonance, a nonlinear feedback loop that is **bistable**. The laser wavelength is an input node (`lam_nm`) so a testbench can ramp it; a slow forward+backward sweep traces a hysteresis loop (`examples/ring_selfheat.py`) |
 
+### Traveling-wave multi-section laser slices (DFB / DBR / FP)
+
+Cascadable **bidirectional** directed-wave sections that build DFB, DBR and
+Fabry-Perot lasers by the method of lines applied to the coupled-mode
+traveling-wave equations — each slice carries its own forward/backward field
+state (a transit-time `ddt`, so the cavity has real group delay and real
+longitudinal modes) and, for the active slice, its own carrier reservoir (so
+**spatial hole burning** and **longitudinal mode competition** emerge). Chain M
+in the netlist; the lasing wavelength, threshold, SMSR and mode hops are all
+emergent. Ports are the field pairs `fl/fr` (forward in/out) and `bl/br`
+(backward out/in).
+
+| model | what it is |
+|---|---|
+| `tw_seg.va` | passive / fixed-gain traveling-wave slice: coupled-mode stencil `tau_s·dR/dt + (R−R_left) = dz·[(γ−jδ)R + jκS]` (and the mirror for S). `kappa` is the Bragg coupling — a length `L` of these reflects `tanh(κL)` at the Bragg frame and traces the coupled-mode stopband (`tests/test_tw_laser.py`); `dbeta_dv` shifts the local Bragg detuning with a tuning voltage (the **DBR** knob). `kappa=0` is a plain waveguide |
+| `tw_gain_seg.va` | active traveling-wave gain slice: the `tw_seg` field stencil with a **local** Agrawal-Olsson carrier reservoir (`tau_c·dγ/dt = γ0(I) − γ(1+P_loc/p_sat)`) saturating on that slice's OWN circulating power, plus α_H chirp and a diode bias port. Cascade for a segmented gain region (spatial hole burning); give it `kappa>0` for an index-coupled active **DFB** grating |
+| `phase_pad.va` | lossless bidirectional phase rotation `e^{−jφ}` on both waves: the **quarter-wave defect** of a QWS-DFB (`φ=π/2` pulls a single lasing mode to the exact Bragg wavelength) and a tunable cavity-phase / DBR pad (`φ = φ0 + dφ_dv·V`) |
+
+Examples: `examples/tw_fp_laser.py` (segmented FP — threshold + slope efficiency
+vs the lumped-`soa` analytic, plus the spatial-hole-burning profile),
+`examples/dfb_laser.py` (quarter-wave-shifted DFB — single-mode lasing at the
+Bragg wavelength, SMSR > 30 dB in the OSA panel), `examples/dbr_laser.py`
+(tunable DBR — a section current steps the lasing wavelength across a
+longitudinal mode hop). All are noise-seeded and self-checking, in the spirit of
+`soa_fp_laser.py` / `soa_vernier_laser.py`.
+
 ### Dual-polarization (Jones-vector) field models
 
 Every optical net is a Jones vector carried as **two** Ereal/Eimag pairs —

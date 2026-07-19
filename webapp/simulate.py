@@ -206,7 +206,11 @@ def schematic_to_netlist(sch: dict, wave_span: float = DEFAULT_WAVE_SPAN,
 
                 try:
                     if wave == "prbs":
-                        wt, wv = wavesrc.prbs_waveform(settings, wave_span)
+                        if str(settings.get("mode")) == "qam":
+                            wt, wv = wavesrc.qam_drive_waveform(settings,
+                                                               wave_span)
+                        else:
+                            wt, wv = wavesrc.prbs_waveform(settings, wave_span)
                         patterns[name] = dict(settings)
                     else:
                         wt, wv = wavesrc.pwl_waveform(settings)
@@ -1793,6 +1797,11 @@ def _run_inner(payload: dict) -> dict:
 
                 cfg = _link_cfg_with_eq(analysis["link"], meta, log)
                 result["link"] = linkpost.link_report(result, meta, cfg, log)
+            if analysis.get("coherent"):
+                import coherent
+
+                result["coherent"] = coherent.coherent_report(
+                    result, meta, dict(analysis["coherent"]), log)
         elif mode == "pulse":
             result = _run_transient(circuit, meta, analysis, log)
             import linkpost

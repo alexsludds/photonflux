@@ -91,6 +91,31 @@ S.mzm = {
     <line class="${EL}" x1="50" y1="50" x2="50" y2="60"/>`,
 };
 
+S.iq_modulator = {
+  // nested MZM: an I child MZM (top) and Q child MZM (bottom) in parallel,
+  // each with its own differential drive; a 90-degree combiner on the right
+  w: 120, h: 80,
+  pins: { pin: [0, 40], pout: [120, 40],
+          vip: [40, 0], vin: [20, 0], vqp: [40, 80], vqn: [20, 80] },
+  label: [0, -6], pinLabels: true,
+  draw: () => `
+    <line class="${OPT}" x1="0" y1="40" x2="14" y2="40"/>
+    <path class="${OPT}" d="M14 40 C 22 40 22 20 34 20 L 66 20 C 78 20 78 40 86 40"/>
+    <path class="${OPT}" d="M14 40 C 22 40 22 60 34 60 L 66 60 C 78 60 78 40 86 40"/>
+    <path class="${OPT}" d="M34 20 C 44 20 44 12 54 12 L 60 12 C 70 12 70 20 78 20" opacity="0.85"/>
+    <path class="${OPT}" d="M34 20 C 44 20 44 28 54 28 L 60 28 C 70 28 70 20 78 20" opacity="0.85"/>
+    <path class="${OPT}" d="M34 60 C 44 60 44 52 54 52 L 60 52 C 70 52 70 60 78 60" opacity="0.85"/>
+    <path class="${OPT}" d="M34 60 C 44 60 44 68 54 68 L 60 68 C 70 68 70 60 78 60" opacity="0.85"/>
+    <line class="${OPT}" x1="86" y1="40" x2="120" y2="40"/>
+    <rect class="${EL}" x="18" y="14" width="26" height="5"/>
+    <line class="${EL}" x1="20" y1="0" x2="20" y2="14"/>
+    <line class="${EL}" x1="40" y1="0" x2="40" y2="14"/>
+    <rect class="${EL}" x="18" y="61" width="26" height="5"/>
+    <line class="${EL}" x1="20" y1="66" x2="20" y2="80"/>
+    <line class="${EL}" x1="40" y1="66" x2="40" y2="80"/>
+    <text x="92" y="34" style="font-size:12px" class="${EL}">IQ</text>`,
+};
+
 S.mzm_tw = {
   // like the MZM but with segmented traveling-wave electrodes + gnd pin
   w: 100, h: 60,
@@ -461,6 +486,29 @@ S.photodiode = {
     <line class="${EL}" x1="44" y1="40" x2="60" y2="40"/>`,
 };
 
+S.coherent_rx = {
+  // 90-degree hybrid (sig + LO) into two balanced PD pairs -> I and Q currents
+  w: 80, h: 80,
+  pins: { sig: [0, 24], lo: [0, 56],
+          i_p: [80, 12], i_n: [80, 30], q_p: [80, 50], q_n: [80, 68] },
+  label: [8, -6], pinLabels: true,
+  draw: () => `
+    <line class="${OPT}" x1="0" y1="24" x2="16" y2="24"/>
+    <line class="${OPT}" x1="0" y1="56" x2="16" y2="56"/>
+    <rect class="${OPT}" x="16" y="14" width="30" height="52" rx="3" fill="none"/>
+    <text x="20" y="44" style="font-size:10px" class="${OPT}">90&#176;</text>
+    <path class="${EL}" d="M50 8 L 50 24 L 62 16 Z" fill="none"/>
+    <line class="${EL}" x1="62" y1="10" x2="62" y2="22"/>
+    <line class="${EL}" x1="62" y1="12" x2="80" y2="12"/>
+    <line class="${EL}" x1="62" y1="30" x2="80" y2="30"/>
+    <line class="${EL}" x1="46" y1="16" x2="50" y2="16"/>
+    <path class="${EL}" d="M50 46 L 50 62 L 62 54 Z" fill="none"/>
+    <line class="${EL}" x1="62" y1="48" x2="62" y2="60"/>
+    <line class="${EL}" x1="62" y1="50" x2="80" y2="50"/>
+    <line class="${EL}" x1="62" y1="68" x2="80" y2="68"/>
+    <line class="${EL}" x1="46" y1="54" x2="50" y2="54"/>`,
+};
+
 // --- electrical two-terminal glyphs (drawn horizontal, pins left/right) ----
 
 S.resistor = {
@@ -732,7 +780,8 @@ S.opamp = {
 
 // value shown under the refdes: pick the headline parameter per type
 const HEADLINE_PARAM = {
-  cw_laser: "power", mzm: "vpi", pulse_mod: "p_on", ring_mod: "kappa2",
+  cw_laser: "power", mzm: "vpi", iq_modulator: "vpi", coherent_rx: "R",
+  pulse_mod: "p_on", ring_mod: "kappa2",
   laser_dml: "Ith", laser_rate: "taup", mzm_tw: "vpi",
   ring_mod_inj: "tau_c", mzm_seg: "vpi", ring_selfheat: "rth_k_w",
   phase_shifter: "vpi",

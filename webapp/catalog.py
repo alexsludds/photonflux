@@ -83,6 +83,43 @@ CATALOG: dict[str, dict] = {
             _p("cel", 50e-15, "F", "Electrode cap."),
         ],
     },
+    "iq_modulator": {
+        "label": "IQ Modulator (nested MZM)",
+        "category": "Modulators",
+        "doc": "Nested-MZM IQ modulator on the coherent field: two null-biased "
+               "push-pull child MZMs (I and Q arms) combined in quadrature, "
+               "$t = 0.5\\,IL\\,[\\sin(\\tfrac{\\pi(V_I+b_i)}{2V_\\pi}) + "
+               "e^{j(\\pi/2+q_{err})}\\sin(\\tfrac{\\pi(V_Q+b_q)}{2V_\\pi})]$, "
+               "so $E_{out}=t\\,E_{in}$ maps the I/Q drives onto the complex "
+               "plane — the coherent QPSK/QAM transmitter. Drive vip/vin (I) "
+               "and vqp/vqn (Q); qerr is the quadrature phase error.",
+        "ports": _ports("pin:o pout:o vip:e vin:e vqp:e vqn:e"),
+        "params": [
+            _p("vpi", 3.0, "V", "V-pi (each arm)"),
+            _p("vbias_i", 0.0, "V", "I-arm bias"),
+            _p("vbias_q", 0.0, "V", "Q-arm bias"),
+            _p("qerr", 0.0, "rad", "Quadrature error"),
+            _p("il_db", 6.0, "dB", "Insertion loss"),
+            _p("cel", 50e-15, "F", "Electrode cap."),
+        ],
+    },
+    "coherent_rx": {
+        "label": "Coherent Receiver (90° hybrid + balanced PD)",
+        "category": "Detectors & Bridges",
+        "doc": "Single-pol coherent front-end: signal and LO beat in an ideal "
+               "90° optical hybrid and two balanced photodiode pairs cancel "
+               "the direct-detection terms, giving the I/Q photocurrents "
+               "$i_I = R\\,\\mathrm{Re}(E_{sig}E_{lo}^*)$, "
+               "$i_Q = R\\,\\mathrm{Im}(E_{sig}E_{lo}^*)$ — the complex "
+               "baseband $r=i_I+j i_Q$ the coherent DSP demodulates. The lo "
+               "port takes a second CW laser (its linewidth sets the phase "
+               "noise the carrier recovery must track). Differential current "
+               "outputs i_p/i_n (I) and q_p/q_n (Q).",
+        "ports": _ports("sig:o lo:o i_p:e i_n:e q_p:e q_n:e"),
+        "params": [
+            _p("R", 0.8, "A/W", "Responsivity"),
+        ],
+    },
     "phase_shifter": {
         "label": "EO Phase Shifter (VA)",
         "category": "Modulators",
@@ -1134,6 +1171,9 @@ CATALOG: dict[str, dict] = {
                "predistortion for a quadrature-biased MZM (set rlm_vpi to "
                "its V-pi), and RJ/PJ/DCD jitter on the edge times. "
                "mode=pulse emits one isolated UI for pulse-response runs. "
+               "mode=qam emits an RRC-shaped I or Q drive (pick qam=qpsk/"
+               "qam16/qam64, qam_drive=i/q) for the IQ modulator — one source "
+               "per rail, sharing order/seed. "
                "The unit interval is set globally by the top-bar baud rate "
                "(UI = 1/baud), not per source. "
                "The waveform is baked at compile time: parameter edits "
@@ -1141,13 +1181,19 @@ CATALOG: dict[str, dict] = {
         "ports": _ports("p1:e p2:e"),
         "params": [
             _p("mode", "nrz", "", "Mode", rebuild=True, kind="enum",
-               choices=["nrz", "pam4", "pulse"]),
+               choices=["nrz", "pam4", "pulse", "qam"]),
             _p("order", 7, "", "PRBS order", rebuild=True, kind="enum",
                choices=[7, 9, 11, 15, 23, 31]),
             _p("v0", -0.5, "V", "Low level", rebuild=True),
             _p("v1", 0.5, "V", "High level", rebuild=True),
             _p("tr", 20e-12, "s", "Edge time (20-80%)", rebuild=True),
             _p("seed", 1, "", "PRBS seed", rebuild=True),
+            _p("qam", "qpsk", "", "QAM order", rebuild=True, kind="enum",
+               choices=["qpsk", "qam16", "qam64"]),
+            _p("qam_drive", "i", "", "QAM rail", rebuild=True, kind="enum",
+               choices=["i", "q"]),
+            _p("rrc_beta", 0.1, "", "RRC roll-off", rebuild=True),
+            _p("sps", 16, "", "QAM samples/UI", rebuild=True),
             _p("ffe_pre_db", 0.0, "dB", "TX FFE pre-cursor", rebuild=True),
             _p("ffe_post_db", 0.0, "dB", "TX FFE post-cursor", rebuild=True),
             _p("rlm_vpi", 0.0, "V", "RLM V-pi (0 = off)", rebuild=True),
@@ -1449,6 +1495,101 @@ def _photodiode():
         return f, q
 
     return Photodiode
+
+
+def _iq_modulator():
+    """Nested-MZM IQ modulator on the coherent field (ALE-77).
+
+    Two child MZMs in parallel (I and Q arms), each null-biased and driven
+    push-pull so its field transmission is ``sin(pi*(V+bias)/(2*vpi))`` (bipolar
+    drive -> bipolar field), with the Q arm phase-shifted 90 degrees before the
+    combiner. The composite field transmission is
+
+        t = 0.5 * il * [ sin(pi*(V_I+bias_i)/(2*vpi))
+                         + e^{j*(pi/2 + qerr)} * sin(pi*(V_Q+bias_q)/(2*vpi)) ]
+
+    so ``E_out = t * E_in`` maps the (I, Q) drives onto the complex plane — the
+    coherent transmitter behind QPSK/QAM. ``qerr`` is the quadrature (90-degree
+    hybrid) phase error. Uses the same S->Y 2-port assembly as ``cx.mzm`` so the
+    optical path is matched (no reflection); ``cel`` loads each driver.
+    """
+    import jax.numpy as jnp
+    from circulax.components.base_component import Signals, States, component
+    from circulax.s_transforms import s_to_y
+
+    @component(ports=("pin", "pout", "vip", "vin", "vqp", "vqn"))
+    def IQModulator(
+        signals: Signals,
+        s: States,
+        vpi: float = 3.0,        # half-wave voltage of each child MZM [V]
+        vbias_i: float = 0.0,    # I-arm bias offset [V]
+        vbias_q: float = 0.0,    # Q-arm bias offset [V]
+        qerr: float = 0.0,       # quadrature (90 deg) phase error [rad]
+        il_db: float = 6.0,      # excess field insertion loss [dB]
+        cel: float = 50e-15,     # electrode capacitance [F]
+    ) -> tuple[dict, dict]:
+        il = 10.0 ** (-il_db / 20.0)                 # amplitude (field) loss
+        vi = (signals.vip - signals.vin).real
+        vq = (signals.vqp - signals.vqn).real
+        ti = jnp.sin(jnp.pi * (vi + vbias_i) / (2.0 * vpi))
+        tq = jnp.sin(jnp.pi * (vq + vbias_q) / (2.0 * vpi))
+        t = 0.5 * il * (ti + jnp.exp(1j * (jnp.pi / 2.0 + qerr)) * tq)
+
+        S = jnp.array([[0.0 * t, t], [t, 0.0 * t]], dtype=jnp.complex128)
+        Y = s_to_y(S)
+        v_vec = jnp.array([signals.pin, signals.pout], dtype=jnp.complex128)
+        i_vec = Y @ v_vec
+
+        f = {"pin": i_vec[0], "pout": i_vec[1],
+             "vip": 0.0, "vin": 0.0, "vqp": 0.0, "vqn": 0.0}
+        qi = cel * (signals.vip - signals.vin)
+        qq = cel * (signals.vqp - signals.vqn)
+        q = {"vip": qi, "vin": -qi, "vqp": qq, "vqn": -qq}
+        return f, q
+
+    return IQModulator
+
+
+def _coherent_rx():
+    """Single-pol coherent receiver front-end: 90-degree hybrid + balanced PDs.
+
+    The signal and LO fields beat in an ideal 90-degree optical hybrid; the two
+    balanced photodiode pairs cancel the direct-detection (|E|^2) terms and
+    deliver the in-phase and quadrature photocurrents
+
+        i_I = R * Re(E_sig * conj(E_lo)),   i_Q = R * Im(E_sig * conj(E_lo)),
+
+    i.e. the complex baseband ``r = i_I + j*i_Q = R * E_sig * conj(E_lo)`` that
+    the coherent DSP (``webapp/coherent.py``) demodulates. Both optical inputs
+    are matched absorbers (like the photodiode, no reflection); the LO port
+    takes a second ``cw_laser``. Differential current outputs ``i_p/i_n`` (I) and
+    ``qp/qn`` (Q).
+    """
+    from circulax.components.base_component import Signals, States, component
+
+    @component(ports=("sig", "lo", "i_p", "i_n", "q_p", "q_n"))
+    def CoherentRx(
+        signals: Signals,
+        s: States,
+        R: float = 0.8,          # responsivity [A/W]
+        Yopt: float = 1.0,       # matched-absorber admittance
+    ) -> tuple[dict, dict]:
+        es = signals.sig
+        el = signals.lo
+        i_sig = Yopt * es                            # matched hybrid inputs
+        i_lo = Yopt * el
+        # E_sig * conj(E_lo), written via re/im (non-holomorphic, like the PD)
+        re = es.real * el.real + es.imag * el.imag
+        im = es.imag * el.real - es.real * el.imag
+        i_i = R * re
+        i_q = R * im
+        # sign matches the photodiode bridge: a positive beat sources current
+        # out of the '+' terminal (V(i_p) = +i_i across a cathode-side load)
+        f = {"sig": i_sig, "lo": i_lo,
+             "i_p": -i_i, "i_n": i_i, "q_p": -i_q, "q_n": i_q}
+        return f, {}
+
+    return CoherentRx
 
 
 def _tia():
@@ -2292,6 +2433,8 @@ def build_models(sky130_geoms: dict[str, tuple[str, float, float]] | None = None
         "opt_mirror": _opt_mirror(),
         "opt_term": _opt_term(),
         "photodiode": _photodiode(),
+        "iq_modulator": _iq_modulator(),
+        "coherent_rx": _coherent_rx(),
         "_f2ri": cx.field_to_ri(),
         "_f2ri_m": _field_to_ri_matched(),
         "_ri2f": cx.ri_to_field(),

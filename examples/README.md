@@ -18,6 +18,7 @@ modulation happens in modulators (`cx.mzm()`, or the ideal `PulseModulator` in
 | [`ring_eo_response.py`](ring_eo_response.py) | small-signal **electro-optic frequency response** of the same ring — swept-tone lock-in vs the analytic photon-lifetime rolloff, f_3dB ~ 44 GHz (`--kappa2`, `--rs`) | — |
 | [`soa_fp_laser.py`](soa_fp_laser.py) | Fabry-Perot laser from an SOA between two mirrors — lasing emerges from the loop | "SOA Fabry-Perot laser" |
 | [`soa_vernier_laser.py`](soa_vernier_laser.py) | Vernier laser seeded by ASE noise, with a live one-FSR mode hop | "Vernier laser mode hop" |
+| [`edfa_wdm.py`](edfa_wdm.py) | **EDFA gain dynamics** (`edfa.va`): drop 7 of 8 WDM channels and the surviving channel surges as the shared ms-lifetime erbium reservoir refills — settled gains, surge, and the recovery time constant (∝ `tau_c`) pinned to the analytic reservoir; C-band gain-tilt spectrum + ASE/NF floor alongside | — |
 | [`ring_tpa_q.py`](ring_tpa_q.py) | TPA + free-carrier absorption capping a high-Q ring | "TPA-limited high-Q ring" |
 | [`wg_fwm.py`](wg_fwm.py) | χ(3) four-wave mixing in a waveguide, pinned to every textbook scaling | "χ(3) four-wave mixing" |
 | [`ring_fwm.py`](ring_fwm.py) | four-wave mixing **inside** a Kerr ring resonator | "Kerr ring four-wave mixing" |

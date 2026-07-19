@@ -1,0 +1,125 @@
+`include "discipline.h"
+`include "constants.h"
+
+`define P_C0 2.99792458e8   // speed of light [m/s]
+
+// Erbium-doped fibre amplifier — behavioural + single-reservoir dynamic model,
+// UNIDIRECTIONAL (forward fi -> fo; EDFAs run behind isolators). The twin of
+// models/optical_field/soa.va, but pumped rather than current-biased, slow
+// (ms) rather than fast (ns), and with a wavelength-shaped gain so different
+// WDM carriers on one shared baseband bus are amplified differently.
+//
+// Coherent-field convention: optical ports are Ereal/Eimag node pairs with
+// |E|^2 = optical power [W]. Wrapped in webapp/catalog.py by field<->(re,im)
+// adapters so the schematic sees two optical ports (fin, fout).
+//
+// ---- gain reservoir (Agrawal-Olsson log gain h, G = e^h) -------------------
+//
+//   tau_c*dh/dt = h0(P_pump) - h - (G - 1)*P_in/p_sat
+//
+//   * h0 is the unsaturated log gain, LINEAR IN PUMP POWER: transparent at
+//     p_pump_tr, g0_db of (peak) gain at p_pump_op. This is the erbium
+//     inversion set by the 980/1480 nm pump; below transparency the fibre
+//     absorbs. p_pump is a parameter (a constant pump laser) — the transients
+//     this model targets come from the SIGNAL (channel add/drop), not the pump.
+//   * p_sat is the (input-referred) saturation power; the reservoir depletes
+//     on the TOTAL input power P_in = |E_fi|^2, so every WDM channel shares one
+//     inversion (homogeneous broadening) — drop 7 of 8 channels and the
+//     survivor surges as h relaxes back up over ~tau_c.
+//   * tau_c ~ 10 ms (erbium metastable lifetime): gain transients live on the
+//     ms scale, orders slower than the SOA's ns reservoir.
+//
+// ---- wavelength-dependent gain: a detuned one-pole output filter -----------
+//
+//   tau_bw*dE_out/dt = -(1 - j*tau_bw*w_pk)*E_out + sqrt(G)*e^{-j*alpha_h*h/2}*E_in
+//
+//   The pole sits at s = -1/tau_bw + j*w_pk, so the power gain seen by a tone
+//   at baseband frequency w is a Lorentzian centred on the gain peak,
+//
+//     |H(w)|^2 = G / (1 + (tau_bw*(w - w_pk))^2),
+//
+//   with w_pk = 2*pi*c*(1/lambda_ref - 1/lambda_peak) the baseband offset of
+//   the gain peak and tau_bw = 1/(pi*df_fwhm) fixing the -3 dB gain bandwidth
+//   (df_fwhm from gain_bw_nm). A carrier at lambda sits at w = 2*pi*c*(1/
+//   lambda_ref - 1/lambda) in the shared DWDM frame (lambda_ref, matching the
+//   cw_laser WDM reference), so it peaks exactly at lambda = lambda_peak and
+//   rolls off away from it — a real per-channel gain tilt, not a scalar.
+//   Set gain_bw_nm wide (e.g. 40 nm) for an essentially flat amplifier.
+//
+//   * alpha_h is the linewidth-enhancement factor (gain-saturation chirp).
+//   * p_ase is a deterministic ASE stand-in (a constant seed field, like the
+//     SOA's p_seed) that starts lasing / pins phase when the EDFA is looped;
+//     stochastic ASE for noise-figure studies is added by cascading the
+//     ase_src injector (see webapp/catalog.py) at the configured PSD.
+//
+// Implementation notes mirror soa.va: h is clamped before exp() (overflow
+// guard), all ddt() coefficients are constants, and the output-filter ODEs are
+// current contributions on the (soft) output ports — never load fout with a
+// finite impedance, and ground the unused fin quadrature is not needed here
+// (fin is read at infinite impedance). gnd must be grounded.
+module edfa(fi_re, fi_im, fo_re, fo_im, gnd);
+    inout fi_re, fi_im, fo_re, fo_im, gnd;
+    electrical fi_re, fi_im, fo_re, fo_im, gnd;
+
+    electrical nh;                    // internal: log gain h
+
+    parameter real g0_db      = 30.0  from (0:inf);  // peak small-signal gain at p_pump_op [dB]
+    parameter real p_pump_mw  = 100.0 from [0:inf);  // pump power [mW]
+    parameter real p_pump_op_mw = 100.0 from (0:inf);// pump giving g0_db [mW]
+    parameter real p_pump_tr_mw = 8.0 from [0:inf);  // transparency pump [mW]
+    parameter real p_sat      = 5m    from (0:inf);  // saturation power [W]
+    parameter real tau_c      = 10m   from (0:inf);  // erbium lifetime [s]
+    parameter real lambda_ref_nm  = 1550.0 from (0:inf); // DWDM baseband frame [nm]
+    parameter real lambda_peak_nm = 1532.0 from (0:inf); // gain-peak wavelength [nm]
+    parameter real gain_bw_nm = 30.0  from (0:inf);  // -3 dB gain bandwidth [nm]
+    parameter real alpha_h    = 0.0;                 // linewidth-enhancement factor
+    parameter real p_ase      = 1e-9  from [0:inf);  // deterministic ASE seed [W]
+    parameter real h_clamp    = 12.0  from (0:inf);  // exp() overflow guard
+
+    real hop, h0, h, hc, g, sg, phi, gr, gi, ptot, eseed;
+    real f_ref, f_peak, w_pk, df_fwhm, tau_bw, beta;
+
+    analog begin
+        // ---- carrier reservoir -> log gain h ---------------------------
+        hop = g0_db * ln(10.0) / 10.0;
+        h0  = hop * (p_pump_mw - p_pump_tr_mw)
+                  / (p_pump_op_mw - p_pump_tr_mw);
+
+        h  = V(nh, gnd);
+        hc = (h > h_clamp) ? h_clamp : h;
+        g  = exp(hc);
+
+        ptot = V(fi_re, gnd)*V(fi_re, gnd) + V(fi_im, gnd)*V(fi_im, gnd);
+
+        // tau_c*dh/dt = h0 - h - (G-1)*P_in/p_sat (row scaled by tau_c)
+        I(nh, gnd) <+ tau_c * ddt(V(nh, gnd)) + V(nh, gnd) - h0
+                      + (g - 1.0) * ptot / p_sat;
+
+        // ---- spectral shape: detuned one-pole output filter ------------
+        f_ref   = `P_C0 / (lambda_ref_nm  * 1e-9);
+        f_peak  = `P_C0 / (lambda_peak_nm * 1e-9);
+        w_pk    = 2.0 * `M_PI * (f_ref - f_peak);           // baseband gain-peak offset
+        // full -3 dB gain bandwidth in Hz, then tau_bw = 1/(pi*df_fwhm)
+        df_fwhm = `P_C0 / (lambda_peak_nm * 1e-9) / (lambda_peak_nm * 1e-9)
+                  * (gain_bw_nm * 1e-9);
+        tau_bw  = 1.0 / (`M_PI * df_fwhm);
+        beta    = tau_bw * w_pk;
+
+        // ---- field transfer: sqrt(G)*e^{-j*alpha_h*h/2}, detuned pole
+        sg  = sqrt(g);
+        phi = -0.5 * alpha_h * hc;
+        gr  = sg * cos(phi);
+        gi  = sg * sin(phi);
+        eseed = sqrt(p_ase);
+
+        // pole at s = -1/tau_bw + j*w_pk -> the +beta cross-coupling below.
+        // KCL row (read at infinite impedance) IS the filter ODE:
+        //   tau_bw*dE_out/dt = -(1 - j*beta)*E_out + g_field*E_in
+        I(fo_re, gnd) <+ tau_bw * ddt(V(fo_re, gnd)) + V(fo_re, gnd)
+                         + beta * V(fo_im, gnd)
+                         - (gr * V(fi_re, gnd) - gi * V(fi_im, gnd)) - eseed;
+        I(fo_im, gnd) <+ tau_bw * ddt(V(fo_im, gnd)) + V(fo_im, gnd)
+                         - beta * V(fo_re, gnd)
+                         - (gi * V(fi_re, gnd) + gr * V(fi_im, gnd));
+    end
+endmodule

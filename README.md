@@ -131,6 +131,7 @@ as named examples 36–42 in the web app. One-line index:
 | `ring_mod_sky130.py` | Verilog-A microring modulator driven by a SKY130 inverter; DC tuning + optical eye | `out/ring_mod.png` |
 | `soa_fp_laser.py` | Fabry-Perot laser from an SOA between two mirrors — lasing emerges from the loop | `out/soa_fp_laser.png` |
 | `soa_vernier_laser.py` | Vernier laser seeded by ASE noise, with a live one-FSR mode hop | `out/soa_vernier_laser.png` |
+| `edfa_wdm.py` | **EDFA gain dynamics** (`models/optical_field/edfa.va`): drop 7 of 8 WDM channels and the surviving channel surges as the shared ms-lifetime erbium reservoir refills — settled gains, surge, and the recovery time constant (∝ `tau_c`) pinned to the analytic reservoir; a C-band gain-tilt spectrum + ASE/NF floor alongside | `out/edfa_wdm.png` |
 | `ring_tpa_q.py` | TPA + free-carrier absorption capping a high-Q ring | `out/ring_tpa_q.png` |
 | `wg_fwm.py` | χ(3) four-wave mixing in a waveguide, pinned to every textbook scaling | `out/wg_fwm.png` |
 | `ring_fwm.py` | four-wave mixing **inside** a Kerr ring resonator | `out/ring_fwm.png` |

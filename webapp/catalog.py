@@ -59,13 +59,16 @@ CATALOG: dict[str, dict] = {
                "DWDM, set ref_wavelength_nm to a shared reference so several "
                "lasers at different wavelengths become distinct tones on one "
                "bus, $f_{off} = c\\,(1/\\lambda_{ref} - 1/\\lambda)$; "
-               "0 = single-carrier (default).",
+               "0 = single-carrier (default). linewidth_hz > 0 adds a Wiener "
+               "phase process (Lorentzian FWHM $\\Delta\\nu$) for coherent / "
+               "self-heterodyne studies; needs a transient with noise seeds.",
         "ports": _ports("p1:o p2:o"),
         "params": [
             _p("wavelength_nm", 1310.0, "nm", "Wavelength"),
             _p("power", 1e-3, "W", "Power"),
             _p("phase", 0.0, "rad", "Phase"),
             _p("rin_db", 0.0, "dB/Hz", "RIN (0 = off)"),
+            _p("linewidth_hz", 0.0, "Hz", "Lorentzian linewidth (0 = off)"),
             _p("ref_wavelength_nm", 0.0, "nm", "WDM ref. (0 = single-carrier)"),
         ],
     },
@@ -1941,14 +1944,37 @@ def _noise_reader(bank, dt_n):
 
 
 def _cw_laser_noisy(bank, dt_n):
+    """CW laser with RIN (amplitude) and/or linewidth (phase) noise.
+
+    The bank carries TWO independent rows per seed (even = RIN amplitude,
+    odd = phase-noise increments) so intensity and phase fluctuations are
+    uncorrelated — see the cwn branch of simulate._make_noisy.
+
+    RIN drives a multiplicative amplitude fluctuation exactly as before.
+    Linewidth drives a Wiener phase process: phi(t) is the running integral
+    of white increments with per-step variance 2*pi*dnu*dt_n, so
+    Var(phi(t)) = 2*pi*dnu*t. That gives a field-coherence decay
+    exp(-pi*dnu*|tau|), i.e. a Lorentzian lineshape of FWHM = dnu.
+    """
     import jax.numpy as jnp
     from circulax.components.base_component import Signals, States, source
 
-    nval = _noise_reader(bank, dt_n)
+    # two rows per seed (RIN even, phase odd) — _make_noisy allocates seeds*2
+    assert bank.shape[0] % 2 == 0, "cwn noise bank must have an even row count"
+    n_seeds = max(bank.shape[0] // 2, 1)
+    tn = jnp.arange(bank.shape[1]) * dt_n
+    # RIN: white samples, sqrt(3/2) restores the variance lost to linear
+    # interpolation between bank samples (see _noise_reader).
+    rin_c = jnp.asarray(bank) * 1.22474487
+    # Phase walk: cumulative sum of the *raw* unit-variance increments — the
+    # sampled walk points are exact, so no interp-variance restoration is
+    # applied. Anchor each walk at phi(0) = 0 so the DC solve is phase-clean.
+    walk = jnp.cumsum(jnp.asarray(bank), axis=1)
+    walk = walk - walk[:, :1]
     c0 = 299792458.0
 
     @source(ports=("p1", "p2"), states=("i_src",))
-    def CWLaserRIN(
+    def CWLaserNoisy(
         signals: Signals,
         s: States,
         t: float,
@@ -1956,24 +1982,33 @@ def _cw_laser_noisy(bank, dt_n):
         power: float = 1e-3,
         phase: float = 0.0,
         rin_db: float = 0.0,
+        linewidth_hz: float = 0.0,
         ref_wavelength_nm: float = 0.0,
         seed_idx: float = 0.0,
     ) -> tuple[dict, dict]:
+        k = jnp.clip(jnp.asarray(seed_idx).astype(jnp.int32), 0, n_seeds - 1)
+        # RIN amplitude noise on the even row
         sigma = jnp.where(rin_db < 0.0,
                           jnp.sqrt(10.0 ** (rin_db / 10.0) / (2.0 * dt_n)),
                           0.0)
-        rel = jnp.maximum(1.0 + sigma * nval(t, seed_idx), 1e-6)
+        n_rin = jnp.interp(t, tn, jnp.take(rin_c, 2 * k, axis=0))
+        rel = jnp.maximum(1.0 + sigma * n_rin, 1e-6)
+        # Phase noise (Wiener walk) on the odd row; step std sqrt(2*pi*dnu*dt_n)
+        phi_scale = jnp.sqrt(2.0 * jnp.pi * jnp.maximum(linewidth_hz, 0.0)
+                             * dt_n)
+        phi_n = phi_scale * jnp.interp(t, tn, jnp.take(walk, 2 * k + 1, axis=0))
         # WDM carrier offset in the shared baseband frame (see cx.cw_laser);
         # select the never-zero reference before dividing
         ref_safe = jnp.where(ref_wavelength_nm > 0.0,
                              ref_wavelength_nm, wavelength_nm)
         w_off = 2.0 * jnp.pi * c0 * (1.0 / (ref_safe * 1e-9)
                                      - 1.0 / (wavelength_nm * 1e-9))
-        field = jnp.sqrt(power * rel) * jnp.exp(1j * (w_off * t + phase))
+        field = jnp.sqrt(power * rel) * jnp.exp(
+            1j * (w_off * t + phase + phi_n))
         constraint = (signals.p1 - signals.p2) - field
         return {"p1": s.i_src, "p2": -s.i_src, "i_src": constraint}, {}
 
-    return CWLaserRIN
+    return CWLaserNoisy
 
 
 def _photodiode_noisy(bank, dt_n):

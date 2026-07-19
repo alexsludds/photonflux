@@ -444,6 +444,141 @@ CATALOG: dict[str, dict] = {
             },
         },
     },
+    "tw_gain_seg": {
+        "label": "TW gain slice (VA)",
+        "category": "Lasers",
+        "doc": "models/optical_field/tw_gain_seg.va — one active slice of a "
+               "traveling-wave (DFB/DBR/FP) laser: the coupled-mode field "
+               "stencil tau_s*dR/dt + (R - R_left) = dz*[(gamma - j*delta)R + "
+               "j*kappa*S] (and the mirror for the backward wave S) with a "
+               "LOCAL Agrawal-Olsson carrier reservoir tau_c*dgamma/dt = "
+               "gamma0(I) - gamma*(1 + P_loc/p_sat) saturating on THIS slice's "
+               "own circulating power — cascade M of them (fl/fr forward, bl/br "
+               "backward) for a spatially-resolved gain region (spatial hole "
+               "burning). kappa>0 makes it an index-coupled active DFB grating; "
+               "alpha_h is the linewidth-enhancement chirp; the diode bias is "
+               "on an/cat (Von/Rs). Feedback comes from mirrors / grating "
+               "slices around it. gnd must be grounded; terminate dark inputs.",
+        "hard_dc": True,
+        "ports": _ports("fl:o fr:o bl:o br:o an:e cat:e gnd:e"),
+        "params": [
+            _p("lambda_nm", 1310.0, "nm", "Optical frame"),
+            _p("lambda_bragg_nm", 1310.0, "nm", "Bragg wavelength"),
+            _p("n_g", 3.7, "", "Group index"),
+            _p("dz", 10e-6, "m", "Slice length"),
+            _p("g_unsat_pm", 5000.0, "1/m", "Unsat amplitude gain @ i_op"),
+            _p("i_op_ma", 80.0, "mA", "Operating current"),
+            _p("i_tr_ma", 8.0, "mA", "Transparency current"),
+            _p("p_sat", 10e-3, "W", "Saturation power"),
+            _p("tau_c", 0.3e-9, "s", "Carrier lifetime"),
+            _p("alpha_h", 0.0, "", "Linewidth-enh. factor"),
+            _p("kappa_pm", 0.0, "1/m", "Bragg coupling"),
+            _p("loss_pm", 0.0, "1/m", "Internal amplitude loss"),
+            _p("p_seed", 0.0, "W", "Distributed ASE seed"),
+            _p("Von", 1.2, "V", "Turn-on voltage"),
+            _p("Rs", 3.0, "Ohm", "Series resistance"),
+        ],
+        "expand": {
+            "instances": {
+                "fli": {"component": "_f2ri"},
+                "bri": {"component": "_f2ri"},
+                "amp": {"component": "_twgain_va", "settings": "ALL"},
+                "fro": {"component": "_ri2f"},
+                "blo": {"component": "_ri2f"},
+            },
+            "connections": [
+                ("fli,re", "amp,fl_re"), ("fli,im", "amp,fl_im"),
+                ("bri,re", "amp,br_re"), ("bri,im", "amp,br_im"),
+                ("amp,fr_re", "fro,re"), ("amp,fr_im", "fro,im"),
+                ("amp,bl_re", "blo,re"), ("amp,bl_im", "blo,im"),
+            ],
+            "port_map": {
+                "fl": "fli,c", "fr": "fro,c", "bl": "blo,c", "br": "bri,c",
+                "an": "amp,an", "cat": "amp,cat", "gnd": "amp,gnd",
+            },
+        },
+    },
+    "tw_seg": {
+        "label": "TW Bragg/passive slice (VA)",
+        "category": "Lasers",
+        "doc": "models/optical_field/tw_seg.va — one passive / fixed-gain slice "
+               "of a traveling-wave laser: same coupled-mode field stencil as "
+               "the gain slice with a FIXED amplitude gain/loss gamma_pm and a "
+               "Bragg coupling kappa_pm. A length L of these reflects "
+               "tanh(kappa*L) at the Bragg frame (delta0 = 2*pi*n_g*(1/lambda - "
+               "1/lambda_bragg)) and traces the coupled-mode stopband — the "
+               "DFB/DBR grating mirror. dbeta_dv shifts the local Bragg "
+               "detuning with the tuning voltage vt (the DBR tuning knob); "
+               "kappa_pm = 0 is a plain waveguide. Inputs fl/br read, outputs "
+               "fr/bl drive; gnd must be grounded.",
+        "stiff": True,
+        "ports": _ports("fl:o fr:o bl:o br:o vt:e gnd:e"),
+        "params": [
+            _p("lambda_nm", 1310.0, "nm", "Optical frame"),
+            _p("lambda_bragg_nm", 1310.0, "nm", "Bragg wavelength"),
+            _p("n_g", 3.7, "", "Group index"),
+            _p("dz", 10e-6, "m", "Slice length"),
+            _p("kappa_pm", 0.0, "1/m", "Bragg coupling"),
+            _p("gamma_pm", 0.0, "1/m", "Amplitude gain/loss"),
+            _p("dbeta_dv", 0.0, "1/m/V", "Detuning tuning slope"),
+            _p("r_tune", 1e6, "Ohm", "Tuning-node shunt"),
+        ],
+        "expand": {
+            "instances": {
+                "fli": {"component": "_f2ri"},
+                "bri": {"component": "_f2ri"},
+                "seg": {"component": "_twseg_va", "settings": "ALL"},
+                "fro": {"component": "_ri2f"},
+                "blo": {"component": "_ri2f"},
+            },
+            "connections": [
+                ("fli,re", "seg,fl_re"), ("fli,im", "seg,fl_im"),
+                ("bri,re", "seg,br_re"), ("bri,im", "seg,br_im"),
+                ("seg,fr_re", "fro,re"), ("seg,fr_im", "fro,im"),
+                ("seg,bl_re", "blo,re"), ("seg,bl_im", "blo,im"),
+            ],
+            "port_map": {
+                "fl": "fli,c", "fr": "fro,c", "bl": "blo,c", "br": "bri,c",
+                "vt": "seg,vt", "gnd": "seg,gnd",
+            },
+        },
+    },
+    "phase_pad": {
+        "label": "TW phase pad / QWS defect (VA)",
+        "category": "Lasers",
+        "doc": "models/optical_field/phase_pad.va — lossless bidirectional "
+               "phase rotation e^{-j*phi} on both the forward (fl->fr) and "
+               "backward (br->bl) directed waves. phi0_rad = pi/2 is the "
+               "quarter-wave defect that pulls a single QWS-DFB mode to the "
+               "Bragg wavelength; phi = phi0_rad + dphi_dv*V(vt) makes it a "
+               "tunable cavity-phase / DBR pad. Inputs read, outputs drive; "
+               "gnd must be grounded.",
+        "ports": _ports("fl:o fr:o bl:o br:o vt:e gnd:e"),
+        "params": [
+            _p("phi0_rad", 0.0, "rad", "Static phase"),
+            _p("dphi_dv", 0.0, "rad/V", "Tuning slope"),
+            _p("r_tune", 1e6, "Ohm", "Tuning-node shunt"),
+        ],
+        "expand": {
+            "instances": {
+                "fli": {"component": "_f2ri"},
+                "bri": {"component": "_f2ri"},
+                "pad": {"component": "_phasepad_va", "settings": "ALL"},
+                "fro": {"component": "_ri2f"},
+                "blo": {"component": "_ri2f"},
+            },
+            "connections": [
+                ("fli,re", "pad,fl_re"), ("fli,im", "pad,fl_im"),
+                ("bri,re", "pad,br_re"), ("bri,im", "pad,br_im"),
+                ("pad,fr_re", "fro,re"), ("pad,fr_im", "fro,im"),
+                ("pad,bl_re", "blo,re"), ("pad,bl_im", "blo,im"),
+            ],
+            "port_map": {
+                "fl": "fli,c", "fr": "fro,c", "bl": "blo,c", "br": "bri,c",
+                "vt": "pad,vt", "gnd": "pad,gnd",
+            },
+        },
+    },
     "edfa": {
         "label": "EDFA (VA)",
         "category": "Lasers",
@@ -2590,6 +2725,9 @@ def build_models(sky130_geoms: dict[str, tuple[str, float, float]] | None = None
         "_ringkerr_va": cx.va("ring_kerr"),
         "_ringselfheat_va": cx.va("ring_selfheat"),
         "_wgnl_va": cx.va("waveguide_nl"),
+        "_twseg_va": cx.va("tw_seg"),
+        "_twgain_va": cx.va("tw_gain_seg"),
+        "_phasepad_va": cx.va("phase_pad"),
         "vdc": VoltageSource,
         "vpulse": PulseVoltageSource,
         "vsin": VoltageSourceAC,

@@ -1,0 +1,53 @@
+`include "discipline.h"
+`include "constants.h"
+
+// Lossless bidirectional phase section for the traveling-wave laser slices:
+// a memoryless field rotation e^{-j*phi} applied to BOTH the forward and the
+// backward directed waves. Two jobs:
+//
+//   * quarter-wave defect of a QWS-DFB — one of these with phi0 = pi/2 dropped
+//     between the two grating halves pulls a single lasing mode to the exact
+//     Bragg wavelength (the defect mode in the middle of the stopband).
+//   * phase-tuning / DBR cavity-phase pad — phi = phi0 + dphi_dv*V(vt) so a
+//     section drive slides the round-trip phase (and, in a DBR, the cavity
+//     comb) continuously; used to walk the lasing mode across a mode hop.
+//
+// Unlike a tw_seg with a big per-slice detuning (whose first-order upwind
+// stencil is lossy for phi ~ 1 rad), this rotation is exactly unitary:
+//
+//   fr = e^{-j*phi} fl        (forward  in fl -> out fr)
+//   bl = e^{-j*phi} br        (backward in br -> out bl)
+//
+// Coherent-field convention: Ereal/Eimag node pairs, |E|^2 = power [W]. Inputs
+// (fl, br) are read at infinite impedance; outputs (fr, bl) are driven — never
+// tie two driven outputs to one node.
+module phase_pad(fl_re, fl_im, fr_re, fr_im, bl_re, bl_im, br_re, br_im,
+                 vt, gnd);
+    inout fl_re, fl_im, fr_re, fr_im, bl_re, bl_im, br_re, br_im, vt, gnd;
+    electrical fl_re, fl_im, fr_re, fr_im, bl_re, bl_im, br_re, br_im, vt, gnd;
+
+    // reactive dummy: a module with no ddt() anywhere trips the complex-JVP
+    // assembly (see mirror.va) — one always-zero RC state keeps it honest.
+    electrical dmy;
+
+    parameter real phi0_rad = 0.0;                 // static phase [rad]
+    parameter real dphi_dv  = 0.0;                 // tuning slope [rad/V]
+    parameter real r_tune   = 1e6 from (0:inf);    // tuning-node shunt [ohm]
+
+    real phi, cp, sp;
+
+    analog begin
+        I(dmy, gnd) <+ 1e-12 * ddt(V(dmy, gnd)) + V(dmy, gnd);
+        I(vt, gnd)  <+ V(vt, gnd) / r_tune;        // read-only tuning knob
+
+        phi = phi0_rad + dphi_dv * V(vt, gnd);
+        cp  = cos(phi);
+        sp  = sin(phi);
+
+        // e^{-j*phi} (fl_re + j fl_im)
+        V(fr_re, gnd) <+  cp * V(fl_re, gnd) + sp * V(fl_im, gnd);
+        V(fr_im, gnd) <+ -sp * V(fl_re, gnd) + cp * V(fl_im, gnd);
+        V(bl_re, gnd) <+  cp * V(br_re, gnd) + sp * V(br_im, gnd);
+        V(bl_im, gnd) <+ -sp * V(br_re, gnd) + cp * V(br_im, gnd);
+    end
+endmodule

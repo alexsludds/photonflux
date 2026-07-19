@@ -934,6 +934,103 @@ CATALOG: dict[str, dict] = {
         ],
         "lti": "fiber_nl",
     },
+    "raman_amp": {
+        "label": "Raman Fiber / Amp (VA)",
+        "category": "Channels",
+        "doc": "models/optical_field/raman_amp.va — stimulated Raman scattering "
+               "(SRS) span + distributed Raman amplifier. A forward signal "
+               "(sin->sout) and a pump that may be co-propagating (pcin->pcout) "
+               "and/or counter-propagating (pctin->pctout); Raman gain transfers "
+               "power from the shorter-wavelength pump to the longer-wavelength "
+               "signal with the pump depleting by nu_s/nu_p. Exact two-wave "
+               "logistic solution: small-signal on/off gain is the textbook "
+               "$e^{g_R P_p L_{eff}/A_{eff}}$, saturating as the signal grows "
+               "(pump depletion). Two uses: (1) two-channel WDM SRS tilt — wire "
+               "the short-lambda channel into pcin and the long-lambda channel "
+               "into sin; (2) a Raman amplifier — a weak signal plus a strong "
+               "(usually counter-propagating) pump into pctin. Total pump "
+               "$P_p = |E_{pcin}|^2 + |E_{pctin}|^2$; co/counter give the same "
+               "integrated on/off gain. Terminate unused pump ports. gnd "
+               "grounded.",
+        "ports": _ports("sin:o sout:o pcin:o pcout:o pctin:o pctout:o gnd:e"),
+        "params": [
+            _p("lambda_s_nm", 1550.0, "nm", "Signal wavelength"),
+            _p("lambda_p_nm", 1450.0, "nm", "Pump wavelength"),
+            _p("g_r", 0.6e-13, "m/W", "Peak Raman gain"),
+            _p("a_eff_um2", 80.0, "um^2", "Effective area"),
+            _p("length_km", 50.0, "km", "Span length"),
+            _p("loss_s_db_km", 0.20, "dB/km", "Signal loss"),
+            _p("loss_p_db_km", 0.25, "dB/km", "Pump loss"),
+        ],
+        "expand": {
+            "instances": {
+                "si": {"component": "_f2ri"},
+                "pc": {"component": "_f2ri"},
+                "px": {"component": "_f2ri"},
+                "amp": {"component": "_raman_va", "settings": "ALL"},
+                "so": {"component": "_ri2f"},
+                "pco": {"component": "_ri2f"},
+                "pxo": {"component": "_ri2f"},
+            },
+            "connections": [
+                ("si,re", "amp,si_re"), ("si,im", "amp,si_im"),
+                ("pc,re", "amp,pfi_re"), ("pc,im", "amp,pfi_im"),
+                ("px,re", "amp,pbi_re"), ("px,im", "amp,pbi_im"),
+                ("amp,so_re", "so,re"), ("amp,so_im", "so,im"),
+                ("amp,pfo_re", "pco,re"), ("amp,pfo_im", "pco,im"),
+                ("amp,pbo_re", "pxo,re"), ("amp,pbo_im", "pxo,im"),
+            ],
+            "port_map": {
+                "sin": "si,c", "sout": "so,c",
+                "pcin": "pc,c", "pcout": "pco,c",
+                "pctin": "px,c", "pctout": "pxo,c",
+                "gnd": "amp,gnd",
+            },
+        },
+    },
+    "sbs_fiber": {
+        "label": "SBS Fiber (VA)",
+        "category": "Channels",
+        "doc": "models/optical_field/sbs_fiber.va — stimulated Brillouin "
+               "scattering span (threshold + backscatter). A forward pump "
+               "(fin->fout) drives a counter-propagating Stokes wave out the "
+               "backward port (bout). Below the SBS threshold "
+               "$P_{th}=n_{th}A_{eff}/(g_B L_{eff})$ (textbook $n_{th}\\approx21$) "
+               "almost everything transmits; above it the transmitted power "
+               "CLAMPS at ~P_th and the surplus is reflected as the backward "
+               "Stokes — the classic SBS power limiter. Energy conserving "
+               "($P_{fout}=P_{th}\\tanh(P_{in}/P_{th})e^{-\\alpha L}$, the rest "
+               "to bout). NOTE the shared baseband envelope cannot represent the "
+               "~11 GHz Stokes shift / ~20-50 MHz linewidth — this is a "
+               "power-domain limiter. Terminate the unused bin. gnd grounded.",
+        "ports": _ports("fin:o fout:o bin:o bout:o gnd:e"),
+        "params": [
+            _p("g_b", 5e-11, "m/W", "Brillouin gain"),
+            _p("a_eff_um2", 80.0, "um^2", "Effective area"),
+            _p("length_km", 20.0, "km", "Span length"),
+            _p("loss_db_km", 0.20, "dB/km", "Linear loss"),
+            _p("n_th", 21.0, "", "Threshold factor"),
+        ],
+        "expand": {
+            "instances": {
+                "fi": {"component": "_f2ri"},
+                "bi": {"component": "_f2ri"},
+                "amp": {"component": "_sbs_va", "settings": "ALL"},
+                "fo": {"component": "_ri2f"},
+                "bo": {"component": "_ri2f"},
+            },
+            "connections": [
+                ("fi,re", "amp,fi_re"), ("fi,im", "amp,fi_im"),
+                ("bi,re", "amp,bi_re"), ("bi,im", "amp,bi_im"),
+                ("amp,fo_re", "fo,re"), ("amp,fo_im", "fo,im"),
+                ("amp,bo_re", "bo,re"), ("amp,bo_im", "bo,im"),
+            ],
+            "port_map": {
+                "fin": "fi,c", "fout": "fo,c", "bin": "bi,c", "bout": "bo,c",
+                "gnd": "amp,gnd",
+            },
+        },
+    },
     # --- passive integrated optics (coherent field, wavelength-aware) -------
     "grating": {
         "label": "Grating Coupler",
@@ -2306,6 +2403,8 @@ def build_models(sky130_geoms: dict[str, tuple[str, float, float]] | None = None
         "_seg_va": cx.va("mzm_seg"),
         "_soa_va": cx.va("soa"),
         "_edfa_va": cx.va("edfa"),
+        "_raman_va": cx.va("raman_amp"),
+        "_sbs_va": cx.va("sbs_fiber"),
         "_mirror_va": cx.va("mirror"),
         "_circ_va": cx.va("circulator"),
         "_ringcomb_va": cx.va("ring_filter"),

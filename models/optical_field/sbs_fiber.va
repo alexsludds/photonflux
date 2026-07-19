@@ -1,0 +1,91 @@
+`include "discipline.h"
+`include "constants.h"
+
+// Stimulated Brillouin scattering (SBS) fibre span — threshold + pump-depletion
+// / backscatter model on DIRECTED waves (the soa.va fwd/bwd convention).
+//
+// A forward pump/signal (fi -> fo) drives a counter-propagating Stokes wave
+// that exits backward at bo (toward the source). Below the SBS threshold power
+// P_th almost everything is transmitted; above it the transmitted power CLAMPS
+// near P_th and the surplus is reflected as the backward Stokes wave — the
+// classic SBS power limiter.
+//
+// Coherent-field convention: optical ports are Ereal/Eimag node pairs with
+// |E|^2 = optical power [W]. Wrapped in webapp/catalog.py by field<->(re,im)
+// adapters so the schematic sees four optical ports (fin, fout, bin, bout).
+//
+// ---- physics (behavioural threshold model) --------------------------------
+//
+//   P_th = n_th * A_eff / (g_B * Leff),   Leff = (1-e^{-alpha*L})/alpha
+//
+// with the textbook n_th ~ 21 (the Brillouin gain exponent at which the
+// spontaneously-seeded Stokes wave reaches the pump level). Transmission is
+// clamped smoothly at threshold and the balance is back-reflected (energy
+// conserving; the ~11 GHz Stokes downshift is negligible in power):
+//
+//   P_fo = P_th * tanh(P_in/P_th) * e^{-alpha*L}         (-> P_th for P_in>>P_th)
+//   P_bo = (P_in - P_th*tanh(P_in/P_th)) * e^{-alpha*L}  (~P_in^3 below, linear above)
+//
+// P_in << P_th: tanh(x)~x, transmit ~ all, Stokes ~ P_in^3 (deep below thresh);
+// P_in >> P_th: transmit clamps at P_th, Stokes grows as P_in - P_th.
+//
+// NOTE the single shared baseband envelope cannot represent the ~11 GHz Stokes
+// frequency downshift or the ~20-50 MHz Brillouin linewidth; this is a
+// power-domain threshold/limiter model. The transmitted wave keeps the pump
+// phase; the Stokes wave is emitted with the pump phase (its true phase is
+// incoherent with the pump, so only its power is physical). bin (a downstream
+// Stokes seed) passes straight back to bout with the span's linear loss.
+//
+// Implementation notes mirror mirror.va: outputs are exact algebraic functions
+// of the inputs and, with NO ddt() in the module, one always-zero RC dummy
+// state keeps bosdi's complex assembly dtype-honest. gnd must be grounded;
+// terminate the unused bin with an optical terminator.
+module sbs_fiber(fi_re, fi_im, fo_re, fo_im,
+                 bi_re, bi_im, bo_re, bo_im, gnd);
+    inout fi_re, fi_im, fo_re, fo_im, bi_re, bi_im, bo_re, bo_im, gnd;
+    electrical fi_re, fi_im, fo_re, fo_im, bi_re, bi_im, bo_re, bo_im, gnd;
+
+    // reactive dummy (see mirror.va): no ddt() in this module otherwise.
+    electrical dmy;
+
+    parameter real g_b         = 5e-11  from [0:inf);  // Brillouin gain [m/W]
+    parameter real a_eff_um2   = 80.0   from (0:inf);  // effective area [um^2]
+    parameter real length_km   = 20.0   from (0:inf);  // span length [km]
+    parameter real loss_db_km  = 0.20   from [0:inf);  // linear loss [dB/km]
+    parameter real n_th        = 21.0   from (0:inf);  // threshold gain factor
+
+    real len, aeff, alpha, leff, t_lin, amp_lin, p_th;
+    real pin, x, p_tr, p_refl, ratio_f, amp_f, ratio_b, amp_b;
+
+    analog begin
+        // always-zero dummy state -> honest complex reactive assembly
+        I(dmy, gnd) <+ 1e-12 * ddt(V(dmy, gnd)) + V(dmy, gnd);
+
+        len     = length_km * 1e3;                       // [m]
+        aeff    = a_eff_um2 * 1e-12;                      // [m^2]
+        alpha   = loss_db_km * ln(10.0) / 10.0 / 1e3;     // [1/m]
+        leff    = (1.0 - exp(-alpha * len)) / alpha;      // effective length [m]
+        t_lin   = exp(-alpha * len);                      // power transmission
+        amp_lin = exp(-0.5 * alpha * len);                // field transmission
+        p_th    = n_th * aeff / (g_b * leff);             // SBS threshold [W]
+
+        pin  = V(fi_re, gnd)*V(fi_re, gnd) + V(fi_im, gnd)*V(fi_im, gnd);
+        x    = pin / p_th;
+        p_tr = p_th * tanh(x);                            // clamped (pre-loss)
+
+        // forward transmitted field: gain ratio (pin cancels analytically),
+        // guarded so pin -> 0 gives a finite (unity-loss) amplitude
+        ratio_f = t_lin * tanh(x) / (x + 1e-30);          // -> t_lin as pin->0
+        amp_f = sqrt(ratio_f);
+        V(fo_re, gnd) <+ amp_f * V(fi_re, gnd);
+        V(fo_im, gnd) <+ amp_f * V(fi_im, gnd);
+
+        // backward Stokes: surplus above threshold, emitted with the pump phase,
+        // plus the linear pass-through of any downstream Stokes seed (bin)
+        p_refl  = (pin - p_tr) * t_lin;
+        ratio_b = p_refl / (pin + 1e-30);
+        amp_b = sqrt(ratio_b);
+        V(bo_re, gnd) <+ amp_b * V(fi_re, gnd) + amp_lin * V(bi_re, gnd);
+        V(bo_im, gnd) <+ amp_b * V(fi_im, gnd) + amp_lin * V(bi_im, gnd);
+    end
+endmodule

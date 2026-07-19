@@ -660,6 +660,49 @@ S.fiber_nl = {
       style="font-size:8px" stroke="none">&#967;&#8323;</text>`,
 };
 
+S.raman_amp = {
+  // Raman span: signal rail through the top (sin->sout), co-pump rail below
+  // (pcin->pcout) and a counter-pump rail in the middle (pctin from the right,
+  // pctout out the left); fibre coil in the body, gain chevron on the signal.
+  w: 120, h: 74,
+  pins: { sin: [0, 18], sout: [120, 18], pctout: [0, 37], pctin: [120, 37],
+          pcin: [0, 56], pcout: [120, 56], gnd: [60, 74] },
+  label: [0, -6], pinLabels: true,
+  draw: () => `
+    <rect class="${OPT} body-fill" x="28" y="8" width="64" height="58" rx="6"/>
+    <line class="${OPT}" x1="0" y1="18" x2="28" y2="18"/>
+    <line class="${OPT}" x1="92" y1="18" x2="120" y2="18"/>
+    <path class="${OPT}" d="M52 14 l6 4 l-6 4" fill="none" stroke-width="1.2"/>
+    <path class="${OPT}" d="M62 14 l6 4 l-6 4" fill="none" stroke-width="1.2"/>
+    <line class="${OPT}" x1="0" y1="37" x2="28" y2="37" opacity="0.85"/>
+    <line class="${OPT}" x1="92" y1="37" x2="120" y2="37" opacity="0.85"/>
+    <path class="${OPT}" d="M68 33 l-6 4 l6 4" fill="none" stroke-width="1.2"/>
+    <line class="${OPT}" x1="0" y1="56" x2="28" y2="56" opacity="0.85"/>
+    <line class="${OPT}" x1="92" y1="56" x2="120" y2="56" opacity="0.85"/>
+    <path class="${OPT}" d="M52 52 l6 4 l-6 4" fill="none" stroke-width="1.2"/>
+    <line class="${EL}" x1="60" y1="74" x2="60" y2="66"/>
+    <text x="60" y="40" text-anchor="middle" style="font-size:8px">Raman</text>`,
+};
+
+S.sbs_fiber = {
+  // SBS span: forward pump rail on top (fin->fout, clamped), backward Stokes
+  // rail on the bottom (bout back to the source, bin the seed); coil body.
+  w: 96, h: 58,
+  pins: { fin: [0, 18], fout: [96, 18], bout: [0, 40], bin: [96, 40],
+          gnd: [48, 58] },
+  label: [0, -6], pinLabels: true,
+  draw: () => `
+    <rect class="${OPT} body-fill" x="24" y="8" width="48" height="42" rx="6"/>
+    <line class="${OPT}" x1="0" y1="18" x2="24" y2="18"/>
+    <line class="${OPT}" x1="72" y1="18" x2="96" y2="18"/>
+    <path class="${OPT}" d="M40 14 l6 4 l-6 4" fill="none" stroke-width="1.2"/>
+    <line class="${OPT}" x1="0" y1="40" x2="24" y2="40" opacity="0.85"/>
+    <line class="${OPT}" x1="72" y1="40" x2="96" y2="40" opacity="0.85"/>
+    <path class="${OPT}" d="M32 36 l-6 4 l6 4" fill="none" stroke-width="1.2"/>
+    <line class="${EL}" x1="48" y1="58" x2="48" y2="50"/>
+    <text x="48" y="32" text-anchor="middle" style="font-size:8px">SBS</text>`,
+};
+
 S.tia = {
   w: 80, h: 50,
   pins: { inp: [0, 25], out: [80, 25] },

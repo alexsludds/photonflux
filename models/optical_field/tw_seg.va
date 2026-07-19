@@ -1,0 +1,102 @@
+`include "discipline.h"
+`include "constants.h"
+
+`define P_C0 2.99792458e8   // speed of light [m/s]
+
+// Traveling-wave section: ONE slice of the coupled-mode laser equations, a
+// bidirectional directed-wave element that cascades into DFB/DBR/FP cavities.
+//
+// This is the passive / fixed-gain slice (Bragg grating, phase, waveguide);
+// the active gain-reservoir twin with a per-slice carrier reservoir and alpha_H
+// chirp is tw_gain_seg.va. Chaining M of these in the netlist is the method of
+// lines applied to the traveling-wave equations (a "TLLM" cavity):
+//
+//   (1/v_g) dR/dt + dR/dz = (gamma - j*delta0) R + j*kappa S
+//   (1/v_g) dS/dt - dS/dz = (gamma - j*delta0) S + j*kappa R
+//
+// R = forward (+z) field envelope, S = backward (-z), both in sqrt(W). Upwind
+// finite differences in z (R fed from the LEFT neighbour, S from the RIGHT)
+// turn each slice into a first-order ODE on its two output fields:
+//
+//   tau_s dR/dt + (R - R_left)  = dz*[ (gamma - j*delta0) R + j*kappa S ]
+//   tau_s dS/dt + (S - S_right) = dz*[ (gamma + j*delta0) S + j*kappa R ]
+//
+//   * tau_s = dz/v_g is the slice transit time — the ddt() that gives the
+//     cavity its finite memory (an envelope at beat frequency dw picks up the
+//     correct group delay dw*n_g/c per length, so different longitudinal modes
+//     see the right grating detuning). No absdelay() needed.
+//   * gamma [1/m] is the AMPLITUDE gain (>0) or loss (<0) per length; a passive
+//     waveguide sets it to -alpha/2 from the dB/m loss.
+//   * kappa [1/m] is the Bragg coupling. At the Bragg frame (delta0 = 0) a
+//     grating of length L = M*dz built from these slices reflects |r| =
+//     tanh(kappa*L) — the coupled-mode result (validated in
+//     tests/test_tw_laser.py). kappa = 0 is a plain (phase) waveguide.
+//   * delta0 [1/m] is the STATIC detuning of the optical frame from the Bragg
+//     stopband centre, delta0 = 2*pi*n_g*(1/lambda - 1/lambda_bragg); it is
+//     shifted by a tuning current (index change) for a DBR — see i_tune/dn_di.
+//
+// Port convention (coherent field, Ereal/Eimag pairs, |E|^2 = power [W]):
+//   fl = forward in from the left neighbour (read, hi-Z)
+//   fr = forward out to the right  (driven soft node R — the KCL row IS the ODE)
+//   bl = backward out to the left  (driven soft node S)
+//   br = backward in from the right neighbour (read, hi-Z)
+// Never load fr/bl with a finite impedance; ground unused INPUTS (fl at the
+// left facet has an equation only if driven — leave a dark facet grounded).
+//
+// Tuning (vt, gnd): a linear index knob for DBR/phase sections. The tuning
+// voltage shifts the local Bragg detuning by delta0 += dbeta_dv * V(vt), so a
+// section drive pulls the stopband (DBR) or the round-trip phase (phase pad)
+// through the cavity comb. dbeta_dv = 0 (default) makes the section fixed; the
+// node then carries only a large shunt r_tune so it is never floating (ground
+// it, or drive it with the tuning source).
+module tw_seg(fl_re, fl_im, fr_re, fr_im, bl_re, bl_im, br_re, br_im,
+              vt, gnd);
+    inout fl_re, fl_im, fr_re, fr_im, bl_re, bl_im, br_re, br_im, vt, gnd;
+    electrical fl_re, fl_im, fr_re, fr_im, bl_re, bl_im, br_re, br_im,
+               vt, gnd;
+
+    parameter real lambda_nm     = 1310.0 from (0:inf);  // optical frame [nm]
+    parameter real lambda_bragg_nm = 1310.0 from (0:inf);// Bragg wavelength [nm]
+    parameter real n_g           = 3.7    from (0:inf);  // group index
+    parameter real dz            = 10u    from (0:inf);  // slice length [m]
+    parameter real kappa_pm      = 0.0;                  // Bragg coupling [1/m]
+    parameter real gamma_pm      = 0.0;                  // amplitude gain/loss [1/m]
+    parameter real dbeta_dv      = 0.0;                  // detuning tuning [1/m per V]
+    parameter real r_tune        = 1e6    from (0:inf);  // tuning-node shunt [ohm]
+
+    real v_g, tau_s, delta0, a, kap, gam;
+
+    analog begin
+        v_g    = `P_C0 / n_g;
+        tau_s  = dz / v_g;
+        // static frame->Bragg detuning [1/m], plus the linear tuning knob
+        // (a DBR shifts its own stopband by driving vt)
+        delta0 = 2.0 * `M_PI * n_g * (1.0 / (lambda_nm * 1e-9)
+                                      - 1.0 / (lambda_bragg_nm * 1e-9))
+                 + dbeta_dv * V(vt, gnd);
+        a      = dz;
+        kap    = kappa_pm;
+        gam    = gamma_pm;
+
+        // tuning node: a plain shunt so it always has an equation (read-only knob)
+        I(vt, gnd) <+ V(vt, gnd) / r_tune;
+
+        // forward field R (driven onto fr), fed from the left neighbour fl
+        I(fr_re, gnd) <+ tau_s * ddt(V(fr_re, gnd)) + (V(fr_re, gnd) - V(fl_re, gnd))
+                         - a * (gam * V(fr_re, gnd) + delta0 * V(fr_im, gnd)
+                                - kap * V(bl_im, gnd));
+        I(fr_im, gnd) <+ tau_s * ddt(V(fr_im, gnd)) + (V(fr_im, gnd) - V(fl_im, gnd))
+                         - a * (gam * V(fr_im, gnd) - delta0 * V(fr_re, gnd)
+                                + kap * V(bl_re, gnd));
+
+        // backward field S (driven onto bl), fed from the right neighbour br.
+        // Coupled-mode theory shares (gamma - j*delta0) between both waves; the
+        // upwind sign on d/dz is already carried by the (S - S_right) stencil.
+        I(bl_re, gnd) <+ tau_s * ddt(V(bl_re, gnd)) + (V(bl_re, gnd) - V(br_re, gnd))
+                         - a * (gam * V(bl_re, gnd) + delta0 * V(bl_im, gnd)
+                                - kap * V(fr_im, gnd));
+        I(bl_im, gnd) <+ tau_s * ddt(V(bl_im, gnd)) + (V(bl_im, gnd) - V(br_im, gnd))
+                         - a * (gam * V(bl_im, gnd) - delta0 * V(bl_re, gnd)
+                                + kap * V(fr_re, gnd));
+    end
+endmodule

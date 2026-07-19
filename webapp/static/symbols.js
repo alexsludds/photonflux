@@ -91,6 +91,31 @@ S.mzm = {
     <line class="${EL}" x1="50" y1="50" x2="50" y2="60"/>`,
 };
 
+S.iq_modulator = {
+  // nested MZM: an I child MZM (top) and Q child MZM (bottom) in parallel,
+  // each with its own differential drive; a 90-degree combiner on the right
+  w: 120, h: 80,
+  pins: { pin: [0, 40], pout: [120, 40],
+          vip: [40, 0], vin: [20, 0], vqp: [40, 80], vqn: [20, 80] },
+  label: [0, -6], pinLabels: true,
+  draw: () => `
+    <line class="${OPT}" x1="0" y1="40" x2="14" y2="40"/>
+    <path class="${OPT}" d="M14 40 C 22 40 22 20 34 20 L 66 20 C 78 20 78 40 86 40"/>
+    <path class="${OPT}" d="M14 40 C 22 40 22 60 34 60 L 66 60 C 78 60 78 40 86 40"/>
+    <path class="${OPT}" d="M34 20 C 44 20 44 12 54 12 L 60 12 C 70 12 70 20 78 20" opacity="0.85"/>
+    <path class="${OPT}" d="M34 20 C 44 20 44 28 54 28 L 60 28 C 70 28 70 20 78 20" opacity="0.85"/>
+    <path class="${OPT}" d="M34 60 C 44 60 44 52 54 52 L 60 52 C 70 52 70 60 78 60" opacity="0.85"/>
+    <path class="${OPT}" d="M34 60 C 44 60 44 68 54 68 L 60 68 C 70 68 70 60 78 60" opacity="0.85"/>
+    <line class="${OPT}" x1="86" y1="40" x2="120" y2="40"/>
+    <rect class="${EL}" x="18" y="14" width="26" height="5"/>
+    <line class="${EL}" x1="20" y1="0" x2="20" y2="14"/>
+    <line class="${EL}" x1="40" y1="0" x2="40" y2="14"/>
+    <rect class="${EL}" x="18" y="61" width="26" height="5"/>
+    <line class="${EL}" x1="20" y1="66" x2="20" y2="80"/>
+    <line class="${EL}" x1="40" y1="66" x2="40" y2="80"/>
+    <text x="92" y="34" style="font-size:12px" class="${EL}">IQ</text>`,
+};
+
 S.mzm_tw = {
   // like the MZM but with segmented traveling-wave electrodes + gnd pin
   w: 100, h: 60,
@@ -479,6 +504,29 @@ S.apd = {
     <text x="30" y="34" style="font-size:9px">&#215;M</text>`,
 };
 
+S.coherent_rx = {
+  // 90-degree hybrid (sig + LO) into two balanced PD pairs -> I and Q currents
+  w: 80, h: 80,
+  pins: { sig: [0, 24], lo: [0, 56],
+          i_p: [80, 12], i_n: [80, 30], q_p: [80, 50], q_n: [80, 68] },
+  label: [8, -6], pinLabels: true,
+  draw: () => `
+    <line class="${OPT}" x1="0" y1="24" x2="16" y2="24"/>
+    <line class="${OPT}" x1="0" y1="56" x2="16" y2="56"/>
+    <rect class="${OPT}" x="16" y="14" width="30" height="52" rx="3" fill="none"/>
+    <text x="20" y="44" style="font-size:10px" class="${OPT}">90&#176;</text>
+    <path class="${EL}" d="M50 8 L 50 24 L 62 16 Z" fill="none"/>
+    <line class="${EL}" x1="62" y1="10" x2="62" y2="22"/>
+    <line class="${EL}" x1="62" y1="12" x2="80" y2="12"/>
+    <line class="${EL}" x1="62" y1="30" x2="80" y2="30"/>
+    <line class="${EL}" x1="46" y1="16" x2="50" y2="16"/>
+    <path class="${EL}" d="M50 46 L 50 62 L 62 54 Z" fill="none"/>
+    <line class="${EL}" x1="62" y1="48" x2="62" y2="60"/>
+    <line class="${EL}" x1="62" y1="50" x2="80" y2="50"/>
+    <line class="${EL}" x1="62" y1="68" x2="80" y2="68"/>
+    <line class="${EL}" x1="46" y1="54" x2="50" y2="54"/>`,
+};
+
 // --- electrical two-terminal glyphs (drawn horizontal, pins left/right) ----
 
 S.resistor = {
@@ -678,6 +726,49 @@ S.fiber_nl = {
       style="font-size:8px" stroke="none">&#967;&#8323;</text>`,
 };
 
+S.raman_amp = {
+  // Raman span: signal rail through the top (sin->sout), co-pump rail below
+  // (pcin->pcout) and a counter-pump rail in the middle (pctin from the right,
+  // pctout out the left); fibre coil in the body, gain chevron on the signal.
+  w: 120, h: 74,
+  pins: { sin: [0, 18], sout: [120, 18], pctout: [0, 37], pctin: [120, 37],
+          pcin: [0, 56], pcout: [120, 56], gnd: [60, 74] },
+  label: [0, -6], pinLabels: true,
+  draw: () => `
+    <rect class="${OPT} body-fill" x="28" y="8" width="64" height="58" rx="6"/>
+    <line class="${OPT}" x1="0" y1="18" x2="28" y2="18"/>
+    <line class="${OPT}" x1="92" y1="18" x2="120" y2="18"/>
+    <path class="${OPT}" d="M52 14 l6 4 l-6 4" fill="none" stroke-width="1.2"/>
+    <path class="${OPT}" d="M62 14 l6 4 l-6 4" fill="none" stroke-width="1.2"/>
+    <line class="${OPT}" x1="0" y1="37" x2="28" y2="37" opacity="0.85"/>
+    <line class="${OPT}" x1="92" y1="37" x2="120" y2="37" opacity="0.85"/>
+    <path class="${OPT}" d="M68 33 l-6 4 l6 4" fill="none" stroke-width="1.2"/>
+    <line class="${OPT}" x1="0" y1="56" x2="28" y2="56" opacity="0.85"/>
+    <line class="${OPT}" x1="92" y1="56" x2="120" y2="56" opacity="0.85"/>
+    <path class="${OPT}" d="M52 52 l6 4 l-6 4" fill="none" stroke-width="1.2"/>
+    <line class="${EL}" x1="60" y1="74" x2="60" y2="66"/>
+    <text x="60" y="40" text-anchor="middle" style="font-size:8px">Raman</text>`,
+};
+
+S.sbs_fiber = {
+  // SBS span: forward pump rail on top (fin->fout, clamped), backward Stokes
+  // rail on the bottom (bout back to the source, bin the seed); coil body.
+  w: 96, h: 58,
+  pins: { fin: [0, 18], fout: [96, 18], bout: [0, 40], bin: [96, 40],
+          gnd: [48, 58] },
+  label: [0, -6], pinLabels: true,
+  draw: () => `
+    <rect class="${OPT} body-fill" x="24" y="8" width="48" height="42" rx="6"/>
+    <line class="${OPT}" x1="0" y1="18" x2="24" y2="18"/>
+    <line class="${OPT}" x1="72" y1="18" x2="96" y2="18"/>
+    <path class="${OPT}" d="M40 14 l6 4 l-6 4" fill="none" stroke-width="1.2"/>
+    <line class="${OPT}" x1="0" y1="40" x2="24" y2="40" opacity="0.85"/>
+    <line class="${OPT}" x1="72" y1="40" x2="96" y2="40" opacity="0.85"/>
+    <path class="${OPT}" d="M32 36 l-6 4 l6 4" fill="none" stroke-width="1.2"/>
+    <line class="${EL}" x1="48" y1="58" x2="48" y2="50"/>
+    <text x="48" y="32" text-anchor="middle" style="font-size:8px">SBS</text>`,
+};
+
 S.tia = {
   w: 80, h: 50,
   pins: { inp: [0, 25], out: [80, 25] },
@@ -750,7 +841,8 @@ S.opamp = {
 
 // value shown under the refdes: pick the headline parameter per type
 const HEADLINE_PARAM = {
-  cw_laser: "power", mzm: "vpi", pulse_mod: "p_on", ring_mod: "kappa2",
+  cw_laser: "power", mzm: "vpi", iq_modulator: "vpi", coherent_rx: "R",
+  pulse_mod: "p_on", ring_mod: "kappa2",
   laser_dml: "Ith", laser_rate: "taup", mzm_tw: "vpi",
   ring_mod_inj: "tau_c", mzm_seg: "vpi", ring_selfheat: "rth_k_w",
   phase_shifter: "vpi",

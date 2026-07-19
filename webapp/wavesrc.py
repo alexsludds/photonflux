@@ -166,6 +166,133 @@ def pwl_waveform(settings: dict) -> tuple[np.ndarray, np.ndarray]:
     return t, v
 
 
+# ---------------------------------------------------------------------------
+# QAM symbol maps + RRC pulse shaping (coherent transceiver, ALE-77)
+#
+# Square Gray-coded QAM: the transmitted symbol integer's bits split into an
+# I half (high bits) and a Q half (low bits); each half Gray-codes onto an
+# odd-integer PAM ladder so nearest-neighbour points differ by exactly one
+# bit. The constellation is normalised to unit average power. QPSK is the
+# M = 4 case. These regenerate the exact TX symbols for the data-aided
+# coherent DSP (webapp/coherent.py), the same way `_symbols` feeds linkpost.
+# ---------------------------------------------------------------------------
+
+QAM_ORDERS = {"qpsk": 4, "qam16": 16, "qam64": 64}
+
+
+def qam_order(settings: dict | str | int) -> int:
+    """Constellation size M from a source settings dict, mode name, or int."""
+    if isinstance(settings, dict):
+        mode = str(settings.get("qam", settings.get("mode", "qpsk")))
+    else:
+        mode = settings
+    if isinstance(mode, (int, float)):
+        m = int(mode)
+    else:
+        m = QAM_ORDERS.get(str(mode).lower(), 0)
+    if m not in (4, 16, 64, 256):
+        raise ValueError(f"QAM order must be one of {sorted(QAM_ORDERS)} "
+                         "(qpsk/qam16/qam64)")
+    return m
+
+
+def qam_bits_per_symbol(m: int) -> int:
+    return int(round(np.log2(m)))
+
+
+def _gray(i: int) -> int:
+    return i ^ (i >> 1)
+
+
+def qam_constellation(m: int) -> np.ndarray:
+    """Unit-average-power square QAM points indexed by transmitted symbol.
+
+    `const[s]` is the complex point for symbol integer `s in [0, m)`; its bits
+    (MSB-first, I half then Q half) place it on the Gray-coded PAM grid.
+    """
+    L = int(round(np.sqrt(m)))
+    if L * L != m:
+        raise ValueError("only square QAM (m = 4, 16, 64, 256) is supported")
+    mbits = qam_bits_per_symbol(L * L) // 2      # bits per axis
+    pts = np.zeros(m, dtype=complex)
+    for iI in range(L):
+        for iQ in range(L):
+            sym = (_gray(iI) << mbits) | _gray(iQ)
+            pts[sym] = (2 * iI - (L - 1)) + 1j * (2 * iQ - (L - 1))
+    pts /= np.sqrt(np.mean(np.abs(pts) ** 2))    # unit average power
+    return pts
+
+
+def qam_symbols(settings: dict, nsym: int) -> np.ndarray:
+    """Complex, unit-power QAM symbols from the source PRBS (data-aided TX)."""
+    m = qam_order(settings)
+    order = int(settings.get("order", 15))
+    seed = int(settings.get("seed", 1))
+    bps = qam_bits_per_symbol(m)
+    bits = prbs_bits(order, bps * nsym, seed).astype(int)
+    const = qam_constellation(m)
+    idx = np.zeros(nsym, dtype=int)
+    for b in range(bps):
+        idx = (idx << 1) | bits[b::bps][:nsym]
+    return const[idx]
+
+
+def qam_drive_waveform(settings: dict,
+                       span: float) -> tuple[np.ndarray, np.ndarray]:
+    """(t, v) drive for one QAM rail (I or Q) — RRC-shaped, scaled to v0..v1.
+
+    Feeds the IQ modulator's I or Q electrode: the ``qam_drive`` setting picks
+    the real or imaginary part of the RRC-pulse-shaped QAM symbol stream,
+    mapped to [v0, v1] around their midpoint (full-scale symbol = the rail
+    peak). ``sps`` samples per UI; ``rrc_beta`` roll-off.
+    """
+    ui = float(settings.get("ui", 100e-12))
+    sps = max(int(settings.get("sps", 16)), 2)
+    beta = float(settings.get("rrc_beta", 0.1))
+    v0 = float(settings.get("v0", -0.5))
+    v1 = float(settings.get("v1", 0.5))
+    rail = str(settings.get("qam_drive", "i")).lower()
+    m = qam_order(settings)
+    nsym = max(8, min(int(np.ceil(span / ui)) + 2, 2_000_000))
+    syms = qam_symbols(settings, nsym)
+    comp = syms.real if rail == "i" else syms.imag
+    # normalise so the outermost rail level hits full swing (v0..v1)
+    peak = float(np.max(np.abs(qam_constellation(m).real))) or 1.0
+    frac = comp / peak                                   # in [-1, 1]
+    mid = 0.5 * (v0 + v1)
+    amp = 0.5 * (v1 - v0)
+    up = np.zeros(nsym * sps)
+    up[::sps] = frac
+    h = rrc_taps(beta, sps, 12)
+    shaped = np.convolve(up, h * np.sqrt(sps), mode="same")
+    v = mid + amp * shaped
+    t = np.arange(len(v)) * (ui / sps)
+    t = np.append(t, t[-1] + 10 * ui)
+    v = np.append(v, mid)
+    return t, v
+
+
+def rrc_taps(beta: float, sps: int, span: int) -> np.ndarray:
+    """Root-raised-cosine FIR (unit-energy), span symbols each side, sps/UI."""
+    beta = float(np.clip(beta, 1e-6, 1.0))
+    n = np.arange(-span * sps, span * sps + 1, dtype=float)
+    t = n / sps                                  # time in symbols
+    h = np.empty_like(t)
+    for i, ti in enumerate(t):
+        if abs(ti) < 1e-12:
+            h[i] = 1.0 - beta + 4.0 * beta / np.pi
+        elif abs(abs(ti) - 1.0 / (4.0 * beta)) < 1e-9:
+            h[i] = (beta / np.sqrt(2.0)) * (
+                (1 + 2 / np.pi) * np.sin(np.pi / (4 * beta))
+                + (1 - 2 / np.pi) * np.cos(np.pi / (4 * beta)))
+        else:
+            num = (np.sin(np.pi * ti * (1 - beta))
+                   + 4 * beta * ti * np.cos(np.pi * ti * (1 + beta)))
+            den = np.pi * ti * (1 - (4 * beta * ti) ** 2)
+            h[i] = num / den
+    return h / np.sqrt(np.sum(h ** 2))
+
+
 def wave_key(kind: str, t: np.ndarray, v: np.ndarray) -> str:
     h = hashlib.sha256()
     h.update(t.tobytes())

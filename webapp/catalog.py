@@ -59,13 +59,16 @@ CATALOG: dict[str, dict] = {
                "DWDM, set ref_wavelength_nm to a shared reference so several "
                "lasers at different wavelengths become distinct tones on one "
                "bus, $f_{off} = c\\,(1/\\lambda_{ref} - 1/\\lambda)$; "
-               "0 = single-carrier (default).",
+               "0 = single-carrier (default). linewidth_hz > 0 adds a Wiener "
+               "phase process (Lorentzian FWHM $\\Delta\\nu$) for coherent / "
+               "self-heterodyne studies; needs a transient with noise seeds.",
         "ports": _ports("p1:o p2:o"),
         "params": [
             _p("wavelength_nm", 1310.0, "nm", "Wavelength"),
             _p("power", 1e-3, "W", "Power"),
             _p("phase", 0.0, "rad", "Phase"),
             _p("rin_db", 0.0, "dB/Hz", "RIN (0 = off)"),
+            _p("linewidth_hz", 0.0, "Hz", "Lorentzian linewidth (0 = off)"),
             _p("ref_wavelength_nm", 0.0, "nm", "WDM ref. (0 = single-carrier)"),
         ],
     },
@@ -81,6 +84,43 @@ CATALOG: dict[str, dict] = {
             _p("il_db", 3.0, "dB", "Insertion loss"),
             _p("er_db", 20.0, "dB", "Extinction ratio"),
             _p("cel", 50e-15, "F", "Electrode cap."),
+        ],
+    },
+    "iq_modulator": {
+        "label": "IQ Modulator (nested MZM)",
+        "category": "Modulators",
+        "doc": "Nested-MZM IQ modulator on the coherent field: two null-biased "
+               "push-pull child MZMs (I and Q arms) combined in quadrature, "
+               "$t = 0.5\\,IL\\,[\\sin(\\tfrac{\\pi(V_I+b_i)}{2V_\\pi}) + "
+               "e^{j(\\pi/2+q_{err})}\\sin(\\tfrac{\\pi(V_Q+b_q)}{2V_\\pi})]$, "
+               "so $E_{out}=t\\,E_{in}$ maps the I/Q drives onto the complex "
+               "plane — the coherent QPSK/QAM transmitter. Drive vip/vin (I) "
+               "and vqp/vqn (Q); qerr is the quadrature phase error.",
+        "ports": _ports("pin:o pout:o vip:e vin:e vqp:e vqn:e"),
+        "params": [
+            _p("vpi", 3.0, "V", "V-pi (each arm)"),
+            _p("vbias_i", 0.0, "V", "I-arm bias"),
+            _p("vbias_q", 0.0, "V", "Q-arm bias"),
+            _p("qerr", 0.0, "rad", "Quadrature error"),
+            _p("il_db", 6.0, "dB", "Insertion loss"),
+            _p("cel", 50e-15, "F", "Electrode cap."),
+        ],
+    },
+    "coherent_rx": {
+        "label": "Coherent Receiver (90° hybrid + balanced PD)",
+        "category": "Detectors & Bridges",
+        "doc": "Single-pol coherent front-end: signal and LO beat in an ideal "
+               "90° optical hybrid and two balanced photodiode pairs cancel "
+               "the direct-detection terms, giving the I/Q photocurrents "
+               "$i_I = R\\,\\mathrm{Re}(E_{sig}E_{lo}^*)$, "
+               "$i_Q = R\\,\\mathrm{Im}(E_{sig}E_{lo}^*)$ — the complex "
+               "baseband $r=i_I+j i_Q$ the coherent DSP demodulates. The lo "
+               "port takes a second CW laser (its linewidth sets the phase "
+               "noise the carrier recovery must track). Differential current "
+               "outputs i_p/i_n (I) and q_p/q_n (Q).",
+        "ports": _ports("sig:o lo:o i_p:e i_n:e q_p:e q_n:e"),
+        "params": [
+            _p("R", 0.8, "A/W", "Responsivity"),
         ],
     },
     "phase_shifter": {
@@ -401,6 +441,141 @@ CATALOG: dict[str, dict] = {
             "port_map": {
                 "fin": "fi,c", "fout": "fo,c", "bin": "bi,c", "bout": "bo,c",
                 "an": "amp,an", "cat": "amp,cat", "gnd": "amp,gnd",
+            },
+        },
+    },
+    "tw_gain_seg": {
+        "label": "TW gain slice (VA)",
+        "category": "Lasers",
+        "doc": "models/optical_field/tw_gain_seg.va — one active slice of a "
+               "traveling-wave (DFB/DBR/FP) laser: the coupled-mode field "
+               "stencil tau_s*dR/dt + (R - R_left) = dz*[(gamma - j*delta)R + "
+               "j*kappa*S] (and the mirror for the backward wave S) with a "
+               "LOCAL Agrawal-Olsson carrier reservoir tau_c*dgamma/dt = "
+               "gamma0(I) - gamma*(1 + P_loc/p_sat) saturating on THIS slice's "
+               "own circulating power — cascade M of them (fl/fr forward, bl/br "
+               "backward) for a spatially-resolved gain region (spatial hole "
+               "burning). kappa>0 makes it an index-coupled active DFB grating; "
+               "alpha_h is the linewidth-enhancement chirp; the diode bias is "
+               "on an/cat (Von/Rs). Feedback comes from mirrors / grating "
+               "slices around it. gnd must be grounded; terminate dark inputs.",
+        "hard_dc": True,
+        "ports": _ports("fl:o fr:o bl:o br:o an:e cat:e gnd:e"),
+        "params": [
+            _p("lambda_nm", 1310.0, "nm", "Optical frame"),
+            _p("lambda_bragg_nm", 1310.0, "nm", "Bragg wavelength"),
+            _p("n_g", 3.7, "", "Group index"),
+            _p("dz", 10e-6, "m", "Slice length"),
+            _p("g_unsat_pm", 5000.0, "1/m", "Unsat amplitude gain @ i_op"),
+            _p("i_op_ma", 80.0, "mA", "Operating current"),
+            _p("i_tr_ma", 8.0, "mA", "Transparency current"),
+            _p("p_sat", 10e-3, "W", "Saturation power"),
+            _p("tau_c", 0.3e-9, "s", "Carrier lifetime"),
+            _p("alpha_h", 0.0, "", "Linewidth-enh. factor"),
+            _p("kappa_pm", 0.0, "1/m", "Bragg coupling"),
+            _p("loss_pm", 0.0, "1/m", "Internal amplitude loss"),
+            _p("p_seed", 0.0, "W", "Distributed ASE seed"),
+            _p("Von", 1.2, "V", "Turn-on voltage"),
+            _p("Rs", 3.0, "Ohm", "Series resistance"),
+        ],
+        "expand": {
+            "instances": {
+                "fli": {"component": "_f2ri"},
+                "bri": {"component": "_f2ri"},
+                "amp": {"component": "_twgain_va", "settings": "ALL"},
+                "fro": {"component": "_ri2f"},
+                "blo": {"component": "_ri2f"},
+            },
+            "connections": [
+                ("fli,re", "amp,fl_re"), ("fli,im", "amp,fl_im"),
+                ("bri,re", "amp,br_re"), ("bri,im", "amp,br_im"),
+                ("amp,fr_re", "fro,re"), ("amp,fr_im", "fro,im"),
+                ("amp,bl_re", "blo,re"), ("amp,bl_im", "blo,im"),
+            ],
+            "port_map": {
+                "fl": "fli,c", "fr": "fro,c", "bl": "blo,c", "br": "bri,c",
+                "an": "amp,an", "cat": "amp,cat", "gnd": "amp,gnd",
+            },
+        },
+    },
+    "tw_seg": {
+        "label": "TW Bragg/passive slice (VA)",
+        "category": "Lasers",
+        "doc": "models/optical_field/tw_seg.va — one passive / fixed-gain slice "
+               "of a traveling-wave laser: same coupled-mode field stencil as "
+               "the gain slice with a FIXED amplitude gain/loss gamma_pm and a "
+               "Bragg coupling kappa_pm. A length L of these reflects "
+               "tanh(kappa*L) at the Bragg frame (delta0 = 2*pi*n_g*(1/lambda - "
+               "1/lambda_bragg)) and traces the coupled-mode stopband — the "
+               "DFB/DBR grating mirror. dbeta_dv shifts the local Bragg "
+               "detuning with the tuning voltage vt (the DBR tuning knob); "
+               "kappa_pm = 0 is a plain waveguide. Inputs fl/br read, outputs "
+               "fr/bl drive; gnd must be grounded.",
+        "stiff": True,
+        "ports": _ports("fl:o fr:o bl:o br:o vt:e gnd:e"),
+        "params": [
+            _p("lambda_nm", 1310.0, "nm", "Optical frame"),
+            _p("lambda_bragg_nm", 1310.0, "nm", "Bragg wavelength"),
+            _p("n_g", 3.7, "", "Group index"),
+            _p("dz", 10e-6, "m", "Slice length"),
+            _p("kappa_pm", 0.0, "1/m", "Bragg coupling"),
+            _p("gamma_pm", 0.0, "1/m", "Amplitude gain/loss"),
+            _p("dbeta_dv", 0.0, "1/m/V", "Detuning tuning slope"),
+            _p("r_tune", 1e6, "Ohm", "Tuning-node shunt"),
+        ],
+        "expand": {
+            "instances": {
+                "fli": {"component": "_f2ri"},
+                "bri": {"component": "_f2ri"},
+                "seg": {"component": "_twseg_va", "settings": "ALL"},
+                "fro": {"component": "_ri2f"},
+                "blo": {"component": "_ri2f"},
+            },
+            "connections": [
+                ("fli,re", "seg,fl_re"), ("fli,im", "seg,fl_im"),
+                ("bri,re", "seg,br_re"), ("bri,im", "seg,br_im"),
+                ("seg,fr_re", "fro,re"), ("seg,fr_im", "fro,im"),
+                ("seg,bl_re", "blo,re"), ("seg,bl_im", "blo,im"),
+            ],
+            "port_map": {
+                "fl": "fli,c", "fr": "fro,c", "bl": "blo,c", "br": "bri,c",
+                "vt": "seg,vt", "gnd": "seg,gnd",
+            },
+        },
+    },
+    "phase_pad": {
+        "label": "TW phase pad / QWS defect (VA)",
+        "category": "Lasers",
+        "doc": "models/optical_field/phase_pad.va — lossless bidirectional "
+               "phase rotation e^{-j*phi} on both the forward (fl->fr) and "
+               "backward (br->bl) directed waves. phi0_rad = pi/2 is the "
+               "quarter-wave defect that pulls a single QWS-DFB mode to the "
+               "Bragg wavelength; phi = phi0_rad + dphi_dv*V(vt) makes it a "
+               "tunable cavity-phase / DBR pad. Inputs read, outputs drive; "
+               "gnd must be grounded.",
+        "ports": _ports("fl:o fr:o bl:o br:o vt:e gnd:e"),
+        "params": [
+            _p("phi0_rad", 0.0, "rad", "Static phase"),
+            _p("dphi_dv", 0.0, "rad/V", "Tuning slope"),
+            _p("r_tune", 1e6, "Ohm", "Tuning-node shunt"),
+        ],
+        "expand": {
+            "instances": {
+                "fli": {"component": "_f2ri"},
+                "bri": {"component": "_f2ri"},
+                "pad": {"component": "_phasepad_va", "settings": "ALL"},
+                "fro": {"component": "_ri2f"},
+                "blo": {"component": "_ri2f"},
+            },
+            "connections": [
+                ("fli,re", "pad,fl_re"), ("fli,im", "pad,fl_im"),
+                ("bri,re", "pad,br_re"), ("bri,im", "pad,br_im"),
+                ("pad,fr_re", "fro,re"), ("pad,fr_im", "fro,im"),
+                ("pad,bl_re", "blo,re"), ("pad,bl_im", "blo,im"),
+            ],
+            "port_map": {
+                "fl": "fli,c", "fr": "fro,c", "bl": "blo,c", "br": "bri,c",
+                "vt": "pad,vt", "gnd": "pad,gnd",
             },
         },
     },
@@ -966,6 +1141,103 @@ CATALOG: dict[str, dict] = {
         ],
         "lti": "fiber_nl",
     },
+    "raman_amp": {
+        "label": "Raman Fiber / Amp (VA)",
+        "category": "Channels",
+        "doc": "models/optical_field/raman_amp.va — stimulated Raman scattering "
+               "(SRS) span + distributed Raman amplifier. A forward signal "
+               "(sin->sout) and a pump that may be co-propagating (pcin->pcout) "
+               "and/or counter-propagating (pctin->pctout); Raman gain transfers "
+               "power from the shorter-wavelength pump to the longer-wavelength "
+               "signal with the pump depleting by nu_s/nu_p. Exact two-wave "
+               "logistic solution: small-signal on/off gain is the textbook "
+               "$e^{g_R P_p L_{eff}/A_{eff}}$, saturating as the signal grows "
+               "(pump depletion). Two uses: (1) two-channel WDM SRS tilt — wire "
+               "the short-lambda channel into pcin and the long-lambda channel "
+               "into sin; (2) a Raman amplifier — a weak signal plus a strong "
+               "(usually counter-propagating) pump into pctin. Total pump "
+               "$P_p = |E_{pcin}|^2 + |E_{pctin}|^2$; co/counter give the same "
+               "integrated on/off gain. Terminate unused pump ports. gnd "
+               "grounded.",
+        "ports": _ports("sin:o sout:o pcin:o pcout:o pctin:o pctout:o gnd:e"),
+        "params": [
+            _p("lambda_s_nm", 1550.0, "nm", "Signal wavelength"),
+            _p("lambda_p_nm", 1450.0, "nm", "Pump wavelength"),
+            _p("g_r", 0.6e-13, "m/W", "Peak Raman gain"),
+            _p("a_eff_um2", 80.0, "um^2", "Effective area"),
+            _p("length_km", 50.0, "km", "Span length"),
+            _p("loss_s_db_km", 0.20, "dB/km", "Signal loss"),
+            _p("loss_p_db_km", 0.25, "dB/km", "Pump loss"),
+        ],
+        "expand": {
+            "instances": {
+                "si": {"component": "_f2ri"},
+                "pc": {"component": "_f2ri"},
+                "px": {"component": "_f2ri"},
+                "amp": {"component": "_raman_va", "settings": "ALL"},
+                "so": {"component": "_ri2f"},
+                "pco": {"component": "_ri2f"},
+                "pxo": {"component": "_ri2f"},
+            },
+            "connections": [
+                ("si,re", "amp,si_re"), ("si,im", "amp,si_im"),
+                ("pc,re", "amp,pfi_re"), ("pc,im", "amp,pfi_im"),
+                ("px,re", "amp,pbi_re"), ("px,im", "amp,pbi_im"),
+                ("amp,so_re", "so,re"), ("amp,so_im", "so,im"),
+                ("amp,pfo_re", "pco,re"), ("amp,pfo_im", "pco,im"),
+                ("amp,pbo_re", "pxo,re"), ("amp,pbo_im", "pxo,im"),
+            ],
+            "port_map": {
+                "sin": "si,c", "sout": "so,c",
+                "pcin": "pc,c", "pcout": "pco,c",
+                "pctin": "px,c", "pctout": "pxo,c",
+                "gnd": "amp,gnd",
+            },
+        },
+    },
+    "sbs_fiber": {
+        "label": "SBS Fiber (VA)",
+        "category": "Channels",
+        "doc": "models/optical_field/sbs_fiber.va — stimulated Brillouin "
+               "scattering span (threshold + backscatter). A forward pump "
+               "(fin->fout) drives a counter-propagating Stokes wave out the "
+               "backward port (bout). Below the SBS threshold "
+               "$P_{th}=n_{th}A_{eff}/(g_B L_{eff})$ (textbook $n_{th}\\approx21$) "
+               "almost everything transmits; above it the transmitted power "
+               "CLAMPS at ~P_th and the surplus is reflected as the backward "
+               "Stokes — the classic SBS power limiter. Energy conserving "
+               "($P_{fout}=P_{th}\\tanh(P_{in}/P_{th})e^{-\\alpha L}$, the rest "
+               "to bout). NOTE the shared baseband envelope cannot represent the "
+               "~11 GHz Stokes shift / ~20-50 MHz linewidth — this is a "
+               "power-domain limiter. Terminate the unused bin. gnd grounded.",
+        "ports": _ports("fin:o fout:o bin:o bout:o gnd:e"),
+        "params": [
+            _p("g_b", 5e-11, "m/W", "Brillouin gain"),
+            _p("a_eff_um2", 80.0, "um^2", "Effective area"),
+            _p("length_km", 20.0, "km", "Span length"),
+            _p("loss_db_km", 0.20, "dB/km", "Linear loss"),
+            _p("n_th", 21.0, "", "Threshold factor"),
+        ],
+        "expand": {
+            "instances": {
+                "fi": {"component": "_f2ri"},
+                "bi": {"component": "_f2ri"},
+                "amp": {"component": "_sbs_va", "settings": "ALL"},
+                "fo": {"component": "_ri2f"},
+                "bo": {"component": "_ri2f"},
+            },
+            "connections": [
+                ("fi,re", "amp,fi_re"), ("fi,im", "amp,fi_im"),
+                ("bi,re", "amp,bi_re"), ("bi,im", "amp,bi_im"),
+                ("amp,fo_re", "fo,re"), ("amp,fo_im", "fo,im"),
+                ("amp,bo_re", "bo,re"), ("amp,bo_im", "bo,im"),
+            ],
+            "port_map": {
+                "fin": "fi,c", "fout": "fo,c", "bin": "bi,c", "bout": "bo,c",
+                "gnd": "amp,gnd",
+            },
+        },
+    },
     # --- passive integrated optics (coherent field, wavelength-aware) -------
     "grating": {
         "label": "Grating Coupler",
@@ -1166,6 +1438,9 @@ CATALOG: dict[str, dict] = {
                "predistortion for a quadrature-biased MZM (set rlm_vpi to "
                "its V-pi), and RJ/PJ/DCD jitter on the edge times. "
                "mode=pulse emits one isolated UI for pulse-response runs. "
+               "mode=qam emits an RRC-shaped I or Q drive (pick qam=qpsk/"
+               "qam16/qam64, qam_drive=i/q) for the IQ modulator — one source "
+               "per rail, sharing order/seed. "
                "The unit interval is set globally by the top-bar baud rate "
                "(UI = 1/baud), not per source. "
                "The waveform is baked at compile time: parameter edits "
@@ -1173,13 +1448,19 @@ CATALOG: dict[str, dict] = {
         "ports": _ports("p1:e p2:e"),
         "params": [
             _p("mode", "nrz", "", "Mode", rebuild=True, kind="enum",
-               choices=["nrz", "pam4", "pulse"]),
+               choices=["nrz", "pam4", "pulse", "qam"]),
             _p("order", 7, "", "PRBS order", rebuild=True, kind="enum",
                choices=[7, 9, 11, 15, 23, 31]),
             _p("v0", -0.5, "V", "Low level", rebuild=True),
             _p("v1", 0.5, "V", "High level", rebuild=True),
             _p("tr", 20e-12, "s", "Edge time (20-80%)", rebuild=True),
             _p("seed", 1, "", "PRBS seed", rebuild=True),
+            _p("qam", "qpsk", "", "QAM order", rebuild=True, kind="enum",
+               choices=["qpsk", "qam16", "qam64"]),
+            _p("qam_drive", "i", "", "QAM rail", rebuild=True, kind="enum",
+               choices=["i", "q"]),
+            _p("rrc_beta", 0.1, "", "RRC roll-off", rebuild=True),
+            _p("sps", 16, "", "QAM samples/UI", rebuild=True),
             _p("ffe_pre_db", 0.0, "dB", "TX FFE pre-cursor", rebuild=True),
             _p("ffe_post_db", 0.0, "dB", "TX FFE post-cursor", rebuild=True),
             _p("rlm_vpi", 0.0, "V", "RLM V-pi (0 = off)", rebuild=True),
@@ -1547,6 +1828,101 @@ def _apd():
         return f, q
 
     return APD
+
+
+def _iq_modulator():
+    """Nested-MZM IQ modulator on the coherent field (ALE-77).
+
+    Two child MZMs in parallel (I and Q arms), each null-biased and driven
+    push-pull so its field transmission is ``sin(pi*(V+bias)/(2*vpi))`` (bipolar
+    drive -> bipolar field), with the Q arm phase-shifted 90 degrees before the
+    combiner. The composite field transmission is
+
+        t = 0.5 * il * [ sin(pi*(V_I+bias_i)/(2*vpi))
+                         + e^{j*(pi/2 + qerr)} * sin(pi*(V_Q+bias_q)/(2*vpi)) ]
+
+    so ``E_out = t * E_in`` maps the (I, Q) drives onto the complex plane — the
+    coherent transmitter behind QPSK/QAM. ``qerr`` is the quadrature (90-degree
+    hybrid) phase error. Uses the same S->Y 2-port assembly as ``cx.mzm`` so the
+    optical path is matched (no reflection); ``cel`` loads each driver.
+    """
+    import jax.numpy as jnp
+    from circulax.components.base_component import Signals, States, component
+    from circulax.s_transforms import s_to_y
+
+    @component(ports=("pin", "pout", "vip", "vin", "vqp", "vqn"))
+    def IQModulator(
+        signals: Signals,
+        s: States,
+        vpi: float = 3.0,        # half-wave voltage of each child MZM [V]
+        vbias_i: float = 0.0,    # I-arm bias offset [V]
+        vbias_q: float = 0.0,    # Q-arm bias offset [V]
+        qerr: float = 0.0,       # quadrature (90 deg) phase error [rad]
+        il_db: float = 6.0,      # excess field insertion loss [dB]
+        cel: float = 50e-15,     # electrode capacitance [F]
+    ) -> tuple[dict, dict]:
+        il = 10.0 ** (-il_db / 20.0)                 # amplitude (field) loss
+        vi = (signals.vip - signals.vin).real
+        vq = (signals.vqp - signals.vqn).real
+        ti = jnp.sin(jnp.pi * (vi + vbias_i) / (2.0 * vpi))
+        tq = jnp.sin(jnp.pi * (vq + vbias_q) / (2.0 * vpi))
+        t = 0.5 * il * (ti + jnp.exp(1j * (jnp.pi / 2.0 + qerr)) * tq)
+
+        S = jnp.array([[0.0 * t, t], [t, 0.0 * t]], dtype=jnp.complex128)
+        Y = s_to_y(S)
+        v_vec = jnp.array([signals.pin, signals.pout], dtype=jnp.complex128)
+        i_vec = Y @ v_vec
+
+        f = {"pin": i_vec[0], "pout": i_vec[1],
+             "vip": 0.0, "vin": 0.0, "vqp": 0.0, "vqn": 0.0}
+        qi = cel * (signals.vip - signals.vin)
+        qq = cel * (signals.vqp - signals.vqn)
+        q = {"vip": qi, "vin": -qi, "vqp": qq, "vqn": -qq}
+        return f, q
+
+    return IQModulator
+
+
+def _coherent_rx():
+    """Single-pol coherent receiver front-end: 90-degree hybrid + balanced PDs.
+
+    The signal and LO fields beat in an ideal 90-degree optical hybrid; the two
+    balanced photodiode pairs cancel the direct-detection (|E|^2) terms and
+    deliver the in-phase and quadrature photocurrents
+
+        i_I = R * Re(E_sig * conj(E_lo)),   i_Q = R * Im(E_sig * conj(E_lo)),
+
+    i.e. the complex baseband ``r = i_I + j*i_Q = R * E_sig * conj(E_lo)`` that
+    the coherent DSP (``webapp/coherent.py``) demodulates. Both optical inputs
+    are matched absorbers (like the photodiode, no reflection); the LO port
+    takes a second ``cw_laser``. Differential current outputs ``i_p/i_n`` (I) and
+    ``qp/qn`` (Q).
+    """
+    from circulax.components.base_component import Signals, States, component
+
+    @component(ports=("sig", "lo", "i_p", "i_n", "q_p", "q_n"))
+    def CoherentRx(
+        signals: Signals,
+        s: States,
+        R: float = 0.8,          # responsivity [A/W]
+        Yopt: float = 1.0,       # matched-absorber admittance
+    ) -> tuple[dict, dict]:
+        es = signals.sig
+        el = signals.lo
+        i_sig = Yopt * es                            # matched hybrid inputs
+        i_lo = Yopt * el
+        # E_sig * conj(E_lo), written via re/im (non-holomorphic, like the PD)
+        re = es.real * el.real + es.imag * el.imag
+        im = es.imag * el.real - es.real * el.imag
+        i_i = R * re
+        i_q = R * im
+        # sign matches the photodiode bridge: a positive beat sources current
+        # out of the '+' terminal (V(i_p) = +i_i across a cathode-side load)
+        f = {"sig": i_sig, "lo": i_lo,
+             "i_p": -i_i, "i_n": i_i, "q_p": -i_q, "q_n": i_q}
+        return f, {}
+
+    return CoherentRx
 
 
 def _tia():
@@ -2039,14 +2415,37 @@ def _noise_reader(bank, dt_n):
 
 
 def _cw_laser_noisy(bank, dt_n):
+    """CW laser with RIN (amplitude) and/or linewidth (phase) noise.
+
+    The bank carries TWO independent rows per seed (even = RIN amplitude,
+    odd = phase-noise increments) so intensity and phase fluctuations are
+    uncorrelated — see the cwn branch of simulate._make_noisy.
+
+    RIN drives a multiplicative amplitude fluctuation exactly as before.
+    Linewidth drives a Wiener phase process: phi(t) is the running integral
+    of white increments with per-step variance 2*pi*dnu*dt_n, so
+    Var(phi(t)) = 2*pi*dnu*t. That gives a field-coherence decay
+    exp(-pi*dnu*|tau|), i.e. a Lorentzian lineshape of FWHM = dnu.
+    """
     import jax.numpy as jnp
     from circulax.components.base_component import Signals, States, source
 
-    nval = _noise_reader(bank, dt_n)
+    # two rows per seed (RIN even, phase odd) — _make_noisy allocates seeds*2
+    assert bank.shape[0] % 2 == 0, "cwn noise bank must have an even row count"
+    n_seeds = max(bank.shape[0] // 2, 1)
+    tn = jnp.arange(bank.shape[1]) * dt_n
+    # RIN: white samples, sqrt(3/2) restores the variance lost to linear
+    # interpolation between bank samples (see _noise_reader).
+    rin_c = jnp.asarray(bank) * 1.22474487
+    # Phase walk: cumulative sum of the *raw* unit-variance increments — the
+    # sampled walk points are exact, so no interp-variance restoration is
+    # applied. Anchor each walk at phi(0) = 0 so the DC solve is phase-clean.
+    walk = jnp.cumsum(jnp.asarray(bank), axis=1)
+    walk = walk - walk[:, :1]
     c0 = 299792458.0
 
     @source(ports=("p1", "p2"), states=("i_src",))
-    def CWLaserRIN(
+    def CWLaserNoisy(
         signals: Signals,
         s: States,
         t: float,
@@ -2054,24 +2453,33 @@ def _cw_laser_noisy(bank, dt_n):
         power: float = 1e-3,
         phase: float = 0.0,
         rin_db: float = 0.0,
+        linewidth_hz: float = 0.0,
         ref_wavelength_nm: float = 0.0,
         seed_idx: float = 0.0,
     ) -> tuple[dict, dict]:
+        k = jnp.clip(jnp.asarray(seed_idx).astype(jnp.int32), 0, n_seeds - 1)
+        # RIN amplitude noise on the even row
         sigma = jnp.where(rin_db < 0.0,
                           jnp.sqrt(10.0 ** (rin_db / 10.0) / (2.0 * dt_n)),
                           0.0)
-        rel = jnp.maximum(1.0 + sigma * nval(t, seed_idx), 1e-6)
+        n_rin = jnp.interp(t, tn, jnp.take(rin_c, 2 * k, axis=0))
+        rel = jnp.maximum(1.0 + sigma * n_rin, 1e-6)
+        # Phase noise (Wiener walk) on the odd row; step std sqrt(2*pi*dnu*dt_n)
+        phi_scale = jnp.sqrt(2.0 * jnp.pi * jnp.maximum(linewidth_hz, 0.0)
+                             * dt_n)
+        phi_n = phi_scale * jnp.interp(t, tn, jnp.take(walk, 2 * k + 1, axis=0))
         # WDM carrier offset in the shared baseband frame (see cx.cw_laser);
         # select the never-zero reference before dividing
         ref_safe = jnp.where(ref_wavelength_nm > 0.0,
                              ref_wavelength_nm, wavelength_nm)
         w_off = 2.0 * jnp.pi * c0 * (1.0 / (ref_safe * 1e-9)
                                      - 1.0 / (wavelength_nm * 1e-9))
-        field = jnp.sqrt(power * rel) * jnp.exp(1j * (w_off * t + phase))
+        field = jnp.sqrt(power * rel) * jnp.exp(
+            1j * (w_off * t + phase + phi_n))
         constraint = (signals.p1 - signals.p2) - field
         return {"p1": s.i_src, "p2": -s.i_src, "i_src": constraint}, {}
 
-    return CWLaserRIN
+    return CWLaserNoisy
 
 
 def _photodiode_noisy(bank, dt_n):
@@ -2454,6 +2862,8 @@ def build_models(sky130_geoms: dict[str, tuple[str, float, float]] | None = None
         "opt_term": _opt_term(),
         "photodiode": _photodiode(),
         "apd": _apd(),
+        "iq_modulator": _iq_modulator(),
+        "coherent_rx": _coherent_rx(),
         "_f2ri": cx.field_to_ri(),
         "_f2ri_m": _field_to_ri_matched(),
         "_ri2f": cx.ri_to_field(),
@@ -2468,6 +2878,8 @@ def build_models(sky130_geoms: dict[str, tuple[str, float, float]] | None = None
         "_seg_va": cx.va("mzm_seg"),
         "_soa_va": cx.va("soa"),
         "_edfa_va": cx.va("edfa"),
+        "_raman_va": cx.va("raman_amp"),
+        "_sbs_va": cx.va("sbs_fiber"),
         "_mirror_va": cx.va("mirror"),
         "_circ_va": cx.va("circulator"),
         "_ringcomb_va": cx.va("ring_filter"),
@@ -2475,6 +2887,9 @@ def build_models(sky130_geoms: dict[str, tuple[str, float, float]] | None = None
         "_ringkerr_va": cx.va("ring_kerr"),
         "_ringselfheat_va": cx.va("ring_selfheat"),
         "_wgnl_va": cx.va("waveguide_nl"),
+        "_twseg_va": cx.va("tw_seg"),
+        "_twgain_va": cx.va("tw_gain_seg"),
+        "_phasepad_va": cx.va("phase_pad"),
         "vdc": VoltageSource,
         "vpulse": PulseVoltageSource,
         "vsin": VoltageSourceAC,

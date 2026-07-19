@@ -133,9 +133,10 @@ def schematic_to_netlist(sch: dict, wave_span: float = DEFAULT_WAVE_SPAN,
 
         seeds = int(noise_cfg.get("seeds", 1))
         bank, dt_n = wavesrc.noise_bank(
-            # complex ASE needs two independent streams (re/im quadratures):
-            # two bank rows per seed, split again inside the component
-            name, seeds * 2 if kind == "ase" else seeds, wave_span,
+            # two bank rows per seed for the components that need independent
+            # streams: ASE (re/im quadratures) and the CW laser (RIN amplitude
+            # + phase-noise walk). Split again inside the component.
+            name, seeds * 2 if kind in ("ase", "cwn") else seeds, wave_span,
             float(noise_cfg.get("bw", 50e9)),
             int(noise_cfg.get("seed", 1)))
         if kind == "ase":
@@ -206,7 +207,11 @@ def schematic_to_netlist(sch: dict, wave_span: float = DEFAULT_WAVE_SPAN,
 
                 try:
                     if wave == "prbs":
-                        wt, wv = wavesrc.prbs_waveform(settings, wave_span)
+                        if str(settings.get("mode")) == "qam":
+                            wt, wv = wavesrc.qam_drive_waveform(settings,
+                                                               wave_span)
+                        else:
+                            wt, wv = wavesrc.prbs_waveform(settings, wave_span)
                         patterns[name] = dict(settings)
                     else:
                         wt, wv = wavesrc.pwl_waveform(settings)
@@ -227,7 +232,8 @@ def schematic_to_netlist(sch: dict, wave_span: float = DEFAULT_WAVE_SPAN,
                 cx_instances[name] = {"component": lkey}
                 settings = {}
             elif (noise_cfg and ctype == "cw_laser"
-                  and float(settings.get("rin_db", 0.0)) < 0):
+                  and (float(settings.get("rin_db", 0.0)) < 0
+                       or float(settings.get("linewidth_hz", 0.0)) > 0)):
                 cx_instances[name] = {"component": _make_noisy(name, "cwn")}
             elif noise_cfg and ctype == "photodiode":
                 cx_instances[name] = {"component": _make_noisy(name, "pdn")}
@@ -255,9 +261,10 @@ def schematic_to_netlist(sch: dict, wave_span: float = DEFAULT_WAVE_SPAN,
                 settings = {}
             else:
                 if ctype == "cw_laser":
-                    # rin_db is a webapp-side knob; the clean cx.cw_laser
-                    # doesn't take it (RIN needs the noisy variant)
+                    # rin_db / linewidth_hz are webapp-side knobs; the clean
+                    # cx.cw_laser doesn't take them (they need the noisy variant)
                     settings.pop("rin_db", None)
+                    settings.pop("linewidth_hz", None)
                 cx_instances[name] = {"component": ctype}
             if settings:
                 cx_instances[name].setdefault("settings", {}).update(settings)
@@ -1796,6 +1803,11 @@ def _run_inner(payload: dict) -> dict:
 
                 cfg = _link_cfg_with_eq(analysis["link"], meta, log)
                 result["link"] = linkpost.link_report(result, meta, cfg, log)
+            if analysis.get("coherent"):
+                import coherent
+
+                result["coherent"] = coherent.coherent_report(
+                    result, meta, dict(analysis["coherent"]), log)
         elif mode == "pulse":
             result = _run_transient(circuit, meta, analysis, log)
             import linkpost

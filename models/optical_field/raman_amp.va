@@ -1,0 +1,115 @@
+`include "discipline.h"
+`include "constants.h"
+
+// Stimulated Raman scattering (SRS) fibre span + distributed Raman amplifier.
+//
+// A silica fibre passes a forward SIGNAL wave (si -> so) and a PUMP wave that
+// may be co-propagating (pfi -> pfo) and/or counter-propagating (pbi -> pbo).
+// Raman gain transfers power from the shorter-wavelength (higher-frequency)
+// pump to the longer-wavelength signal, with the pump depleting by the
+// photon-energy ratio nu_s/nu_p. This one component covers both testbenches
+// from the gap analysis:
+//
+//   * two-channel SRS: wire channel 1 (short lambda) into the co-pump port and
+//     channel 2 (long lambda) into the signal port; the long channel is
+//     amplified and the short one depleted (WDM power tilt);
+//   * distributed Raman amplifier: a weak signal plus a strong pump (co- or
+//     counter-propagating via pbi) shows the on/off gain e^{g_R*P_p*Leff/A_eff}.
+//
+// Coherent-field convention: optical ports are Ereal/Eimag node pairs with
+// |E|^2 = optical power [W]. Wrapped in webapp/catalog.py by field<->(re,im)
+// adapters so the schematic sees six optical ports (sin, sout, pcin, pcout,
+// pctrin, pctrout).
+//
+// ---- physics (lumped span, exact two-wave solution) -----------------------
+//
+//   dP_s/dz = +g P_p P_s - alpha_s P_s        g = g_R / A_eff  [1/(W.m)]
+//   dP_p/dz = -(nu_s/nu_p) g P_p P_s - alpha_p P_p
+//
+// Neglecting background loss inside the exchange, Q = P_s + kappa*P_p is
+// conserved (kappa = nu_s/nu_p = lambda_p/lambda_s < 1), which reduces the pair
+// to a single logistic ODE with the closed form
+//
+//   P_s^Raman = Q*P_s0 / (P_s0 + kappa*P_p0 * e^{-expo}),
+//   expo = (g/kappa) * Q * Leff_p,     Leff_p = (1-e^{-alpha_p*L})/alpha_p.
+//
+// In the small-signal limit (P_s0 -> 0) this is the textbook Raman on/off gain
+// G_A = e^{g*P_p0*Leff_p}; as the signal grows it saturates (pump depletion).
+// Background loss is then applied as the usual separate e^{-alpha*L} factors.
+// P_p0 = |E_pcin|^2 + |E_pctrin|^2 lumps the co- and counter-pumps: in the
+// small-signal regime both give the same integrated on/off gain, so the
+// direction is a testbench wiring choice, not a change to the algebra here.
+//
+// Implementation notes mirror waveguide_nl.va / mirror.va: outputs are exact
+// algebraic functions of the inputs (each field scaled by a real sqrt-power
+// ratio that preserves its phase), and with NO ddt() anywhere the module needs
+// one always-zero RC dummy state to keep bosdi's complex assembly dtype-honest.
+// gnd must be grounded; terminate the unused pump ports with optical terminators.
+module raman_amp(si_re, si_im, so_re, so_im,
+                 pfi_re, pfi_im, pfo_re, pfo_im,
+                 pbi_re, pbi_im, pbo_re, pbo_im, gnd);
+    inout si_re, si_im, so_re, so_im,
+          pfi_re, pfi_im, pfo_re, pfo_im,
+          pbi_re, pbi_im, pbo_re, pbo_im, gnd;
+    electrical si_re, si_im, so_re, so_im,
+               pfi_re, pfi_im, pfo_re, pfo_im,
+               pbi_re, pbi_im, pbo_re, pbo_im, gnd;
+
+    // reactive dummy (see mirror.va): no ddt() in this module otherwise.
+    electrical dmy;
+
+    parameter real lambda_s_nm = 1550.0 from (0:inf);  // signal wavelength [nm]
+    parameter real lambda_p_nm = 1450.0 from (0:inf);  // pump wavelength [nm]
+    parameter real g_r         = 0.6e-13 from [0:inf); // peak Raman gain [m/W]
+    parameter real a_eff_um2   = 80.0   from (0:inf);  // effective area [um^2]
+    parameter real length_km   = 50.0   from (0:inf);  // span length [km]
+    parameter real loss_s_db_km = 0.20  from [0:inf);  // signal loss [dB/km]
+    parameter real loss_p_db_km = 0.25  from [0:inf);  // pump loss [dB/km]
+    parameter real expo_clamp  = 40.0   from (0:inf);  // exp() overflow guard
+
+    real len, aeff, g, kappa, alpha_s, alpha_p, leff_p;
+    real p_co, p_ctr, pp0, ps0, qq, expo, denom;
+    real gain_s, amp_s, gain_p, amp_p;
+
+    analog begin
+        // always-zero dummy state -> honest complex reactive assembly
+        I(dmy, gnd) <+ 1e-12 * ddt(V(dmy, gnd)) + V(dmy, gnd);
+
+        len     = length_km * 1e3;                       // [m]
+        aeff    = a_eff_um2 * 1e-12;                      // [m^2]
+        g       = g_r / aeff;                             // [1/(W.m)]
+        kappa   = lambda_p_nm / lambda_s_nm;              // nu_s/nu_p (<1)
+        alpha_s = loss_s_db_km * ln(10.0) / 10.0 / 1e3;   // [1/m]
+        alpha_p = loss_p_db_km * ln(10.0) / 10.0 / 1e3;   // [1/m]
+        leff_p  = (1.0 - exp(-alpha_p * len)) / alpha_p;  // pump effective length
+
+        // input powers
+        ps0   = V(si_re, gnd)*V(si_re, gnd) + V(si_im, gnd)*V(si_im, gnd);
+        p_co  = V(pfi_re, gnd)*V(pfi_re, gnd) + V(pfi_im, gnd)*V(pfi_im, gnd);
+        p_ctr = V(pbi_re, gnd)*V(pbi_re, gnd) + V(pbi_im, gnd)*V(pbi_im, gnd);
+        pp0   = p_co + p_ctr;
+
+        // logistic two-wave solution (pump depletion built in)
+        qq    = ps0 + kappa * pp0;
+        expo  = g / kappa * qq * leff_p;
+        if (expo > expo_clamp) expo = expo_clamp;
+        denom = ps0 + kappa * pp0 * exp(-expo) + 1e-30;
+
+        // signal: Raman gain ratio (Ps0 cancels) x background loss
+        gain_s = qq / denom * exp(-alpha_s * len);
+        amp_s  = sqrt(gain_s);
+        V(so_re, gnd) <+ amp_s * V(si_re, gnd);
+        V(so_im, gnd) <+ amp_s * V(si_im, gnd);
+
+        // pump: depleted by exactly the photons handed to the signal. Energy
+        // conservation Q = Ps + kappa*Pp gives a pp0-free (cancellation-safe)
+        // ratio Pp_out/Pp0 = qq*e^{-expo}/denom; then its background loss.
+        // Both co- and counter-pump outputs scale by the same power ratio.
+        gain_p = qq * exp(-expo) / denom * exp(-alpha_p * len);
+        amp_p = sqrt(gain_p);
+        V(pfo_re, gnd) <+ amp_p * V(pfi_re, gnd);
+        V(pfo_im, gnd) <+ amp_p * V(pfi_im, gnd);
+        V(pbo_re, gnd) <+ amp_p * V(pbi_re, gnd);
+        V(pbo_im, gnd) <+ amp_p * V(pbi_im, gnd);
+    end
+endmodule

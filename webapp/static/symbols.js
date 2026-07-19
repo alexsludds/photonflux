@@ -356,6 +356,114 @@ S.wmirror = {
     <line class="${EL}" x1="40" y1="60" x2="40" y2="50"/>`,
 };
 
+// --- traveling-wave multi-section laser slices (tw_gain_seg, tw_seg,
+//     phase_pad, edfa) -----------------------------------------------------
+//
+// Directed-wave 2x2 sections cascaded to build DFB/DBR/FP lasers. The forward
+// wave runs L->R on the TOP rail (fl in -> fr out); the backward wave runs
+// R->L on the BOTTOM rail (br in -> bl out). Arrows on every stub show the
+// directed-wave sense, matching the wmirror convention above. `bl`/`br` are
+// the x of the body's left/right edges, `w` the symbol width.
+function twStubs(bl, br, w) {
+  return `
+    <line class="${OPT}" x1="0" y1="22" x2="${bl}" y2="22"/>
+    <path class="${OPT}" d="M${bl - 8} 19 l5 3 l-5 3" fill="none" stroke-width="1.1"/>
+    <line class="${OPT}" x1="0" y1="42" x2="${bl}" y2="42"/>
+    <path class="${OPT}" d="M8 39 l-5 3 l5 3" fill="none" stroke-width="1.1"/>
+    <line class="${OPT}" x1="${br}" y1="22" x2="${w}" y2="22"/>
+    <path class="${OPT}" d="M${w - 8} 19 l5 3 l-5 3" fill="none" stroke-width="1.1"/>
+    <line class="${OPT}" x1="${br}" y1="42" x2="${w}" y2="42"/>
+    <path class="${OPT}" d="M${br + 8} 39 l-5 3 l5 3" fill="none" stroke-width="1.1"/>`;
+}
+
+// dashed cut-planes poking above/below the body edges: the visual cue that
+// this is ONE slice of a cascade (you wire M of them in series to resolve the
+// cavity). yt/yb straddle the body so the dashed ticks stay visible over the
+// solid border.
+function sliceCuts(xl, xr, yt, yb) {
+  return `
+    <line class="${OPT}" x1="${xl}" y1="${yt}" x2="${xl}" y2="${yb}"
+      stroke-dasharray="3 3" stroke-width="1" opacity="0.8"/>
+    <line class="${OPT}" x1="${xr}" y1="${yt}" x2="${xr}" y2="${yb}"
+      stroke-dasharray="3 3" stroke-width="1" opacity="0.8"/>`;
+}
+
+S.tw_gain_seg = {
+  // active gain slice: SOA-like forward/backward gain chevrons in a pumped
+  // body (electrical bias an/cat down from the top), drawn as a cascadable
+  // slice (dashed cut-planes). kappa>0 makes it an index-coupled DFB grating.
+  w: 100, h: 64,
+  pins: { fl: [0, 22], bl: [0, 42], fr: [100, 22], br: [100, 42],
+          an: [38, 0], cat: [62, 0], gnd: [50, 64] },
+  label: [0, -6], pinLabels: true,
+  draw: () => `
+    ${twStubs(26, 74, 100)}
+    <rect class="${OPT} body-fill" x="26" y="8" width="48" height="48" rx="4"/>
+    ${sliceCuts(26, 74, 2, 62)}
+    <path class="${OPT}" d="M38 18 l6 4 l-6 4" fill="none" stroke-width="1.2"/>
+    <path class="${OPT}" d="M48 18 l6 4 l-6 4" fill="none" stroke-width="1.2"/>
+    <path class="${OPT}" d="M62 38 l-6 4 l6 4" fill="none" stroke-width="1.2"/>
+    <path class="${OPT}" d="M52 38 l-6 4 l6 4" fill="none" stroke-width="1.2"/>
+    <line class="${EL}" x1="38" y1="0" x2="38" y2="8"/>
+    <line class="${EL}" x1="62" y1="0" x2="62" y2="8"/>
+    <line class="${EL}" x1="50" y1="64" x2="50" y2="56"/>
+    <text x="43" y="36" style="font-size:8px">TWg</text>`,
+};
+
+S.tw_seg = {
+  // Bragg/passive slice: a run of grating teeth (the coupled-mode mirror);
+  // vt tunes the local Bragg detuning (the DBR knob), gnd at the bottom.
+  // kappa_pm = 0 degenerates to a plain waveguide.
+  w: 100, h: 64,
+  pins: { fl: [0, 22], bl: [0, 42], fr: [100, 22], br: [100, 42],
+          vt: [50, 0], gnd: [50, 64] },
+  label: [0, -6], pinLabels: true,
+  draw: () => `
+    ${twStubs(26, 74, 100)}
+    <rect class="${OPT} body-fill" x="26" y="8" width="48" height="48" rx="4"/>
+    ${sliceCuts(26, 74, 2, 62)}
+    <line class="${OPT}" x1="32" y1="14" x2="32" y2="50" stroke-width="1.4"/>
+    <line class="${OPT}" x1="40" y1="14" x2="40" y2="50" stroke-width="1.4"/>
+    <line class="${OPT}" x1="48" y1="14" x2="48" y2="50" stroke-width="1.4"/>
+    <line class="${OPT}" x1="56" y1="14" x2="56" y2="50" stroke-width="1.4"/>
+    <line class="${OPT}" x1="64" y1="14" x2="64" y2="50" stroke-width="1.4"/>
+    <line class="${EL}" x1="50" y1="0" x2="50" y2="8"/>
+    <line class="${EL}" x1="50" y1="64" x2="50" y2="56"/>`,
+};
+
+S.phase_pad = {
+  // lossless bidirectional phase rotation e^{-j*phi}; phi0 = pi/2 is the
+  // quarter-wave-shift defect. vt tunes the cavity phase, gnd at the bottom.
+  w: 80, h: 64,
+  pins: { fl: [0, 22], bl: [0, 42], fr: [80, 22], br: [80, 42],
+          vt: [40, 0], gnd: [40, 64] },
+  label: [0, -6], pinLabels: true,
+  draw: () => `
+    ${twStubs(28, 52, 80)}
+    <rect class="${OPT} body-fill" x="28" y="10" width="24" height="44" rx="3"/>
+    <text x="32" y="37" style="font-size:14px">&#966;</text>
+    <line class="${EL}" x1="40" y1="0" x2="40" y2="10"/>
+    <line class="${EL}" x1="40" y1="64" x2="40" y2="54"/>`,
+};
+
+S.edfa = {
+  // erbium-doped fibre amplifier: fibre coil + forward gain chevrons, marked
+  // "Er". Unidirectional (fin->fout; EDFAs run behind isolators); gnd bottom.
+  w: 90, h: 44, pins: { fin: [0, 22], fout: [90, 22], gnd: [45, 44] },
+  label: [0, -6], pinLabels: true,
+  draw: () => `
+    <line class="${OPT}" x1="0" y1="22" x2="12" y2="22"/>
+    <rect class="${OPT} body-fill" x="12" y="6" width="66" height="32" rx="5"/>
+    <circle class="${OPT}" cx="24" cy="20" r="6" stroke-width="1.3"/>
+    <circle class="${OPT}" cx="35" cy="20" r="6" stroke-width="1.3"/>
+    <circle class="${OPT}" cx="46" cy="20" r="6" stroke-width="1.3"/>
+    <path class="${OPT}" d="M56 15 l6 5 l-6 5" fill="none" stroke-width="1.3"/>
+    <path class="${OPT}" d="M64 15 l6 5 l-6 5" fill="none" stroke-width="1.3"/>
+    <line class="${OPT}" x1="78" y1="22" x2="90" y2="22"/>
+    <line class="${EL}" x1="45" y1="44" x2="45" y2="38"/>
+    <text x="28" y="34" text-anchor="middle" style="font-size:8px">Er</text>`,
+};
+
 S.circulator = {
   // non-reciprocal 3-port: circle with a clockwise circulation arrow (routes
   // 1 -> 2 -> 3 -> 1). Port 1 (TX) left, port 2 (shared line) right, port 3
@@ -844,6 +952,8 @@ const HEADLINE_PARAM = {
   cw_laser: "power", mzm: "vpi", iq_modulator: "vpi", coherent_rx: "R",
   pulse_mod: "p_on", ring_mod: "kappa2",
   laser_dml: "Ith", laser_rate: "taup", mzm_tw: "vpi",
+  tw_gain_seg: "i_op_ma", tw_seg: "kappa_pm", phase_pad: "phi0_rad",
+  edfa: "g0_db",
   ring_mod_inj: "tau_c", mzm_seg: "vpi", ring_selfheat: "rth_k_w",
   phase_shifter: "vpi",
   waveguide: "length_m", splitter: "split_ratio", dir_coupler: "coupling",

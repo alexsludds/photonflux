@@ -34,7 +34,7 @@ let CAT = {};                    // backend catalog: type -> {ports, params, ...
 // fold both derive UI = 1/baud from it, rather than each carrying their own.
 const DEFAULT_BAUD = 10e9;       // 10 GBd -> 100 ps UI
 let state = { instances: {}, wires: [], probes: [], notes: [],
-              globals: { baud: DEFAULT_BAUD } };
+              subcircuits: {}, globals: { baud: DEFAULT_BAUD } };
 // `sheet` is the schematic surface currently being edited and rendered.
 // `state` stays "the whole document" — what undo snapshots, autosave persists
 // and Run serializes. At the top level sheet === state; hierarchy navigation
@@ -176,21 +176,71 @@ function compTransform(inst, sym) {
   return tf;
 }
 
+// World coords of a pin, or null if it no longer resolves. A pin can vanish
+// under a live edit — e.g. renaming/removing a Subcircuit Port while instances
+// of that definition still carry wires to the old port name — so callers must
+// tolerate null rather than assume every wire endpoint is drawable.
 function pinPos(inst, pin) {
-  return localToWorld(inst, S[inst.type], ...S[inst.type].pins[pin]);
+  const sym = inst && S[inst.type];
+  if (!sym || !sym.pins[pin]) return null;
+  return localToWorld(inst, sym, ...sym.pins[pin]);
 }
 
 // catalog entry for a type as seen from the current sheet: composite
-// pseudo-types (sheetCat) shadow the real catalog while descended
+// pseudo-types (sheetCat) shadow the real catalog while descended; user-defined
+// subcircuit definitions (state.subcircuits) act as document-local catalog
+// entries so instances of them wire/inspect/render like any other component.
 function catEntry(type) {
   if (sheetCat && sheetCat[type]) return sheetCat[type];
-  return CAT[type] || null;
+  if (CAT[type]) return CAT[type];
+  const def = state.subcircuits && state.subcircuits[type];
+  return def ? subcircuitEntry(type, def) : null;
+}
+
+// The ports a subcircuit exposes, read from the `port` pseudo-components on its
+// definition sheet (name + domain, in placement order). Mirrors the backend
+// webapp/subcircuit.py:subcircuit_ports so symbol pins match the flattener.
+function subcircuitPorts(def) {
+  const out = [];
+  const insts = (def.schematic && def.schematic.instances) || {};
+  for (const inst of Object.values(insts)) {
+    if (inst.type !== "port") continue;
+    const nm = ((inst.settings && inst.settings.name) || "").trim();
+    if (!nm) continue;
+    out.push({ name: nm, domain: (inst.settings && inst.settings.domain) || "optical" });
+  }
+  return out;
+}
+
+// synthesize a catalog entry for a subcircuit type — its exported params become
+// editable number settings, its declared ports drive wiring checks.
+function subcircuitEntry(name, def) {
+  return {
+    label: def.label || name,
+    category: "Subcircuits",
+    isSubcircuit: true,
+    ports: subcircuitPorts(def),
+    params: (def.params || []).map((p) => ({
+      name: p.name, default: p.default, unit: "", label: p.name,
+    })),
+    doc: `Subcircuit **${def.label || name}** — double-click an instance to `
+      + `descend into its definition.`,
+  };
 }
 
 function portDomain(type, pin) {
   const e = catEntry(type);
   const p = e && e.ports.find((p) => p.name === pin);
   return p ? p.domain : "electrical";
+}
+
+// Port domain for a concrete instance. A `port` pseudo-component's domain is
+// per-instance (its `domain` setting), not fixed by the catalog, so wiring
+// checks inside a definition respect the port you drew.
+function pinDomain(inst, pin) {
+  if (inst && inst.type === "port")
+    return (inst.settings && inst.settings.domain) || "optical";
+  return portDomain(inst ? inst.type : null, pin);
 }
 
 function toWorld(ev) {
@@ -237,6 +287,227 @@ function resolveSheet() {
   sheet = state;
   sheetReadOnly = false;
   sheetCat = null;
+  // walk the hierarchy breadcrumb: each step descends into a subcircuit
+  // definition's own sheet (editable). A step that no longer resolves (its
+  // definition was deleted/renamed under us) truncates the crumb back to there.
+  const crumb = (t && t.crumb) || [];
+  for (let i = 0; i < crumb.length; i++) {
+    const step = crumb[i];
+    const def = step.kind === "subdef"
+      && state.subcircuits && state.subcircuits[step.name];
+    if (!def) { crumb.length = i; break; }
+    def.schematic = normSubSchematic(def.schematic);
+    sheet = def.schematic;
+  }
+}
+
+// a subcircuit definition's body, coerced to the editable sheet shape
+function normSubSchematic(s) {
+  s = s || {};
+  return {
+    instances: s.instances || {},
+    wires: (s.wires || []).map((w) =>
+      Array.isArray(w) ? { from: w[0], to: w[1] } : w),
+    probes: s.probes || [],
+    notes: s.notes || [],
+    globals: s.globals || {},
+  };
+}
+
+// true when the active sheet is a subcircuit definition (vs the top document)
+function editingSubDef() {
+  const t = tabs[activeTab];
+  return !!(t && t.crumb && t.crumb.length);
+}
+
+function activeSubDef() {
+  const t = tabs[activeTab];
+  if (!t || !t.crumb || !t.crumb.length) return null;
+  const name = t.crumb[t.crumb.length - 1].name;
+  return state.subcircuits ? state.subcircuits[name] : null;
+}
+
+const _IDENT_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
+const _esc = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;");
+
+// Descend into a subcircuit definition to edit its body. Navigation only — it
+// does not snapshot undo (the definition already lives in `state`, so its edits
+// ride the normal undo stack). Refuses to nest a definition inside itself.
+function descendInto(name) {
+  const t = tabs[activeTab];
+  if (!t) return;
+  if (!(state.subcircuits && state.subcircuits[name])) {
+    setHint(`No subcircuit definition '${name}'.`, true);
+    return;
+  }
+  const path = (t.crumb || []).map((s) => s.name);
+  if (path.includes(name)) {
+    setHint(`'${name}' is already open above — a subcircuit cannot contain itself.`, true);
+    return;
+  }
+  disarm();
+  t.viewStack = (t.viewStack || []).concat([view]);
+  t.crumb = (t.crumb || []).concat([{ kind: "subdef", name }]);
+  selection = null;
+  resolveSheet();
+  view = { x: 60, y: 40, k: 1 };
+  buildPalette();
+  renderInspector();
+  render();
+  zoomToFit();
+  autosave();
+}
+
+// Pop the breadcrumb back to `depth` levels (0 = top document).
+function ascendTo(depth) {
+  const t = tabs[activeTab];
+  if (!t || !t.crumb) return;
+  depth = Math.max(0, Math.min(depth, t.crumb.length));
+  while (t.crumb.length > depth) {
+    t.crumb.pop();
+    const v = (t.viewStack || []).pop();
+    if (v) view = v;
+  }
+  disarm();
+  selection = null;
+  resolveSheet();
+  buildPalette();
+  renderInspector();
+  render();
+  autosave();
+}
+
+function _suggestSubName() {
+  let n = 1;
+  while ((state.subcircuits && state.subcircuits["SUB" + n]) || CAT["SUB" + n]) n++;
+  return "SUB" + n;
+}
+
+// Create a new (empty) subcircuit definition and descend into it to build it.
+function newSubcircuit() {
+  if (editingSubDef()) {
+    setHint("Go back to the top document (breadcrumb) before defining a new subcircuit.", true);
+    return;
+  }
+  const name = (prompt("New subcircuit name (identifier):", _suggestSubName()) || "").trim();
+  if (!name) return;
+  if (!_IDENT_RE.test(name)) {
+    setHint("Subcircuit name must be a plain identifier (letters, digits, _).", true);
+    return;
+  }
+  if ((state.subcircuits && state.subcircuits[name]) || CAT[name]) {
+    setHint(`'${name}' already exists.`, true);
+    return;
+  }
+  const label = (prompt("Display label:", name) || name).trim() || name;
+  commit(() => {
+    state.subcircuits = state.subcircuits || {};
+    state.subcircuits[name] = {
+      name, label, params: [],
+      schematic: { instances: {}, wires: [], probes: [], notes: [], globals: {} },
+    };
+  });
+  buildPalette();
+  descendInto(name);
+  setHint(`Editing '${label}'. Place a Subcircuit Port for each boundary `
+    + `connection, wire it in, then export parameters from the inspector.`);
+}
+
+// Breadcrumb bar shown while descended into a definition (created lazily).
+function renderCrumb() {
+  const wrap = document.getElementById("canvas-wrap");
+  if (!wrap) return;
+  let bar = $("subcircuit-crumb");
+  if (!bar) {
+    bar = document.createElement("div");
+    bar.id = "subcircuit-crumb";
+    bar.style.cssText = "position:absolute;top:8px;left:8px;z-index:5;display:none;"
+      + "gap:6px;align-items:center;font:12px/1.4 inherit;background:var(--panel2,#1b1b1b);"
+      + "border:1px solid var(--border,#333);border-radius:6px;padding:3px 9px;"
+      + "color:var(--text,#ddd);box-shadow:0 1px 4px rgba(0,0,0,.3)";
+    wrap.appendChild(bar);
+  }
+  const t = tabs[activeTab];
+  const crumb = (t && t.crumb) || [];
+  if (!crumb.length) { bar.style.display = "none"; return; }
+  bar.style.display = "flex";
+  const link = (d, txt) =>
+    `<a data-depth="${d}" style="cursor:pointer;color:var(--accent,#6ecbf5)">${txt}</a>`;
+  const parts = [link(0, "top")];
+  crumb.forEach((s, i) => {
+    const def = state.subcircuits && state.subcircuits[s.name];
+    const label = _esc((def && def.label) || s.name);
+    parts.push('<span style="opacity:.4">/</span>');
+    parts.push(i < crumb.length - 1 ? link(i + 1, label) : `<b>${label}</b>`);
+  });
+  bar.innerHTML = parts.join(" ");
+  bar.querySelectorAll("a[data-depth]").forEach((a) =>
+    a.addEventListener("click", () => ascendTo(+a.dataset.depth)));
+}
+
+// Inspector shown while editing a definition with nothing selected: manage the
+// exported parameters (name, default, and which inner settings they bind to).
+function renderSubDefInspector() {
+  const body = $("inspector-body");
+  const def = activeSubDef();
+  if (!def) { body.innerHTML = ""; return; }
+  const ports = subcircuitPorts(def);
+  const portList = ports.length
+    ? ports.map((p) => `${_esc(p.name)} <span class="unit">(${p.domain[0]})</span>`).join(", ")
+    : "<i>none — place Subcircuit Port parts</i>";
+  let html = `<div class="insp-title">${_esc(def.label || def.name)}</div>
+    <div class="insp-type">Subcircuit definition</div>
+    <div class="insp-row" style="display:block"><label>Ports</label>
+      <div style="margin-top:3px">${portList}</div></div>
+    <div class="insp-row" style="display:block;margin-top:8px">
+      <label>Exported parameters</label></div>`;
+  (def.params || []).forEach((p, i) => {
+    const binds = (p.bind || []).map((b) => `${_esc(b.instance)}.${_esc(b.param)}`).join(", ") || "—";
+    html += `<div class="insp-row" style="align-items:baseline">
+      <span style="flex:1"><b>${_esc(p.name)}</b> = ${_esc(fmtNum(+p.default))}
+        <span class="unit" style="display:block">→ ${binds}</span></span>
+      <button data-delparam="${i}" class="danger" title="Remove">&#x2715;</button></div>`;
+  });
+  html += `<button id="insp-addparam" style="margin-top:6px">+ Export parameter</button>
+    <div class="insp-doc">Wire each Subcircuit Port's pin to the internal net
+      you want to expose. Exported parameters push a value onto the bound inner
+      settings when the subcircuit is instantiated.</div>`;
+  body.innerHTML = html;
+  $("insp-addparam").onclick = () => addExportedParam(def);
+  body.querySelectorAll("button[data-delparam]").forEach((btn) => {
+    btn.onclick = () => commitAnd(() => def.params.splice(+btn.dataset.delparam, 1));
+  });
+}
+
+// small helper: commit a mutation then refresh the inspector too
+function commitAnd(mut) { commit(mut); renderInspector(); }
+
+function addExportedParam(def) {
+  const name = (prompt("Exported parameter name (identifier):", "") || "").trim();
+  if (!name) return;
+  if (!_IDENT_RE.test(name)) { setHint("Parameter name must be an identifier.", true); return; }
+  if ((def.params || []).some((p) => p.name === name)) {
+    setHint(`'${name}' is already exported.`, true); return;
+  }
+  const bindStr = (prompt(
+    "Bind to inner setting(s) as REF.param (comma-separated):", "") || "").trim();
+  const bind = [];
+  for (const tok of bindStr.split(",").map((s) => s.trim()).filter(Boolean)) {
+    const dot = tok.indexOf(".");
+    if (dot < 1) { setHint(`Bad binding '${tok}' — want REF.param.`, true); return; }
+    bind.push({ instance: tok.slice(0, dot), param: tok.slice(dot + 1) });
+  }
+  let def0 = 0;
+  const first = bind[0] && def.schematic.instances[bind[0].instance];
+  const dv = prompt("Default value:", String(
+    (first && first.settings && first.settings[bind[0].param]) ?? 0));
+  if (dv === null) return;
+  def0 = parseSI(dv);
+  if (isNaN(def0)) def0 = 0;
+  commitAnd(() => {
+    def.params = def.params || [];
+    def.params.push({ name, default: def0, bind });
+  });
 }
 
 // Workspace persistence: every open tab's document + analysis/pane state in
@@ -354,7 +625,7 @@ function freshTabRecord() {
   return {
     id: ++tabSeq, title: "",
     state: { instances: {}, wires: [], probes: [], notes: [],
-             globals: { baud: DEFAULT_BAUD } },
+             subcircuits: {}, globals: { baud: DEFAULT_BAUD } },
     undoStack: [], redoStack: [],
     view: null,                       // null -> zoomToFit on first checkout
     crumb: [], viewStack: [],         // hierarchy breadcrumb (per tab)
@@ -530,7 +801,10 @@ function syncGlobalsUI() {
 }
 
 function newId(type) {
-  const prefix = ID_PREFIX[type] || "U";
+  // subcircuit instances get an "X" refdes (X1.WG1 hierarchical naming); the
+  // `port` boundary marker gets a "PORT" refdes on definition sheets
+  const isSub = state.subcircuits && state.subcircuits[type];
+  const prefix = ID_PREFIX[type] || (isSub ? "X" : type === "port" ? "PORT" : "U");
   let n = 1;
   while (sheet.instances[prefix + n]) n++;
   return prefix + n;
@@ -566,6 +840,8 @@ function deleteSelection() {
 // ---------------------------------------------------------------------------
 function render() {
   syncGlobalsUI();
+  syncSubcircuitSymbols();
+  renderCrumb();
   layers.notes.innerHTML = "";
   layers.comps.innerHTML = "";
   layers.wires.innerHTML = "";
@@ -585,9 +861,11 @@ function render() {
 
   // --- wires ---------------------------------------------------------------
   sheet.wires.forEach((w, i) => {
-    const [x1, y1] = pinPos(sheet.instances[w.from.split(",")[0]], w.from.split(",")[1]);
-    const [x2, y2] = pinPos(sheet.instances[w.to.split(",")[0]], w.to.split(",")[1]);
-    const dom = portDomain(sheet.instances[w.from.split(",")[0]].type, w.from.split(",")[1]);
+    const a = pinPos(sheet.instances[w.from.split(",")[0]], w.from.split(",")[1]);
+    const b = pinPos(sheet.instances[w.to.split(",")[0]], w.to.split(",")[1]);
+    if (!a || !b) return;   // endpoint pin gone (e.g. a definition's port renamed)
+    const [x1, y1] = a, [x2, y2] = b;
+    const dom = pinDomain(sheet.instances[w.from.split(",")[0]], w.from.split(",")[1]);
     const d = wirePath(x1, y1, x2, y2, dom);
     const g = document.createElementNS(svg.namespaceURI, "g");
     g.dataset.wire = i;
@@ -636,7 +914,9 @@ function render() {
       const hp = HEADLINE_PARAM[inst.type];
       const cat = catEntry(inst.type);
       let valTxt = "";
-      if (inst.type === "prbs") {
+      if (inst.type === "port") {
+        valTxt = (inst.settings && inst.settings.name) || "?";  // boundary port name
+      } else if (inst.type === "prbs") {
         valTxt = `${fmtSI(globalUI())}s`;   // UI pulled from the global baud rate
       } else if (hp && cat) {
         const spec = cat.params.find((p) => p.name === hp);
@@ -667,7 +947,7 @@ function render() {
     // ports (drawn inside the rotated group at local coords)
     for (const pn of Object.keys(sym.pins)) {
       const [px, py] = sym.pins[pn];
-      const dom = portDomain(inst.type, pn);
+      const dom = pinDomain(inst, pn);
       const wired = useCount[`${id},${pn}`] > 0;
       const c = document.createElementNS(svg.namespaceURI, "circle");
       c.setAttribute("cx", px); c.setAttribute("cy", py); c.setAttribute("r", 4);
@@ -702,6 +982,13 @@ function render() {
                snapshot: JSON.stringify(state) };
       renderInspector(); render();
     });
+    // double-click a subcircuit instance to descend into its definition
+    if (catEntry(inst.type)?.isSubcircuit) {
+      g.addEventListener("dblclick", (ev) => {
+        ev.stopPropagation();
+        descendInto(inst.type);
+      });
+    }
     layers.comps.appendChild(g);
     layers.comps.appendChild(labels);
   }
@@ -712,8 +999,10 @@ function render() {
     const [id, pin] = ep.split(",");
     const inst = sheet.instances[id];
     if (!inst) continue;
-    const [x, y] = pinPos(inst, pin);
-    const dom = portDomain(inst.type, pin);
+    const pos = pinPos(inst, pin);
+    if (!pos) continue;
+    const [x, y] = pos;
+    const dom = pinDomain(inst, pin);
     const c = document.createElementNS(svg.namespaceURI, "circle");
     c.setAttribute("cx", x); c.setAttribute("cy", y); c.setAttribute("r", 3.2);
     c.setAttribute("class", `junction ${dom}`);
@@ -726,7 +1015,9 @@ function render() {
     const [id, pin] = p.at.split(",");
     const inst = sheet.instances[id];
     if (!inst) return;
-    const [x, y] = pinPos(inst, pin);
+    const pos = pinPos(inst, pin);
+    if (!pos) return;
+    const [x, y] = pos;
     const g = document.createElementNS(svg.namespaceURI, "g");
     g.dataset.probe = i;
     g.setAttribute("class", "probe-flag" +
@@ -809,8 +1100,8 @@ function onPortMouseDown(ep) {
 
 function finishWire(ep) {
   const from = mode.from;
-  const dFrom = portDomain(sheet.instances[from.split(",")[0]].type, from.split(",")[1]);
-  const dTo = portDomain(sheet.instances[ep.split(",")[0]].type, ep.split(",")[1]);
+  const dFrom = pinDomain(sheet.instances[from.split(",")[0]], from.split(",")[1]);
+  const dTo = pinDomain(sheet.instances[ep.split(",")[0]], ep.split(",")[1]);
   const isGnd = (e) => sheet.instances[e.split(",")[0]].type === "ground";
   if (dFrom !== dTo && !isGnd(from) && !isGnd(ep)) {
     setHint(`Cannot connect ${dFrom} to ${dTo} — use a photodiode or modulator to bridge domains.`, true);
@@ -921,8 +1212,10 @@ svg.addEventListener("mousemove", (ev) => {
     const [wx, wy] = toWorld(ev);
     const from = mode.from;
     const inst = sheet.instances[from.split(",")[0]];
-    const [x1, y1] = pinPos(inst, from.split(",")[1]);
-    const dom = portDomain(inst.type, from.split(",")[1]);
+    const p0 = pinPos(inst, from.split(",")[1]);
+    if (!p0) return;
+    const [x1, y1] = p0;
+    const dom = pinDomain(inst, from.split(",")[1]);
     layers.tool.innerHTML =
       `<path class="wire ghost ${dom}" d="${wirePath(x1, y1, wx, wy, dom)}"/>`;
   }
@@ -1315,6 +1608,7 @@ function renderInspector() {
   schedulePushMirror();   // selection is part of the notebook-facing mirror
   const body = $("inspector-body");
   if (!selection) {
+    if (editingSubDef()) { renderSubDefInspector(); return; }
     body.innerHTML = `<div class="insp-empty">Nothing selected.<br><br>
       Select a component to edit its parameters, a wire to inspect the net,
       or a probe to rename it.</div>`;
@@ -1593,8 +1887,18 @@ function fuzzyMatch(query, text) {
 }
 
 function buildPalette() {
+  syncSubcircuitSymbols();
   const holder = $("palette-items");
   holder.innerHTML = "";
+  // "New subcircuit" affordance (top of the palette; disabled while descended)
+  const nb = document.createElement("button");
+  nb.className = "pal-newsub";
+  nb.textContent = editingSubDef() ? "◀ Back to top document" : "＋ New subcircuit";
+  nb.style.cssText = "width:100%;margin:0 0 6px;padding:5px;font:inherit;"
+    + "cursor:pointer;background:var(--panel2);color:var(--text);"
+    + "border:1px solid var(--border);border-radius:4px";
+  nb.addEventListener("click", () => editingSubDef() ? ascendTo(0) : newSubcircuit());
+  holder.appendChild(nb);
   const q = paletteFilter.trim();
   // Match a component against label, type key, and category so a search like
   // "laser" or "cw" finds the part regardless of which field it lives in.
@@ -1602,13 +1906,22 @@ function buildPalette() {
     fuzzyMatch(q, entry.label) || fuzzyMatch(q, type) || fuzzyMatch(q, entry.category);
   let shown = 0;
   const cats = {};
+  const path = ((tabs[activeTab] || {}).crumb || []).map((s) => s.name);
   for (const [type, entry] of Object.entries(CAT)) {
+    // the `port` boundary marker is only placeable inside a definition sheet
+    if (type === "port" && !editingSubDef()) continue;
     (cats[entry.category] = cats[entry.category] || []).push([type, entry]);
   }
-  const order = ["Lasers", "Modulators", "Photonic Passives",
-                 "Detectors & Bridges", "Channels", "Sources", "Electrical",
-                 "Amplifiers & EQ", "SKY130 FETs", "SKY130 Passives",
-                 "Reference"];
+  // document-local subcircuit definitions are placeable parts too (nesting is
+  // allowed — but never a definition that is itself open above us: that cycles)
+  for (const [name, def] of Object.entries(state.subcircuits || {})) {
+    if (path.includes(name)) continue;
+    (cats["Subcircuits"] = cats["Subcircuits"] || []).push([name, subcircuitEntry(name, def)]);
+  }
+  const order = ["Subcircuits", "Subcircuit", "Lasers", "Modulators",
+                 "Photonic Passives", "Detectors & Bridges", "Channels",
+                 "Sources", "Electrical", "Amplifiers & EQ", "SKY130 FETs",
+                 "SKY130 Passives", "Reference"];
   for (const cat of order.concat(Object.keys(cats).filter((c) => !order.includes(c)))) {
     if (!cats[cat]) continue;
     const visible = cats[cat].filter(([type, entry]) => S[type] && matches(type, entry));
@@ -2199,6 +2512,10 @@ async function runSim() {
         ...(p.spectrum ? { spectrum: true,
           ...(p.specStart != null ? { spec_start: p.specStart } : {}),
           ...(p.specStop != null ? { spec_stop: p.specStop } : {}) } : {}) })),
+      // subcircuit definitions travel with the run so the server can flatten
+      // instances of them (namespaced refdes, spliced ports, baked params)
+      ...(state.subcircuits && Object.keys(state.subcircuits).length
+        ? { subcircuits: state.subcircuits } : {}),
     },
     analysis: collectAnalysis(),
   };
@@ -3287,6 +3604,18 @@ function ensureSymbols() {
   }
 }
 
+// (Re)generate box symbols for the document's subcircuit definitions so their
+// instances render with the declared ports. Rebuilt each render so editing a
+// definition's ports updates every instance symbol live. Never clobbers a
+// built-in symbol (a definition named like a primitive keeps the primitive's).
+function syncSubcircuitSymbols() {
+  const subs = (state && state.subcircuits) || {};
+  for (const [name, def] of Object.entries(subs)) {
+    if (CAT[name]) continue;
+    S[name] = genericSymbol(name, subcircuitEntry(name, def));
+  }
+}
+
 // upload a .va model: compiles server-side, appears in the palette
 $("btn-upva").addEventListener("click", () => {
   const file = document.createElement("input");
@@ -3314,12 +3643,35 @@ $("btn-upva").addEventListener("click", () => {
 // coerce a persisted schematic into the in-memory shape (missing collections
 // default to empty; wires may be legacy [from, to] pairs)
 function normalizeSchematic(s) {
+  const wires = (w) => (w || []).map((e) =>
+    Array.isArray(e) ? { from: e[0], to: e[1] } : e);
+  // subcircuit definitions ride inside the document so save/load, undo and the
+  // notebook mirror round-trip them with everything else
+  const subs = {};
+  for (const [name, d] of Object.entries((s && s.subcircuits) || {})) {
+    const ds = d.schematic || {};
+    subs[name] = {
+      name: d.name || name,
+      label: d.label || name,
+      params: (d.params || []).map((p) => ({
+        name: p.name, default: p.default,
+        bind: (p.bind || []).map((b) => ({ instance: b.instance, param: b.param })),
+      })),
+      schematic: {
+        instances: ds.instances || {},
+        wires: wires(ds.wires),
+        probes: ds.probes || [],
+        notes: ds.notes || [],
+        globals: ds.globals || {},
+      },
+    };
+  }
   return {
     instances: (s && s.instances) || {},
-    wires: ((s && s.wires) || []).map((w) =>
-      Array.isArray(w) ? { from: w[0], to: w[1] } : w),
+    wires: wires(s && s.wires),
     probes: (s && s.probes) || [],
     notes: (s && s.notes) || [],
+    subcircuits: subs,
     globals: (s && s.globals) || {},
   };
 }

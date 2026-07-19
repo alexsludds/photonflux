@@ -13,6 +13,16 @@ const S = {}; // type id -> symbol
 const OPT = "body-opt"; // amber stroke class
 const EL = "body";      // default stroke class
 
+// Subcircuit boundary port: a tag whose single pin `p` (on the right) wires to
+// the internal net exposed as the named external port. Only used on definition
+// sheets; the flattener splices it away. The renderer overlays the port name.
+S.port = {
+  w: 40, h: 20, pins: { p: [40, 10] }, label: [2, -4],
+  draw: () => `
+    <path class="${EL} body-fill" d="M2 4 h20 l8 6 l-8 6 h-20 z"/>
+    <line class="${EL}" x1="30" y1="10" x2="40" y2="10"/>`,
+};
+
 S.ground = {
   w: 40, h: 30, pins: { p1: [20, 0] }, label: [24, 26], hideRef: true,
   draw: () => `

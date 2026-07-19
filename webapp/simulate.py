@@ -34,6 +34,9 @@ from catalog import CATALOG, build_models
 from progress import RunCancelled
 
 _NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+# Flattened subcircuits produce dotted hierarchical refdes/probe names
+# (``X1.WG1``, ``X1.n_out``); accept those in addition to plain names.
+_HIER_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)*$")
 
 _CIRCUIT_CACHE: dict[str, Any] = {}   # schematic-hash -> (circuit, meta)
 _MODELS_CACHE: dict[str, Any] = {}    # sky130-geometry-key set -> models_map
@@ -89,10 +92,22 @@ def schematic_to_netlist(sch: dict, wave_span: float = DEFAULT_WAVE_SPAN,
     wires = sch.get("wires") or []
     probes = sch.get("probes") or []
 
+    # Flatten user-defined subcircuits first, so everything below operates on a
+    # primitive netlist with hierarchical refdes (``X1.WG1``). Definition edits
+    # ride in ``sch`` and so already invalidate the compile cache.
+    subcircuits = sch.get("subcircuits") or {}
+    if subcircuits:
+        from subcircuit import flatten_subcircuits, SubcircuitError
+        try:
+            instances, wires, probes = flatten_subcircuits(
+                instances, wires, probes, subcircuits)
+        except SubcircuitError as e:
+            raise NetlistError(str(e)) from e
+
     if not instances:
         raise NetlistError("empty schematic — place some components first")
     for name, inst in instances.items():
-        if not _NAME_RE.match(name):
+        if not _HIER_NAME_RE.match(name):
             raise NetlistError(f"bad instance name {name!r}")
         if inst.get("type") not in CATALOG:
             raise NetlistError(f"{name}: unknown component type {inst.get('type')!r}")
@@ -301,7 +316,7 @@ def schematic_to_netlist(sch: dict, wave_span: float = DEFAULT_WAVE_SPAN,
     spectrum_windows: dict[str, tuple] = {}   # pname -> (start, stop) in seconds
     for probe in probes:
         pname = probe["name"]
-        if not _NAME_RE.match(pname):
+        if not _HIER_NAME_RE.match(pname):
             raise NetlistError(f"bad probe name {pname!r}")
         _endpoint(probe["at"], instances)
         ports[pname] = resolve(probe["at"])

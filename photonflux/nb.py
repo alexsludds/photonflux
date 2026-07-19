@@ -47,7 +47,7 @@ import numpy as np
 
 DEFAULT_URL = os.environ.get("PHOTONFLUX_URL", "http://127.0.0.1:8642")
 
-__all__ = ["Session", "Schematic", "Result", "Builder",
+__all__ = ["Session", "Schematic", "Result", "Builder", "SubcircuitDef",
            "SessionError", "RunError", "si"]
 
 
@@ -151,6 +151,12 @@ class Schematic:
     @property
     def probes(self) -> list:
         return self.schematic.get("probes") or []
+
+    @property
+    def subcircuits(self) -> dict:
+        """User-defined subcircuit definitions, keyed by name (each with its
+        own ``schematic`` body + exported ``params``)."""
+        return self.schematic.get("subcircuits") or {}
 
     # --- item access: "INST" -> instance dict, "INST.param" -> setting -----
     def _split(self, key: str):
@@ -829,6 +835,7 @@ class Builder:
         self.instances: dict[str, dict] = {}
         self.wires: list[dict] = []
         self.probes: list[dict] = []
+        self.subcircuits: dict[str, "SubcircuitDef"] = {}
         self._auto: list[str] = []      # refs awaiting grid placement
 
     def add(self, type_: str, ref: str | None = None, x: float | None = None,
@@ -863,20 +870,126 @@ class Builder:
         self.probes.append({"name": name, "at": str(at), "color": color})
         return name
 
-    def doc(self, title: str = "", analysis: dict | None = None) -> dict:
-        """The Save-format document (grid-placing any auto-positioned parts)."""
+    def subcircuit(self, name: str, label: str = "") -> "SubcircuitDef":
+        """Start a reusable subcircuit definition. Build its body with the same
+        ``add``/``wire``/``probe`` calls, mark its boundary with ``.port(...)``
+        and expose parameters with ``.export(...)``; then ``instantiate`` it::
+
+            sub = b.subcircuit("wdm_drop", "WDM Drop")
+            ring = sub.add("waveguide")
+            sub.wire(sub.port("in", "optical"), ring.p1)
+            sub.export("resonance_nm", 1550, (ring, "wavelength_nm"))
+            x1 = b.instantiate("wdm_drop", resonance_nm=1548)
+        """
+        if name in self.subcircuits:
+            raise ValueError(f"duplicate subcircuit {name!r}")
+        d = SubcircuitDef(name, label, self.baud)
+        self.subcircuits[name] = d
+        return d
+
+    def instantiate(self, name: str, ref: str | None = None,
+                    x: float | None = None, y: float | None = None,
+                    rot: int = 0, **params) -> _Part:
+        """Place an instance of a subcircuit definition; ``**params`` set its
+        exported parameters (SI-suffix strings accepted). Same handle as
+        :meth:`add`."""
+        return self.add(name, ref=ref, x=x, y=y, rot=rot, **params)
+
+    def _grid(self) -> None:
+        """Assign a left-to-right grid to any auto-positioned parts."""
         for i, ref in enumerate(self._auto):
             self.instances[ref]["x"] = 40 + 180 * (i % 6)
             self.instances[ref]["y"] = 60 + 140 * (i // 6)
-        return {"title": title,
-                "schematic": {"instances": self.instances, "wires": self.wires,
-                              "probes": self.probes, "notes": [],
-                              "globals": {"baud": self.baud}},
+        self._auto = []
+
+    def _schematic_dict(self) -> dict:
+        self._grid()
+        sch = {"instances": self.instances, "wires": self.wires,
+               "probes": self.probes, "notes": [],
+               "globals": {"baud": self.baud}}
+        if self.subcircuits:
+            sch["subcircuits"] = {n: d.definition()
+                                  for n, d in self.subcircuits.items()}
+        return sch
+
+    def doc(self, title: str = "", analysis: dict | None = None) -> dict:
+        """The Save-format document (grid-placing any auto-positioned parts)."""
+        return {"title": title, "schematic": self._schematic_dict(),
                 "analysis": analysis}
 
     def schematic(self) -> Schematic:
         return Schematic(self.doc())
 
     def __repr__(self) -> str:
+        subs = (f", {len(self.subcircuits)} subcircuits"
+                if self.subcircuits else "")
         return (f"<Builder: {len(self.instances)} instances, "
-                f"{len(self.wires)} wires, {len(self.probes)} probes>")
+                f"{len(self.wires)} wires, {len(self.probes)} probes{subs}>")
+
+
+class SubcircuitDef(Builder):
+    """A subcircuit definition under construction — a :class:`Builder` whose
+    body becomes a reusable, parameterized component. Add ``port`` boundaries
+    with :meth:`port` and expose inner settings with :meth:`export`."""
+
+    def __init__(self, name: str, label: str = "", baud: float = 10e9):
+        super().__init__(baud)
+        self.name = name
+        self.label = label or name
+        self.params: list[dict] = []
+
+    def port(self, name: str, domain: str = "optical",
+             ref: str | None = None, **kw) -> str:
+        """Declare a boundary port (a ``port`` pseudo-component) and return its
+        pin endpoint, ready to wire to the internal net you want to expose::
+
+            sub.wire(sub.port("in", "optical"), ring.p1)
+
+        ``domain`` is "optical" or "electrical" (drives the editor's wiring
+        checks). A subcircuit instance shows one pin per declared port."""
+        if domain not in ("optical", "electrical"):
+            raise ValueError(f"port domain must be optical/electrical, got {domain!r}")
+        return self.add("port", ref=ref, name=name, domain=domain, **kw).p
+
+    def export(self, name: str, default, bind) -> None:
+        """Expose an instance parameter as a subcircuit parameter. ``bind`` is
+        one binding or a list of them; each is a ``"REF.param"`` string or a
+        ``(part_or_ref, param)`` pair. Every binding is set to the instance's
+        value (or ``default``) at flatten time."""
+        self.params.append({"name": name, "default": _maybe_si(default),
+                            "bind": _norm_binds(bind)})
+
+    def definition(self) -> dict:
+        """The definition dict embedded under ``schematic.subcircuits`` — its
+        own instances/wires/probes plus the exported-parameter list."""
+        self._grid()
+        return {"name": self.name, "label": self.label, "params": self.params,
+                "schematic": {"instances": self.instances, "wires": self.wires,
+                              "probes": self.probes}}
+
+    def doc(self, title: str = "", analysis: dict | None = None) -> dict:
+        raise TypeError("a SubcircuitDef is not a standalone document — "
+                        "instantiate it in the parent Builder instead")
+
+
+def _norm_binds(bind) -> list[dict]:
+    """Normalize an ``export`` binding spec to ``[{"instance", "param"}, ...]``.
+    Accepts ``"REF.param"``, ``(part_or_ref, "param")``, or a list of those."""
+    if isinstance(bind, str):
+        specs = [bind]
+    elif (isinstance(bind, tuple) and len(bind) == 2
+          and not isinstance(bind[0], (list, tuple))):
+        specs = [bind]                       # a single (ref, param) pair
+    else:
+        specs = list(bind)
+    out = []
+    for spec in specs:
+        if isinstance(spec, str):
+            inst, _, param = spec.partition(".")
+            if not param:
+                raise ValueError(f"binding {spec!r} must be 'REF.param'")
+        else:
+            inst, param = spec
+            inst = inst.ref if isinstance(inst, _Part) else str(inst)
+        out.append({"instance": str(inst), "param": str(param)})
+    return out

@@ -2372,11 +2372,31 @@ function collectAnalysisBase() {
   // from Rx FFE / Rx DFE blocks placed on the schematic (read server-side).
   const lp = $("link-probe").value;
   if (lp) a.link = { probe: lp };
+  // coherent link: auto-wire the report from a probed coherent_rx (I/Q rails)
+  const coh = coherentConfig();
+  if (coh) a.coherent = coh;
   const nzSeeds = parseInt($("an-nz-seeds").value);
   if (nzSeeds >= 1) {
     a.noise = { seeds: nzSeeds, bw: parseSI($("an-nz-bw").value) || 50e9 };
   }
   return a;
+}
+
+// Build the coherent-report config by locating a probed coherent_rx: its
+// i_p / q_p output nets give the in-phase and quadrature probe names.
+function coherentConfig() {
+  const insts = state.instances || {};
+  const probes = state.probes || [];
+  const probeOf = (inst, port) => {
+    const p = probes.find((pr) => pr.at === `${inst},${port}`);
+    return p ? p.name : null;
+  };
+  for (const [name, inst] of Object.entries(insts)) {
+    if (inst.type !== "coherent_rx") continue;
+    const pi = probeOf(name, "i_p"), pq = probeOf(name, "q_p");
+    if (pi && pq) return { probe_i: pi, probe_q: pq };
+  }
+  return null;
 }
 
 function applyAnalysis(a) {
@@ -2601,7 +2621,7 @@ async function runSim() {
   status.className = "ok";
   $("results").classList.remove("collapsed");
   if (res.kind === "op") { renderOpTable(res); setResultsTab("op"); }
-  else if (res.pulse || res.optim) {
+  else if (res.pulse || res.optim || res.coherent) {
     renderPlots(res); renderLink(); setResultsTab("link");
   }
   else {
@@ -3214,6 +3234,90 @@ function renderEye() {
 }
 
 // ---------------------------------------------------------------------------
+// coherent link report: constellation scatter + EVM / per-cluster EVM / BER
+// ---------------------------------------------------------------------------
+function drawConstellation(canvas, coh) {
+  const W = canvas.width, H = canvas.height;
+  const ctx = canvas.getContext("2d");
+  ctx.fillStyle = "#121218";
+  ctx.fillRect(0, 0, W, H);
+  const m = 30, plotX = m, plotY = m, plotW = W - 2 * m, plotH = H - 2 * m;
+  // symmetric range from the reference constellation (with headroom)
+  let lim = 0;
+  for (let i = 0; i < coh.const_re.length; i++)
+    lim = Math.max(lim, Math.abs(coh.const_re[i]), Math.abs(coh.const_im[i]));
+  lim *= 1.35 || 1;
+  if (!(lim > 0)) lim = 1.5;
+  const px = (x) => plotX + (x + lim) / (2 * lim) * plotW;
+  const py = (y) => plotY + plotH - (y + lim) / (2 * lim) * plotH;
+  // axes
+  ctx.strokeStyle = "#33334a"; ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(px(-lim), py(0)); ctx.lineTo(px(lim), py(0));
+  ctx.moveTo(px(0), py(-lim)); ctx.lineTo(px(0), py(lim));
+  ctx.stroke();
+  // received cloud
+  const n = coh.rx_re.length;
+  ctx.fillStyle = coh.counted.ber > 1e-2
+    ? "rgba(240,143,176,0.5)" : "rgba(110,203,245,0.45)";
+  const alpha = Math.max(0.15, Math.min(0.6, 400 / Math.max(n, 1)));
+  ctx.globalAlpha = alpha;
+  for (let i = 0; i < n; i++) {
+    ctx.beginPath();
+    ctx.arc(px(coh.rx_re[i]), py(coh.rx_im[i]), 1.6, 0, 2 * Math.PI);
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+  // reference points
+  ctx.fillStyle = "#ffb74d";
+  for (let i = 0; i < coh.const_re.length; i++) {
+    ctx.beginPath();
+    ctx.arc(px(coh.const_re[i]), py(coh.const_im[i]), 3, 0, 2 * Math.PI);
+    ctx.fill();
+  }
+}
+
+function renderCoherent(holder, coh) {
+  const c = coh.counted;
+  const berTxt = c.bit_errors === 0
+    ? `0 / ${c.bits} bits (< ${(1 / Math.max(c.bits, 1)).toExponential(1)})`
+    : `${c.bit_errors} / ${c.bits} bits = ${c.ber.toExponential(2)}`;
+  const cfo = Math.abs(coh.freq_offset_hz) > 1
+    ? `${fmtSI(coh.freq_offset_hz)}Hz` : "—";
+  // per-cluster EVM (16/64-QAM): compact worst/mean summary
+  const cl = coh.clusters || [];
+  const evms = cl.filter((x) => x.count > 0).map((x) => x.evm);
+  const clTxt = evms.length
+    ? `${(Math.min(...evms) * 100).toFixed(1)}–${(Math.max(...evms) * 100).toFixed(1)}%
+       (mean ${(evms.reduce((a, b) => a + b, 0) / evms.length * 100).toFixed(1)}%)`
+    : "—";
+  holder.insertAdjacentHTML("beforeend", `
+    <div class="link-grid">
+      <table id="link-table">
+        <tr><th>modulation</th><td>${coh.name} (vs ${coh.pattern},
+          UI ${fmtSI(coh.ui)}s)</td></tr>
+        <tr><th>EVM (rms)</th><td><b>${coh.evm_pct.toFixed(2)}%</b>
+          (${coh.evm_db.toFixed(1)} dB, SNR ${coh.snr_db.toFixed(1)} dB)</td></tr>
+        <tr><th>per-cluster EVM</th><td>${clTxt}</td></tr>
+        <tr><th>counted BER</th><td>${berTxt}</td></tr>
+        <tr><th>counted SER</th><td>${c.sym_errors} / ${c.symbols} symbols</td></tr>
+        <tr><th>EVM-fit BER</th><td>${coh.ber_evm.toExponential(2)}</td></tr>
+        <tr><th>DSP</th><td>eq: ${coh.eq}, CPR: ${coh.cpr}, CFO ${cfo},
+          lag ${coh.lag}</td></tr>
+      </table>
+      <div id="link-plot" style="display:flex;align-items:center;
+        justify-content:center"></div>
+    </div>`);
+  const box = holder.querySelector("#link-plot");
+  const side = Math.max(220, Math.min(box.clientWidth || 360,
+    $("results").clientHeight - 40));
+  const canvas = document.createElement("canvas");
+  canvas.width = side; canvas.height = side;
+  canvas.style.maxWidth = "100%";
+  box.appendChild(canvas);
+  drawConstellation(canvas, coh);
+}
+
 // link report tab: BER/Q metrics + bathtub (transient) or pulse/COM (pulse)
 // ---------------------------------------------------------------------------
 function renderLink() {
@@ -3250,6 +3354,8 @@ function renderLink() {
     });
     // fall through: also show link/pulse cards from the final run, if any
   }
+  const coh = lastResult?.coherent;
+  if (coh) { renderCoherent(holder, coh); return; }
   const rep = lastResult?.link, pul = lastResult?.pulse;
   if (opt && !rep && !pul) return;
   if (!rep && !pul) {
@@ -3257,6 +3363,8 @@ function renderLink() {
       No link report. Transient: pick a received probe in the
       &ldquo;BER vs&rdquo; select above (needs a PRBS source), then Run.
       Drop Rx&nbsp;FFE / Rx&nbsp;DFE blocks on the receive path to equalize.
+      Coherent link: build a QAM source &rarr; IQ&nbsp;modulator &rarr;
+      coherent&nbsp;receiver and set the coherent report&rsquo;s I/Q probes.
       Or run the Pulse&nbsp;/&nbsp;COM analysis.</div>`;
     return;
   }

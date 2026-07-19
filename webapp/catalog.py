@@ -1331,6 +1331,26 @@ CATALOG.update({
         "ports": _ports("p1:e"),
         "params": [],
     },
+    # Subcircuit boundary marker. Only meaningful inside a subcircuit
+    # definition sheet: its single pin `p` is the net exposed as the named
+    # external port. The netlist flattener (webapp/subcircuit.py) splices it
+    # onto the parent net and drops the marker, so `port` never reaches
+    # circulax — hence "pseudo".
+    "port": {
+        "label": "Subcircuit Port",
+        "category": "Subcircuit",
+        "doc": "Boundary port of a subcircuit definition. Name it and pick its "
+               "domain (optical/electrical); wire pin $p$ to the internal net "
+               "you want to expose. Instances of the subcircuit show one pin "
+               "per port.",
+        "ports": _ports("p:e"),
+        "pseudo": True,
+        "params": [
+            _p("name", "", "", "Port name", kind="text"),
+            _p("domain", "optical", "", "Domain", kind="enum",
+               choices=["optical", "electrical"]),
+        ],
+    },
 })
 
 

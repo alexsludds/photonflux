@@ -852,6 +852,38 @@ CATALOG: dict[str, dict] = {
         ],
         "lti": "fiber",
     },
+    "fiber_nl": {
+        "label": "Fiber (nonlinear, split-step)",
+        "category": "Channels",
+        "doc": "Nonlinear fibre by the split-step Fourier method on the "
+               "coherent field: attenuation, dispersion (beta2/beta3) and the "
+               "Kerr effect ($\\gamma\\,[1/\\mathrm{W/km}]$) solved as a cascade "
+               "of $n_{seg}$ dispersion segments interleaved with the "
+               "instantaneous nonlinear phase $\\exp(-j\\gamma|E|^2 dz)$ — SPM, "
+               "XPM and four-wave mixing emerge from the field evolution. Set "
+               "$\\gamma$ = 0 to recover the linear fiber_cd all-pass; raise "
+               "n_seg for accuracy (each segment adds n_poles states, so keep "
+               "it modest for long transients). D/S and lambda0 follow the same "
+               "G.652 convention as fiber_cd. The batch reference solver "
+               "webapp/ssfm.py shares the physics and pins the soliton / SPM / "
+               "FWM analytics. Keep fit_bw ~3x the signal bandwidth.",
+        "ports": _ports("p1:o p2:o"),
+        "params": [
+            _p("length_km", 10.0, "km", "Length", rebuild=True),
+            _p("D_ps", 17.0, "ps/nm/km", "Dispersion D", rebuild=True),
+            _p("S_ps", 0.0, "ps/nm^2/km", "Slope S (S0 if l0 set)",
+               rebuild=True),
+            _p("lambda0_nm", 0.0, "nm", "Zero-disp. l0 (0 = use D)",
+               rebuild=True),
+            _p("gamma_per_W_km", 1.3, "1/W/km", "Kerr gamma", rebuild=True),
+            _p("lambda_nm", 1550.0, "nm", "Wavelength", rebuild=True),
+            _p("atten_db_km", 0.2, "dB/km", "Attenuation", rebuild=True),
+            _p("n_seg", 20, "", "Split-step segments", rebuild=True),
+            _p("fit_bw", 60e9, "Hz", "Fit bandwidth", rebuild=True),
+            _p("n_poles", 12, "", "Fit order / segment", rebuild=True),
+        ],
+        "lti": "fiber_nl",
+    },
     # --- passive integrated optics (coherent field, wavelength-aware) -------
     "grating": {
         "label": "Grating Coupler",
@@ -1768,6 +1800,52 @@ def _lti_field_drop(poles, res_d, res_t):
     return FieldDrop
 
 
+def _fiber_nl_field(poles, res, d, gamma: float, dz: float, n_seg: int):
+    """Nonlinear-fibre split-step block on the coherent field (p1 -> p2).
+
+    A causal, in-transient split-step Fourier method: ``n_seg`` identical
+    dispersion segments (each the linear all-pass over ``dz``, realised by the
+    complex diagonal state-space ``poles``/``res``/``d`` from ``lti._fit_dispersion``)
+    interleaved with the instantaneous Kerr phase ``exp(-j*gamma*|E|^2*dz)``.
+    Every segment owns ``len(poles)`` complex states ``dx/dt = p x + u_seg``
+    (``u_seg`` its input field); its output ``sum(res*x) + d*u_seg`` is Kerr-
+    rotated and fed to the next segment. SPM/XPM/FWM emerge from the field
+    evolution, and ``gamma = 0`` collapses to ``n_seg`` cascaded dispersion
+    segments == the full-length ``fiber_cd``. This is a first-order (Lie) split
+    — dispersion then Kerr per segment — so accuracy is set by ``n_seg`` (raise
+    it for strong nonlinearity); the batch reference solver ``webapp/ssfm.py``
+    uses the symmetric split and shares the beta2/beta3/gamma definitions, and
+    is what the soliton / SPM / FWM analytics are pinned against.
+    """
+    import jax.numpy as jnp
+    from circulax.components.base_component import Signals, States, component
+
+    p_c = jnp.asarray(poles)
+    c_c = jnp.asarray(res)
+    d_c = complex(d)
+    n = len(poles)
+    g_dz = float(gamma * dz)
+    st = tuple(f"x{j}_{i}" for j in range(n_seg) for i in range(n)) + ("i_out",)
+
+    @component(ports=("p1", "p2"), states=st)
+    def FiberNL(signals: Signals, s: States) -> tuple[dict, dict]:
+        u = signals.p1
+        f = {"p1": u}                                  # matched input tap
+        q: dict = {}
+        for j in range(n_seg):
+            x = jnp.stack([getattr(s, f"x{j}_{i}") for i in range(n)])
+            v = jnp.sum(c_c * x) + d_c * u             # dispersion over dz
+            for i in range(n):
+                f[f"x{j}_{i}"] = -(p_c[i] * x[i] + u)
+                q[f"x{j}_{i}"] = x[i]
+            u = v * jnp.exp(-1j * g_dz * (v * jnp.conj(v)).real)   # Kerr over dz
+        f["p2"] = s.i_out
+        f["i_out"] = signals.p2 - u
+        return f, q
+
+    return FiberNL
+
+
 # ---------------------------------------------------------------------------
 # transient-noise variants: same physics + a baked per-instance noise bank
 # (unit-variance Gaussian rows, one per seed; runtime param seed_idx picks
@@ -2199,6 +2277,9 @@ def build_models(sky130_geoms: dict[str, tuple[str, float, float]] | None = None
         elif "cplx_drop" in payload:
             poles, res_d, res_t = payload["cplx_drop"]
             models[key] = _lti_field_drop(poles, res_d, res_t)
+        elif "fiber_nl" in payload:
+            poles, res, d, gamma, dz, n_seg = payload["fiber_nl"]
+            models[key] = _fiber_nl_field(poles, res, d, gamma, dz, n_seg)
         else:
             poles, res, d = payload["cplx"]
             models[key] = _lti_field(poles, res, d)

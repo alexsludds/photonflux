@@ -396,7 +396,7 @@ def receive(rx: np.ndarray, const: np.ndarray, m: int, cfg: dict,
         log.append(f"coherent: DD-LMS EQ {ntaps} taps, mu={mu:g}")
     else:
         # sample at symbol centres (best of sps phases if pulse-shaped)
-        syms = _downsample(sig, sps, tx, const)
+        syms = _downsample(sig, sps, const)
     # 4. frequency-offset removal
     f_off = 0.0
     if cfg.get("freq_recover"):
@@ -414,7 +414,7 @@ def receive(rx: np.ndarray, const: np.ndarray, m: int, cfg: dict,
     return {"syms": syms, "freq_offset_hz": float(f_off), "eq": eq, "cpr": cpr}
 
 
-def _downsample(sig: np.ndarray, sps: int, tx, const) -> np.ndarray:
+def _downsample(sig: np.ndarray, sps: int, const) -> np.ndarray:
     """Pick the symbol-rate sampling phase with the tightest constellation."""
     if sps <= 1:
         return sig

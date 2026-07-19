@@ -3246,7 +3246,7 @@ function drawConstellation(canvas, coh) {
   let lim = 0;
   for (let i = 0; i < coh.const_re.length; i++)
     lim = Math.max(lim, Math.abs(coh.const_re[i]), Math.abs(coh.const_im[i]));
-  lim *= 1.35 || 1;
+  lim *= 1.35;
   if (!(lim > 0)) lim = 1.5;
   const px = (x) => plotX + (x + lim) / (2 * lim) * plotW;
   const py = (y) => plotY + plotH - (y + lim) / (2 * lim) * plotH;

@@ -113,8 +113,8 @@ CATALOG: dict[str, dict] = {
                "$i_Q = R\\,\\mathrm{Im}(E_{sig}E_{lo}^*)$ — the complex "
                "baseband $r=i_I+j i_Q$ the coherent DSP demodulates. The lo "
                "port takes a second CW laser (its linewidth sets the phase "
-               "noise the carrier recovery must track). Differential outputs "
-               "i_p/i_n (I) and q_p/q_n (Q).",
+               "noise the carrier recovery must track). Differential current "
+               "outputs i_p/i_n (I) and q_p/q_n (Q).",
         "ports": _ports("sig:o lo:o i_p:e i_n:e q_p:e q_n:e"),
         "params": [
             _p("R", 0.8, "A/W", "Responsivity"),
@@ -1562,7 +1562,7 @@ def _coherent_rx():
     i.e. the complex baseband ``r = i_I + j*i_Q = R * E_sig * conj(E_lo)`` that
     the coherent DSP (``webapp/coherent.py``) demodulates. Both optical inputs
     are matched absorbers (like the photodiode, no reflection); the LO port
-    takes a second ``cw_laser``. Differential current outputs ``ip/in`` (I) and
+    takes a second ``cw_laser``. Differential current outputs ``i_p/i_n`` (I) and
     ``qp/qn`` (Q).
     """
     from circulax.components.base_component import Signals, States, component

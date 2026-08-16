@@ -1,0 +1,52 @@
+diff --git a/pyproject.toml b/pyproject.toml
+new file mode 100644
+index 0000000..b9fb549
+--- /dev/null
++++ b/pyproject.toml
+@@ -0,0 +1,3 @@
++[build-system]
++requires = ["setuptools>=68", "wheel", "Cython>=3", "numpy>=2"]
++build-backend = "setuptools.build_meta"
+diff --git a/stateye/eye.py b/stateye/eye.py
+index ca7c465..bf49b18 100644
+--- a/stateye/eye.py
++++ b/stateye/eye.py
+@@ -587,12 +587,12 @@ class Eye:
+ 
+         if not bw:
+             _cmap = copy.copy(
+-                matplotlib.cm.get_cmap("inferno")
++                matplotlib.colormaps["inferno"]
+             )  # was "coolwarm" before
+             _cmap.set_under("k")
+             norm = matplotlib.colors.LogNorm(vmin=0.1)
+         else:
+-            _cmap = copy.copy(matplotlib.cm.get_cmap("Greys"))
++            _cmap = copy.copy(matplotlib.colormaps["Greys"])
+             _cmap.set_under("w")
+             norm = matplotlib.colors.LogNorm(vmax=1.0)
+ 
+@@ -656,7 +656,7 @@ class Eye:
+         # Run hist analysis (if it hasn't run already)
+         _ = self.get_measurements()
+ 
+-        _cmap = copy.copy(matplotlib.cm.get_cmap("inferno"))  # was "coolwarm" before
++        _cmap = copy.copy(matplotlib.colormaps["inferno"])  # was "coolwarm" before
+         _cmap.set_under("k")
+         norm = matplotlib.colors.LogNorm(vmin=1e-15)
+ 
+diff --git a/stateye/measurements/utilities.pyx b/stateye/measurements/utilities.pyx
+index d282540..386f672 100644
+--- a/stateye/measurements/utilities.pyx
++++ b/stateye/measurements/utilities.pyx
+@@ -72,8 +72,8 @@ cpdef long[:] filter(
+ 	cdef long n = len(data)
+ 	cdef long i
+ 	cdef long j
+-	cdef cnp.ndarray[cnp.int_t, ndim=1] filter = np.concatenate([fbefore, [value], fafter], dtype=int)
+-	cdef cnp.ndarray[cnp.int_t, ndim=1] matches = np.zeros(n, dtype=int)
++	cdef cnp.ndarray[cnp.int64_t, ndim=1] filter = np.concatenate([fbefore, [value], fafter], dtype=int)
++	cdef cnp.ndarray[cnp.int64_t, ndim=1] matches = np.zeros(n, dtype=int)
+ 	cdef bint match
+ 
+ 	for i in range(n - (nb + na + 1)):

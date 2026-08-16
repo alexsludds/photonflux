@@ -11,10 +11,15 @@ requires-python = ">=3.10"
 dependencies = [
     "numpy",
     "matplotlib",
+    "scipy",
 ]
 
 [project.optional-dependencies]
 dev = ["pytest"]
+# Eye-diagram / TDEC measurement (photonflux.tdec). Upstream stateye does not
+# build on NumPy 2 and has no pyproject.toml; see docs/stateye-integration-plan.md
+# section 2 for the two-line patch this needs until that lands.
+eye = ["stateye @ git+https://github.com/AyarLabs/stateye"]
 
 [project.scripts]
 photonflux = "photonflux.cli:main"

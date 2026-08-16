@@ -129,6 +129,7 @@ as named examples 36–42 in the web app. One-line index:
 | `link_cmos.py` | full CW + MZM link, transistor driver + CMOS-inverter TIA (no PDK) | `out/link_cmos.png` |
 | `link_sky130.py` | the same link with **real SKY130 BSIM4 FETs** | `out/link_sky130.png` |
 | `ring_mod_sky130.py` | Verilog-A microring modulator driven by a SKY130 inverter; DC tuning + optical eye | `out/ring_mod.png` |
+| `mrm_tdec_sky130.py` | **53.125 GBd NRZ transmitter co-optimization for OMA − TDEC**, measured by [stateye](https://github.com/AyarLabs/stateye): bus gap × laser lock point × SKY130 inverter (W_p, W_n, L), full-period PRBS-13 through a Bessel–Thomson reference receiver. Needs `pip install -e '.[eye]'` | `out/mrm_tdec_*.png` |
 | `soa_fp_laser.py` | Fabry-Perot laser from an SOA between two mirrors — lasing emerges from the loop | `out/soa_fp_laser.png` |
 | `soa_vernier_laser.py` | Vernier laser seeded by ASE noise, with a live one-FSR mode hop | `out/soa_vernier_laser.png` |
 | `edfa_wdm.py` | **EDFA gain dynamics** (`models/optical_field/edfa.va`): drop 7 of 8 WDM channels and the surviving channel surges as the shared ms-lifetime erbium reservoir refills — settled gains, surge, and the recovery time constant (∝ `tau_c`) pinned to the analytic reservoir; a C-band gain-tilt spectrum + ASE/NF floor alongside | `out/edfa_wdm.png` |

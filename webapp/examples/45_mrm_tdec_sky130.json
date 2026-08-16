@@ -1,0 +1,297 @@
+{
+  "title": "MRM + SKY130 driver, 53 GBd NRZ",
+  "group": "Links & receivers",
+  "description": "Microring modulator driven by a real SKY130 CMOS inverter at 53.125 GBd \u2014 the transmitter that examples/mrm_tdec_sky130.py optimizes for OMA - TDEC",
+  "schematic": {
+    "globals": {
+      "baud": 53125000000.0
+    },
+    "notes": [
+      {
+        "x": 40,
+        "y": -880,
+        "title": "53.125 GBd NRZ microring transmitter \u2014 what this testbench does",
+        "lines": [
+          "PRBS1 drives a real SKY130 inverter (MP/MN, BSIM4.8 via OSDI).",
+          "Its output node vdrv is the ring electrode, so RING1's resonance",
+          "swings by dl_dv_pm = 45 pm/V across the 1.8 V rail. LAS1 is parked",
+          "-33 pm off the cold resonance, on the slope, so that swing becomes",
+          "optical amplitude at the through port (probe popt). PD1 + RL1 turn",
+          "it back into a voltage (probe vout).",
+          "",
+          "Open the Eye tab: the UI is 1/baud = 18.8 ps, set from the top-bar",
+          "baud field. The eye is visibly ISI-limited, and that is the real",
+          "result \u2014 the measured electrode edge is ~16 ps 20-80% against an",
+          "18.8 ps UI, so at this rate the 130 nm / 1.8 V driver is the",
+          "bottleneck, not the ring (whose photon-lifetime f_3dB is 44.5 GHz).",
+          "",
+          "TDEC objectives exist in the Optimize pane -- switch Analysis ->",
+          "Optimize and set  objective = omatdec:popt  (OMA - TDEC [dBm],",
+          "maximized) or  tdec:popt  (TDEC [dB], minimized). Any optical probe",
+          "works; an electrical one is rejected.",
+          "",
+          "But the canvas CANNOT host the full-fidelity co-optimization, and the",
+          "arithmetic is worth knowing rather than discovering:",
+          "  * the reportable _8180 metrics need runs of >=8 identical bits, so",
+          "    a full PRBS-13 period -- 8191 UI.",
+          "  * TDEC samples 0.04 UI histogram windows, so it needs ~25 samples/UI.",
+          "  * 8191 x 25 = 204,775 points, and webapp/simulate.py caps a transient",
+          "    at 20,000. Ask for more and you silently get 2.4 samples/UI, which",
+          "    crashes stateye's bathtub fit on an empty CDF.",
+          "At the cap you choose between 8191 UI at useless resolution or ~800 UI",
+          "with about one 8-run in it -- neither supports _8180.",
+          "",
+          "So the objective here falls back to _4140, and on THIS design that is",
+          "not trustworthy either: over a 202 UI record a kappa2 sweep gives",
+          "    0.06 -> -8.30   0.08 -> -8.08   0.10 -> -8.09",
+          "    0.12 -> -8.51   0.16 -> -8.05   [dBm]",
+          "and 0.12 sitting 0.4 dB below both neighbours is not physics. It",
+          "survives lowering the assumed receiver noise S (floor -8.52 -> -15.5",
+          "dBm, same outlier), so it is the record length, not the saturation",
+          "floor. Use the canvas for intuition and sweeps by hand.",
+          "",
+          "THE FULL CO-OPTIMIZATION IS examples/mrm_tdec_sky130.py optimize --",
+          "bus gap x lock point x inverter (W_p, W_n, L), scored on full-period",
+          "PRBS-13, with the (W,L) grid handled discretely (as SKY130's binned",
+          "cards require) and a cheap PRBS-9 surrogate for the inner loop. Hours,",
+          "not minutes, and it writes out/mrm_tdec_results.csv.",
+          "",
+          "Also worth turning by hand:",
+          "  RING1.kappa2  0.076 is critical coupling for this ring; below it",
+          "                undercoupled (high ER, low OMA), above the reverse.",
+          "  MP1.w_um / MN1.w_um  driver strength -- deliberately NOT in the",
+          "                optimize box: a new (W,L) pair compiles a fresh",
+          "                SKY130 card (41-80 s once, then cached), too slow",
+          "                for an inner loop. The script does those as a",
+          "                discrete outer grid."
+        ]
+      }
+    ],
+    "instances": {
+      "LAS1": {
+        "type": "cw_laser",
+        "x": 40,
+        "y": 200,
+        "rot": 0,
+        "settings": {
+          "wavelength_nm": 1309.967,
+          "power": 0.001
+        }
+      },
+      "RING1": {
+        "type": "ring_mod",
+        "x": 300,
+        "y": 150,
+        "rot": 0,
+        "settings": {
+          "lambda_nm": 1309.967,
+          "lambda_res_nm": 1310.0,
+          "radius_um": 7.5,
+          "n_g": 4.0,
+          "n_eff": 2.4,
+          "loss_db_m": 7000.0,
+          "kappa2": 0.1,
+          "dl_dv_pm": 45.0,
+          "cj_ff_um": 0.5
+        }
+      },
+      "PD1": {
+        "type": "photodiode",
+        "x": 560,
+        "y": 200,
+        "rot": 0,
+        "settings": {
+          "R": 0.8,
+          "Cj": 1e-14
+        }
+      },
+      "RL1": {
+        "type": "resistor",
+        "x": 680,
+        "y": 260,
+        "rot": 0,
+        "settings": {
+          "R": 1000.0
+        }
+      },
+      "PRBS1": {
+        "type": "prbs",
+        "x": 40,
+        "y": -80,
+        "rot": 0,
+        "settings": {
+          "mode": "nrz",
+          "order": 13,
+          "v0": 0.0,
+          "v1": 1.8,
+          "tr": 7e-12,
+          "seed": 1
+        }
+      },
+      "VDD1": {
+        "type": "vdc",
+        "x": 300,
+        "y": -180,
+        "rot": 0,
+        "settings": {
+          "V": 1.8
+        }
+      },
+      "MP1": {
+        "type": "sky130_pfet",
+        "x": 300,
+        "y": -60,
+        "rot": 0,
+        "settings": {
+          "w_um": 30.0,
+          "l_um": 0.18
+        }
+      },
+      "MN1": {
+        "type": "sky130_nfet",
+        "x": 300,
+        "y": 60,
+        "rot": 0,
+        "settings": {
+          "w_um": 15.0,
+          "l_um": 0.18
+        }
+      },
+      "GND1": {
+        "type": "ground",
+        "x": 60,
+        "y": 300,
+        "rot": 0,
+        "settings": {}
+      },
+      "GND2": {
+        "type": "ground",
+        "x": 180,
+        "y": 120,
+        "rot": 0,
+        "settings": {}
+      },
+      "GND3": {
+        "type": "ground",
+        "x": 420,
+        "y": 140,
+        "rot": 0,
+        "settings": {}
+      },
+      "GND4": {
+        "type": "ground",
+        "x": 620,
+        "y": 320,
+        "rot": 0,
+        "settings": {}
+      },
+      "GND5": {
+        "type": "ground",
+        "x": 420,
+        "y": -180,
+        "rot": 0,
+        "settings": {}
+      }
+    },
+    "wires": [
+      {
+        "from": "LAS1,p1",
+        "to": "RING1,pin"
+      },
+      {
+        "from": "LAS1,p2",
+        "to": "GND1,p1"
+      },
+      {
+        "from": "RING1,pout",
+        "to": "PD1,po_p"
+      },
+      {
+        "from": "PD1,po_n",
+        "to": "GND4,p1"
+      },
+      {
+        "from": "PD1,an",
+        "to": "GND4,p1"
+      },
+      {
+        "from": "PD1,cat",
+        "to": "RL1,p1"
+      },
+      {
+        "from": "RL1,p2",
+        "to": "GND4,p1"
+      },
+      {
+        "from": "PRBS1,p1",
+        "to": "MP1,g"
+      },
+      {
+        "from": "PRBS1,p1",
+        "to": "MN1,g"
+      },
+      {
+        "from": "PRBS1,p2",
+        "to": "GND2,p1"
+      },
+      {
+        "from": "VDD1,p1",
+        "to": "MP1,s"
+      },
+      {
+        "from": "VDD1,p1",
+        "to": "MP1,b"
+      },
+      {
+        "from": "VDD1,p2",
+        "to": "GND5,p1"
+      },
+      {
+        "from": "MP1,d",
+        "to": "MN1,d"
+      },
+      {
+        "from": "MN1,s",
+        "to": "GND3,p1"
+      },
+      {
+        "from": "MN1,b",
+        "to": "GND3,p1"
+      },
+      {
+        "from": "MP1,d",
+        "to": "RING1,vp"
+      },
+      {
+        "from": "RING1,vn",
+        "to": "GND3,p1"
+      },
+      {
+        "from": "RING1,gnd",
+        "to": "GND3,p1"
+      }
+    ],
+    "probes": [
+      {
+        "name": "vdrv",
+        "at": "MP1,d",
+        "color": "#6ecbf5"
+      },
+      {
+        "name": "popt",
+        "at": "RING1,pout",
+        "color": "#e6862c"
+      },
+      {
+        "name": "vout",
+        "at": "PD1,cat",
+        "color": "#a78bfa"
+      }
+    ]
+  },
+  "analysis": {
+    "mode": "transient",
+    "t_stop": 3.8e-09,
+    "points": 4800
+  }
+}

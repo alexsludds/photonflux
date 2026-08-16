@@ -2336,7 +2336,10 @@ function collectAnalysisBase() {
       points: parseSI($("an-op-points").value) || 4000,
       optimize: {
         params, objective: obj,
-        maximize: !obj.startsWith("ber"),
+        // ber and tdec are penalties (lower is better); everything else,
+        // omatdec included, is a quantity to maximize. NB "omatdec" must not
+        // match the "tdec" test — OMA - TDEC is maximized.
+        maximize: !(obj.startsWith("ber") || obj.startsWith("tdec")),
         iters: parseInt($("an-op-iters").value) || 30,
       },
     };

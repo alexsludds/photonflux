@@ -52,6 +52,11 @@ FLOOR_TOL_DB = 0.02
 # below this means the pattern is wrong, not that the link is bad.
 MIN_SEGMENT_COUNT = 8
 
+# Shortest usable record, in unit intervals, after settling is discarded.
+# Measured: ~150 UI of this link fails inside stateye's histogram reductions;
+# ~200 UI is fine. 192 leaves margin without demanding a long transient.
+MIN_RECORD_UI = 192
+
 
 @dataclass
 class Measurement:
@@ -239,6 +244,17 @@ def measure(
         raise ValueError(
             f"settle_ui={settle_ui} discards the whole {p.size}-sample record")
     p = p[skip:]
+
+    # stateye needs enough symbols to lock a CDR and populate the level
+    # filters; below that its histogram reductions run on empty arrays and
+    # fail deep inside with an opaque "zero-size array to reduction
+    # operation" instead of telling you the record is too short.
+    n_ui = p.size / sps
+    if n_ui < MIN_RECORD_UI:
+        raise ValueError(
+            f"record is only {n_ui:.0f} UI after discarding {settle_ui} UI of "
+            f"settling; need >={MIN_RECORD_UI} for stateye to lock and fill "
+            "the level filters. Raise the transient's t_stop.")
 
     # half_ui is mandatory for TDEC: its 0.4/0.6 UI histogram windows are
     # referenced to the eye crossing. (stateye's README says "adaptive" is the

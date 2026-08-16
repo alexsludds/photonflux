@@ -1,14 +1,16 @@
 {
   "title": "MRM + SKY130 driver, 53 GBd NRZ",
   "group": "Links & receivers",
-  "description": "Microring modulator driven by a real SKY130 CMOS inverter at 53.125 GBd — the transmitter that examples/mrm_tdec_sky130.py optimizes for OMA - TDEC",
+  "description": "Microring modulator driven by a real SKY130 CMOS inverter at 53.125 GBd \u2014 the transmitter that examples/mrm_tdec_sky130.py optimizes for OMA - TDEC",
   "schematic": {
-    "globals": { "baud": 53125000000.0 },
+    "globals": {
+      "baud": 53125000000.0
+    },
     "notes": [
       {
         "x": 40,
-        "y": -620,
-        "title": "53.125 GBd NRZ microring transmitter — what this testbench does",
+        "y": -880,
+        "title": "53.125 GBd NRZ microring transmitter \u2014 what this testbench does",
         "lines": [
           "PRBS1 drives a real SKY130 inverter (MP/MN, BSIM4.8 via OSDI).",
           "Its output node vdrv is the ring electrode, so RING1's resonance",
@@ -19,23 +21,42 @@
           "",
           "Open the Eye tab: the UI is 1/baud = 18.8 ps, set from the top-bar",
           "baud field. The eye is visibly ISI-limited, and that is the real",
-          "result — the measured electrode edge is ~16 ps 20-80% against an",
+          "result \u2014 the measured electrode edge is ~16 ps 20-80% against an",
           "18.8 ps UI, so at this rate the 130 nm / 1.8 V driver is the",
           "bottleneck, not the ring (whose photon-lifetime f_3dB is 44.5 GHz).",
           "",
-          "Things worth turning:",
-          "  RING1.kappa2  0.10 -> 0.076 is critical coupling for this ring;",
-          "                below it undercoupled (high ER, low OMA), above it",
-          "                overcoupled (the reverse).",
-          "  RING1.lambda_nm  the lock point. 1309.967 is the -33 pm blue",
-          "                park; walk it through 1310.0 to see OMA collapse.",
-          "  MP.w_um / MN.w_um  driver strength. A new (W,L) pair compiles a",
-          "                fresh SKY130 card the first time (slow once).",
+          "TDEC objectives ARE available in the Optimize pane: switch Analysis ->",
+          "Optimize and set  objective = omatdec:popt  (OMA - TDEC in dBm,",
+          "maximized -- the spec-line number) or  tdec:popt  (TDEC in dB,",
+          "minimized -- a diagnostic). Any optical probe works; an electrical one",
+          "is rejected, since TDEC is measured on optical power.",
           "",
-          "TDEC itself is NOT computed here: it needs the stateye bridge in",
-          "photonflux.tdec and a full-period PRBS-13 (8191 bits, ~154 ns).",
-          "Run examples/mrm_tdec_sky130.py for the OMA - TDEC numbers; this",
-          "canvas is the same circuit to click through and sweep by hand."
+          "BUT read this before trusting a canvas optimum. Measured on this",
+          "design: over a 202 UI transient the objective is NOT reliable. A",
+          "kappa2 sweep at fixed lock point gives",
+          "    0.06 -> -8.30   0.08 -> -8.08   0.10 -> -8.09",
+          "    0.12 -> -8.51   0.16 -> -8.05   [dBm]",
+          "and 0.12 sitting 0.4 dB below both neighbours is not physics -- a",
+          "coupling sweep is smooth. It survives lowering the assumed receiver",
+          "noise S (which moves the saturation floor from -8.52 to -15.5 dBm and",
+          "leaves the same 4 dB outlier), so it is the short record, not the",
+          "floor: stateye's level estimation needs far more symbols than a",
+          "browser-length transient affords once the eye is this closed.",
+          "",
+          "So the canvas is for building intuition, and",
+          "examples/mrm_tdec_sky130.py -- full-period PRBS-13, 8191 bits -- is",
+          "the authoritative optimizer. The objective itself is the same code",
+          "(photonflux.tdec); only the record length differs. On a more open eye",
+          "(drop --baud, or widen the driver) the canvas optimize is usable.",
+          "",
+          "Also worth turning by hand:",
+          "  RING1.kappa2  0.076 is critical coupling for this ring; below it",
+          "                undercoupled (high ER, low OMA), above the reverse.",
+          "  MP1.w_um / MN1.w_um  driver strength -- deliberately NOT in the",
+          "                optimize box: a new (W,L) pair compiles a fresh",
+          "                SKY130 card (41-80 s once, then cached), too slow",
+          "                for an inner loop. The script does those as a",
+          "                discrete outer grid."
         ]
       }
     ],
@@ -45,7 +66,10 @@
         "x": 40,
         "y": 200,
         "rot": 0,
-        "settings": { "wavelength_nm": 1309.967, "power": 0.001 }
+        "settings": {
+          "wavelength_nm": 1309.967,
+          "power": 0.001
+        }
       },
       "RING1": {
         "type": "ring_mod",
@@ -69,14 +93,19 @@
         "x": 560,
         "y": 200,
         "rot": 0,
-        "settings": { "R": 0.8, "Cj": 1e-14 }
+        "settings": {
+          "R": 0.8,
+          "Cj": 1e-14
+        }
       },
       "RL1": {
         "type": "resistor",
         "x": 680,
         "y": 260,
         "rot": 0,
-        "settings": { "R": 1000.0 }
+        "settings": {
+          "R": 1000.0
+        }
       },
       "PRBS1": {
         "type": "prbs",
@@ -97,61 +126,165 @@
         "x": 300,
         "y": -180,
         "rot": 0,
-        "settings": { "V": 1.8 }
+        "settings": {
+          "V": 1.8
+        }
       },
       "MP1": {
         "type": "sky130_pfet",
         "x": 300,
         "y": -60,
         "rot": 0,
-        "settings": { "w_um": 30.0, "l_um": 0.18 }
+        "settings": {
+          "w_um": 30.0,
+          "l_um": 0.18
+        }
       },
       "MN1": {
         "type": "sky130_nfet",
         "x": 300,
         "y": 60,
         "rot": 0,
-        "settings": { "w_um": 15.0, "l_um": 0.18 }
+        "settings": {
+          "w_um": 15.0,
+          "l_um": 0.18
+        }
       },
-      "GND1": { "type": "ground", "x": 60, "y": 300, "rot": 0, "settings": {} },
-      "GND2": { "type": "ground", "x": 180, "y": 120, "rot": 0, "settings": {} },
-      "GND3": { "type": "ground", "x": 420, "y": 140, "rot": 0, "settings": {} },
-      "GND4": { "type": "ground", "x": 620, "y": 320, "rot": 0, "settings": {} },
-      "GND5": { "type": "ground", "x": 420, "y": -180, "rot": 0, "settings": {} }
+      "GND1": {
+        "type": "ground",
+        "x": 60,
+        "y": 300,
+        "rot": 0,
+        "settings": {}
+      },
+      "GND2": {
+        "type": "ground",
+        "x": 180,
+        "y": 120,
+        "rot": 0,
+        "settings": {}
+      },
+      "GND3": {
+        "type": "ground",
+        "x": 420,
+        "y": 140,
+        "rot": 0,
+        "settings": {}
+      },
+      "GND4": {
+        "type": "ground",
+        "x": 620,
+        "y": 320,
+        "rot": 0,
+        "settings": {}
+      },
+      "GND5": {
+        "type": "ground",
+        "x": 420,
+        "y": -180,
+        "rot": 0,
+        "settings": {}
+      }
     },
     "wires": [
-      { "from": "LAS1,p1", "to": "RING1,pin" },
-      { "from": "LAS1,p2", "to": "GND1,p1" },
-      { "from": "RING1,pout", "to": "PD1,po_p" },
-      { "from": "PD1,po_n", "to": "GND4,p1" },
-      { "from": "PD1,an", "to": "GND4,p1" },
-      { "from": "PD1,cat", "to": "RL1,p1" },
-      { "from": "RL1,p2", "to": "GND4,p1" },
-
-      { "from": "PRBS1,p1", "to": "MP1,g" },
-      { "from": "PRBS1,p1", "to": "MN1,g" },
-      { "from": "PRBS1,p2", "to": "GND2,p1" },
-
-      { "from": "VDD1,p1", "to": "MP1,s" },
-      { "from": "VDD1,p1", "to": "MP1,b" },
-      { "from": "VDD1,p2", "to": "GND5,p1" },
-      { "from": "MP1,d", "to": "MN1,d" },
-      { "from": "MN1,s", "to": "GND3,p1" },
-      { "from": "MN1,b", "to": "GND3,p1" },
-
-      { "from": "MP1,d", "to": "RING1,vp" },
-      { "from": "RING1,vn", "to": "GND3,p1" },
-      { "from": "RING1,gnd", "to": "GND3,p1" }
+      {
+        "from": "LAS1,p1",
+        "to": "RING1,pin"
+      },
+      {
+        "from": "LAS1,p2",
+        "to": "GND1,p1"
+      },
+      {
+        "from": "RING1,pout",
+        "to": "PD1,po_p"
+      },
+      {
+        "from": "PD1,po_n",
+        "to": "GND4,p1"
+      },
+      {
+        "from": "PD1,an",
+        "to": "GND4,p1"
+      },
+      {
+        "from": "PD1,cat",
+        "to": "RL1,p1"
+      },
+      {
+        "from": "RL1,p2",
+        "to": "GND4,p1"
+      },
+      {
+        "from": "PRBS1,p1",
+        "to": "MP1,g"
+      },
+      {
+        "from": "PRBS1,p1",
+        "to": "MN1,g"
+      },
+      {
+        "from": "PRBS1,p2",
+        "to": "GND2,p1"
+      },
+      {
+        "from": "VDD1,p1",
+        "to": "MP1,s"
+      },
+      {
+        "from": "VDD1,p1",
+        "to": "MP1,b"
+      },
+      {
+        "from": "VDD1,p2",
+        "to": "GND5,p1"
+      },
+      {
+        "from": "MP1,d",
+        "to": "MN1,d"
+      },
+      {
+        "from": "MN1,s",
+        "to": "GND3,p1"
+      },
+      {
+        "from": "MN1,b",
+        "to": "GND3,p1"
+      },
+      {
+        "from": "MP1,d",
+        "to": "RING1,vp"
+      },
+      {
+        "from": "RING1,vn",
+        "to": "GND3,p1"
+      },
+      {
+        "from": "RING1,gnd",
+        "to": "GND3,p1"
+      }
     ],
     "probes": [
-      { "name": "vdrv", "at": "MP1,d", "color": "#6ecbf5" },
-      { "name": "popt", "at": "RING1,pout", "color": "#e6862c" },
-      { "name": "vout", "at": "PD1,cat", "color": "#a78bfa" }
+      {
+        "name": "vdrv",
+        "at": "MP1,d",
+        "color": "#6ecbf5"
+      },
+      {
+        "name": "popt",
+        "at": "RING1,pout",
+        "color": "#e6862c"
+      },
+      {
+        "name": "vout",
+        "at": "PD1,cat",
+        "color": "#a78bfa"
+      }
     ]
   },
   "analysis": {
     "mode": "transient",
-    "t_stop": 3.8e-9,
-    "points": 6400
+    "t_stop": 3.8e-09,
+    "points": 4800
   }
 }

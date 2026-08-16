@@ -138,9 +138,19 @@ def test_measure_rejects_a_pattern_without_8180_runs():
     """PRBS-7 tops out at a run of 7 ones, so the _8180 metrics are NaN.
 
     That is the failure this guard exists to make loud instead of silent.
+    Tiled to clear MIN_RECORD_UI so this tests the *pattern* guard and not
+    the record-length one — tiling preserves the max run of 7.
     """
+    short_runs = np.tile(prbs(7), 4)          # 508 bits, still max run 7
     with pytest.raises(ValueError, match="8180 segments"):
-        tdec.measure(_nrz(prbs(7)), DT, BAUD, s_noise_mW=0.01)
+        tdec.measure(_nrz(short_runs), DT, BAUD, s_noise_mW=0.01)
+
+
+def test_measure_rejects_a_record_too_short_for_stateye():
+    """Below ~200 UI stateye's histogram reductions run on empty arrays and
+    fail with an opaque numpy error; say what is actually wrong instead."""
+    with pytest.raises(ValueError, match="UI of record|too short|Raise the transient"):
+        tdec.measure(_nrz(prbs(7)), DT, BAUD, s_noise_mW=0.01, strict=False)
 
 
 def test_tighter_reference_receiver_raises_tdec():

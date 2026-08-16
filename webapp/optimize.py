@@ -98,12 +98,24 @@ def _tdec_objective(res: dict, probe: str, ui_hint: float | None,
             s_noise_mW=float(c["s_noise_mW"]), ber=float(c["ber"]),
             ref_rx_bw_factor=float(c["ref_bw_factor"]),
             ref_rx_order=int(c["ref_bw_order"]),
-            oma_type="4140", strict=False,
+            oma_type="8180", strict=False,
         )
     except (ValueError, IndexError, ZeroDivisionError):
         return None
 
-    val = m["tdec_4140"] if kind == "tdec" else m["oma_tdec_dbm"]
+    # Prefer the reportable _8180 family and fall back to _4140 only when the
+    # record is too short to contain runs of >=8 identical bits. A transient
+    # spanning a full PRBS-13 period gets the real metric; a short canvas run
+    # gets the surrogate, which trails it by a near-constant +0.01 dB.
+    want = str(c.get("oma_type", "auto"))
+    if want == "auto":
+        fam = ("8180" if m.counts.get("oma_8180", 0) >= _tdec.MIN_SEGMENT_COUNT
+               else "4140")
+    else:
+        fam = want
+
+    val = (m[f"tdec_{fam}"] if kind == "tdec"
+           else _tdec.oma_tdec_dbm(m.metrics, fam))
     if val is None or not np.isfinite(val):
         return None
     return float(val)
@@ -165,8 +177,12 @@ def run_optimize(payload: dict) -> dict:
     if not params:
         return {"ok": False, "error": "optimize: no parameters given "
                 "(syntax: INST.param=min:max, ...)"}
-    if len(params) > 4:
-        return {"ok": False, "error": "optimize: at most 4 parameters"}
+    # A CMOS inverter needs four instance params to express "the inverter
+    # sizing (W, L)" — P and N width and length — so a full transmitter
+    # co-optimization (bus gap, lock point, W, L) needs six, not four.
+    # Nelder-Mead cost grows with dimension: budget iters accordingly.
+    if len(params) > 8:
+        return {"ok": False, "error": "optimize: at most 8 parameters"}
     spec = str(cfg.get("objective", "")).strip()
     if not spec:
         return {"ok": False, "error": "optimize: no objective given"}

@@ -41,8 +41,34 @@ body { display: flex; flex-direction: column; }
 #toolbar .sep { width: 1px; height: 20px; background: var(--border); margin: 0 4px; }
 #toolbar label { display: inline-flex; align-items: center; gap: 4px; color: var(--text-dim); white-space: nowrap; }
 .an-label { font-weight: 600; color: var(--text); }
-#analysis-settings .an-group { display: inline-flex; gap: 8px; align-items: center; }
-#analysis-settings .an-group[hidden] { display: none; }
+.tb-spacer { flex: 1 1 auto; }
+#btn-run { background: var(--accent) !important; color: #fff; border-color: var(--accent) !important; padding-left: 14px !important; padding-right: 14px !important; }
+
+/* ---------------- run panel: Analysis / Measure / Vary ---------------- */
+#rightcol { width: 272px; flex: 0 0 auto; display: flex; flex-direction: column;
+  background: var(--panel); border-left: 1px solid var(--border); min-height: 0; }
+#runpanel { flex: 0 1 auto; overflow-y: auto; max-height: 62%; padding: 8px;
+  display: flex; flex-direction: column; gap: 8px; border-bottom: 1px solid var(--border); }
+#rightcol #inspector { width: auto; border-left: none; flex: 1 1 auto; min-height: 120px; }
+.rp-card { background: var(--panel2); border: 1px solid var(--border); border-radius: 8px;
+  padding: 8px 10px; display: flex; flex-direction: column; gap: 6px; }
+.rp-h { margin: 0 0 2px; font-size: 12px; font-weight: 600; color: var(--text);
+  display: flex; align-items: center; gap: 6px; }
+.rp-num { width: 16px; height: 16px; border-radius: 50%; background: var(--accent);
+  color: #fff; font-size: 10px; display: inline-flex; align-items: center; justify-content: center; }
+#runpanel .an-group[hidden] { display: none !important; }
+#runpanel .an-group, #analysis-settings { display: flex; flex-direction: column; gap: 5px; }
+#runpanel label { display: grid; grid-template-columns: 58px 1fr auto; align-items: center;
+  gap: 6px; font-size: 12px; color: var(--text-dim); }
+#runpanel select, #runpanel input[type="text"] { width: 100%; min-width: 0;
+  background: var(--bg); color: var(--text); border: 1px solid var(--border);
+  border-radius: 5px; padding: 4px 6px; font: inherit; }
+#runpanel select:hover, #runpanel input[type="text"]:focus { border-color: var(--accent); outline: none; }
+#sel-analysis { font-weight: 600; }
+.rp-note { color: var(--text-dim); font-size: 11px; line-height: 1.5; }
+.rp-note code { color: var(--text); }
+.rp-link { background: none; border: none; padding: 0; color: var(--accent2);
+  cursor: pointer; font: inherit; text-decoration: underline; }
 #btn-run {
   background: var(--accent) !important; color: #fff !important;
   font-weight: 700; border: none !important; padding: 5px 14px !important;
@@ -396,16 +422,12 @@ body { display: flex; flex-direction: column; }
 #btn-newtab:hover { color: var(--text); background: var(--panel2); }
 
 /* --- run-configuration (sweep + overlay) pane -------------------------- */
-#btn-runcfg { padding: 5px 8px !important; }
-#btn-runcfg.active { background: var(--accent); color: #fff; }
-#runcfg-panel { padding: 8px 12px; border-bottom: 1px solid var(--border);
-  background: var(--panel); display: flex; flex-direction: column; gap: 6px; }
-#runcfg-panel[hidden] { display: none; }
+#runcfg-panel { display: flex; flex-direction: column; gap: 6px; }
 #runcfg-panel .rc-enable { font-size: 12px; color: var(--text);
   display: inline-flex; align-items: center; gap: 6px; }
-#runcfg-panel .rc-row { display: flex; align-items: center; gap: 8px;
-  flex-wrap: wrap; font-size: 12px; color: var(--text-dim); }
-#runcfg-panel label { display: inline-flex; align-items: center; gap: 4px; }
+#runcfg-panel .rc-row { display: flex; flex-direction: column; align-items: stretch; gap: 5px;
+  font-size: 12px; color: var(--text-dim); }
+#runcfg-panel .rc-enable, #runcfg-panel .rc-2nd { display: inline-flex !important; gap: 6px; }
 #runcfg-panel select, #runcfg-panel input[type="text"] {
   background: var(--panel2); color: var(--text); border: 1px solid var(--border);
   border-radius: 5px; padding: 4px 6px; font: inherit; }
@@ -428,3 +450,9 @@ body { display: flex; flex-direction: column; }
 #link-table th, #link-table td { padding: 4px 14px 4px 0; text-align: left;
   border-bottom: 1px solid var(--border); }
 #link-table th { color: var(--text-dim); font-weight: 600; white-space: nowrap; }
+#runpanel .an-group.rp-note:not([hidden]) { display: block; }
+#toolbar { flex-wrap: nowrap; }
+#run-status { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; max-width: 220px; }
+#toolbar > * { flex-shrink: 0; white-space: nowrap; }
+#toolbar > .tb-spacer, #toolbar > #run-status { flex-shrink: 1; }
+#sel-example { max-width: 220px; }

@@ -2000,8 +2000,10 @@ function buildPalette() {
 function analysisMode() { return $("sel-analysis").value; }
 
 $("sel-analysis").addEventListener("change", () => {
+  // a group shows for one mode (data-mode) or a list of them (data-modes)
   document.querySelectorAll(".an-group").forEach((g) =>
-    g.hidden = g.dataset.mode !== analysisMode());
+    g.hidden = !(g.dataset.modes || g.dataset.mode || "").split(" ")
+      .includes(analysisMode()));
   updateSweepSelectors();
   if (typeof syncRunCfgDisabled === "function") { syncRunCfgDisabled(); updateRunCount(); }
 });
@@ -2260,17 +2262,12 @@ function withRunCfg(a) {
   return a;
 }
 
-// show/hide the sweep-parameters pane, keeping the caret button in sync
-function setRunCfgPanel(open) {
-  const p = $("runcfg-panel");
-  p.hidden = !open;
-  $("btn-runcfg").classList.toggle("active", open);
-  $("btn-runcfg").setAttribute("aria-expanded", String(open));
-  if (open) { refreshRunCfgSelectors(); syncRunCfgDisabled(); updateRunCount(); }
+// the sweep pane lives in the run panel's Vary card and is always visible;
+// this just re-syncs its selectors and run count
+function setRunCfgPanel() {
+  refreshRunCfgSelectors(); syncRunCfgDisabled(); updateRunCount();
 }
-$("btn-runcfg").addEventListener("click", () => {
-  setRunCfgPanel($("runcfg-panel").hidden);
-});
+$("rp-open-fx").addEventListener("click", () => $("btn-exprs").click());
 // pane edits also autosave the workspace, so the per-tab runCfg survives a
 // reload without waiting for the next schematic mutation
 $("rc-inst").addEventListener("change", () => {

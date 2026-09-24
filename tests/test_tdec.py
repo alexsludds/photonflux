@@ -211,3 +211,41 @@ def test_measure_flags_saturation_when_the_eye_is_closed():
     wide = tdec.measure(_nrz(prbs(13)), DT, BAUD, s_noise_mW=0.01,
                         ref_rx_bw_factor=1.0)
     assert wide["at_floor"] is False
+
+
+# ---------------------------------------------------------------------------
+# PAM-4 / TDECQ (stateye >= 1.8)
+# ---------------------------------------------------------------------------
+PAM4_LEVELS = np.array([0.10, 0.20, 0.30, 0.40])
+
+
+def _prbs13q(noise_mW, rotate=64):
+    from photonflux.signals import pam4_gray
+    sym = np.roll(pam4_gray(np.tile(prbs(13), 2)), rotate)
+    p = np.repeat(PAM4_LEVELS[sym], SPS)
+    return p + noise_mW * np.random.default_rng(1).standard_normal(p.size)
+
+
+@pytest.fixture
+def needs_pam4():
+    if not hasattr(stateye.IdealEye, "set_tdecq_ser"):
+        pytest.skip("stateye < 1.8 has no PAM-4 analysis")
+
+
+def test_measure_pam4_recovers_levels_and_tdecq_grows_with_noise(needs_pam4):
+    quiet = tdec.measure_pam4(_prbs13q(0.002), DT, BAUD, s_noise_mW=0.005)
+    noisy = tdec.measure_pam4(_prbs13q(0.02), DT, BAUD, s_noise_mW=0.005)
+    assert quiet["oma_outer"] == pytest.approx(0.30, abs=3e-3)
+    for key, want in (("threshold_lower", 0.15), ("threshold", 0.25),
+                      ("threshold_upper", 0.35)):
+        assert quiet[key] == pytest.approx(want, abs=2e-3)
+    assert 0.0 < quiet["tdecq_outer"] < noisy["tdecq_outer"]
+    for k, v in quiet.metrics.items():
+        assert not isinstance(v, np.ndarray), f"{k} is an array"
+
+
+def test_measure_pam4_rejects_an_unrotated_prbs13q(needs_pam4):
+    """PRBS-13Q's only run of 6 zeros is its last 6 symbols, so without a
+    rotation OMA_outer (and TDECQ) silently come back NaN."""
+    with pytest.raises(ValueError, match="rotated"):
+        tdec.measure_pam4(_prbs13q(0.002, rotate=0), DT, BAUD, s_noise_mW=0.005)

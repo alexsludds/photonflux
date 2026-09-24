@@ -1,9 +1,11 @@
 """TDEC / OMA-TDEC measurement: photonflux waveform -> stateye eye diagram.
 
 The bridge between a circulax transient and `stateye
-<https://github.com/AyarLabs/stateye>`_. photonflux produces an optical
-through-port power waveform; stateye draws the eye histogram and extracts the
-IEEE 802.3 transmitter metrics (OMA, TDEC, extinction ratio, DCD).
+<https://github.com/DerekK44/stateye>`_ (v1.8, the fork of AyarLabs/stateye
+that adds PAM-4 and TDECQ). photonflux produces an optical through-port power
+waveform; stateye draws the eye histogram and extracts the IEEE 802.3
+transmitter metrics (OMA, TDEC, extinction ratio, DCD; TDECQ for PAM-4 via
+:func:`measure_pam4`).
 
 stateye is an **optional** dependency -- importing this module without it
 raises a directed ImportError rather than failing at photonflux import time.
@@ -39,7 +41,7 @@ from typing import Any
 
 import numpy as np
 
-__all__ = ["Measurement", "reference_receiver", "measure", "oma_tdec_dbm",
+__all__ = ["Measurement", "reference_receiver", "measure", "measure_pam4", "oma_tdec_dbm",
            "oma_tdec_floor_dbm", "q_inv", "MIN_SEGMENT_COUNT", "FLOOR_TOL_DB"]
 
 # How close to the analytic floor counts as saturated. The histogram-derived
@@ -89,9 +91,10 @@ def _require_stateye():
     except ImportError as exc:  # pragma: no cover - environment dependent
         raise ImportError(
             "photonflux.tdec needs stateye, which is an optional dependency.\n"
-            "  pip install 'stateye @ git+https://github.com/AyarLabs/stateye'\n"
-            "If that build fails on NumPy 2 (cnp.int_t / missing pyproject.toml), "
-            "see docs/stateye-integration-plan.md section 2 for the patch."
+            "  pip install 'stateye @ git+https://github.com/DerekK44/stateye'\n"
+            "That build fails on NumPy 2 (cnp.int_t / missing pyproject.toml) "
+            "until docs/patches/stateye-modern-toolchain.patch is applied; see "
+            "docs/stateye-integration-plan.md section 2."
         ) from exc
     return stateye
 
@@ -199,6 +202,37 @@ def oma_tdec_dbm(msmts: dict, oma_type: str = "8180") -> float:
     return float(10.0 * np.log10(oma) - tdec)
 
 
+def _prepare(p_thru_mW, dt_sec, baud, ref_rx_bw_factor, ref_rx_order,
+             ref_rx_bw_hz, settle_ui):
+    """Reference-receiver filter, settling trim and record-length guard
+    shared by the NRZ and PAM-4 measurements."""
+    p = np.asarray(p_thru_mW, dtype=float)
+    if p.ndim != 1:
+        raise ValueError(f"expected a 1-D power waveform, got shape {p.shape}")
+
+    p = reference_receiver(p, dt_sec, baud, bw_factor=ref_rx_bw_factor,
+                           order=ref_rx_order, bw_hz=ref_rx_bw_hz)
+
+    sps = 1.0 / (baud * dt_sec)
+    skip = int(round(settle_ui * sps))
+    if skip >= p.size:
+        raise ValueError(
+            f"settle_ui={settle_ui} discards the whole {p.size}-sample record")
+    p = p[skip:]
+
+    # stateye needs enough symbols to lock a CDR and populate the level
+    # filters; below that its histogram reductions run on empty arrays and
+    # fail deep inside with an opaque "zero-size array to reduction
+    # operation" instead of telling you the record is too short.
+    n_ui = p.size / sps
+    if n_ui < MIN_RECORD_UI:
+        raise ValueError(
+            f"record is only {n_ui:.0f} UI after discarding {settle_ui} UI of "
+            f"settling; need >={MIN_RECORD_UI} for stateye to lock and fill "
+            "the level filters. Raise the transient's t_stop.")
+    return p
+
+
 def measure(
     p_thru_mW,
     dt_sec: float,
@@ -230,31 +264,8 @@ def measure(
     PRBS-13), and is otherwise a silent NaN.
     """
     stateye = _require_stateye()
-
-    p = np.asarray(p_thru_mW, dtype=float)
-    if p.ndim != 1:
-        raise ValueError(f"expected a 1-D power waveform, got shape {p.shape}")
-
-    p = reference_receiver(p, dt_sec, baud, bw_factor=ref_rx_bw_factor,
-                           order=ref_rx_order, bw_hz=ref_rx_bw_hz)
-
-    sps = 1.0 / (baud * dt_sec)
-    skip = int(round(settle_ui * sps))
-    if skip >= p.size:
-        raise ValueError(
-            f"settle_ui={settle_ui} discards the whole {p.size}-sample record")
-    p = p[skip:]
-
-    # stateye needs enough symbols to lock a CDR and populate the level
-    # filters; below that its histogram reductions run on empty arrays and
-    # fail deep inside with an opaque "zero-size array to reduction
-    # operation" instead of telling you the record is too short.
-    n_ui = p.size / sps
-    if n_ui < MIN_RECORD_UI:
-        raise ValueError(
-            f"record is only {n_ui:.0f} UI after discarding {settle_ui} UI of "
-            f"settling; need >={MIN_RECORD_UI} for stateye to lock and fill "
-            "the level filters. Raise the transient's t_stop.")
+    p = _prepare(p_thru_mW, dt_sec, baud, ref_rx_bw_factor, ref_rx_order,
+                 ref_rx_bw_hz, settle_ui)
 
     # half_ui is mandatory for TDEC: its 0.4/0.6 UI histogram windows are
     # referenced to the eye crossing. (stateye's README says "adaptive" is the
@@ -296,3 +307,73 @@ def measure(
         np.isfinite(msmts["oma_tdec_dbm"])
         and msmts["oma_tdec_dbm"] <= floor + FLOOR_TOL_DB)
     return Measurement(metrics=msmts, counts=counts, eye=eye, oma_type=oma_type)
+
+
+def measure_pam4(
+    p_thru_mW,
+    dt_sec: float,
+    baud: float,
+    *,
+    s_noise_mW: float = 0.0,
+    ser: float = 4.8e-4,
+    ceq: float = 1.0,
+    ref_rx_bw_factor: float | None = 0.5,
+    ref_rx_order: int = 4,
+    ref_rx_bw_hz: float | None = None,
+    settle_ui: int = 8,
+    nx: int = 512,
+    ny: int = 2048,
+    strict: bool = True,
+) -> Measurement:
+    """PAM-4 optical power [mW] -> stateye metrics, including TDECQ.
+
+    Needs stateye >= 1.8 (the PAM-4 analysis landed there). Drive it with a
+    Gray-coded PRBS-13Q, **rotated**::
+
+        sym = np.roll(signals.pam4_gray(np.tile(prbs(13), 2)), 64)
+
+    OMA_outer (and so ``tdecq_outer``) is measured on a run of 7 threes and a
+    run of 6 zeros. PRBS-13Q has exactly one of each, and the zeros run is the
+    last 6 symbols of the period -- unrotated it falls off the end of the
+    record and every ``_outer`` metric comes back NaN.
+
+    `ser` is the target symbol error rate: 4.8e-4 is the 802.3-2022 value for
+    100G/lane (53.125 GBd) links, 4.56e-4 the 802.3dj 200G/lane one. The
+    reference receiver defaults to the TDECQ 4th-order Bessel-Thomson at half
+    the baud rate.
+
+    stateye does not run the 802.3 reference FFE: the eye is scored as
+    received, and `ceq` (the FFE noise-enhancement coefficient) is taken as
+    given. Treat ``tdecq_outer`` as TDECQ with the equaliser bypassed -- an
+    upper bound on the compliant value.
+    """
+    stateye = _require_stateye()
+    if not hasattr(stateye.IdealEye, "set_tdecq_ser"):
+        raise ImportError("measure_pam4 needs stateye >= 1.8; see "
+                          "docs/stateye-integration-plan.md for the install.")
+    p = _prepare(p_thru_mW, dt_sec, baud, ref_rx_bw_factor, ref_rx_order,
+                 ref_rx_bw_hz, settle_ui)
+
+    eye = stateye.IdealEye(
+        datarate_gbps=baud / 1e9,
+        dt_sec=dt_sec,
+        nx=nx,
+        ny=ny,
+        format="PAM4",
+        sampling_offset_mode="half_ui",   # TDECQ's 0.45/0.55 UI windows need it
+    )
+    eye.set_tdecq_s_noise(s_noise_mW)
+    eye.set_tdecq_ceq(ceq)
+    eye.set_tdecq_ser(ser)
+    eye.add_data(p, "mW")
+
+    msmts = {k: (float(v) if isinstance(v, np.generic) else v)
+             for k, v in eye.get_measurements().items()}
+    counts = dict(eye.get_measurement_counts())
+    if strict and not np.isfinite(msmts.get("tdecq_outer", np.nan)):
+        raise ValueError(
+            "stateye returned a non-finite TDECQ: OMA_outer needs a run of 7 "
+            "threes and a run of 6 zeros away from the record edges. Drive it "
+            "with a full PRBS-13Q rotated by a few dozen symbols (its only run "
+            "of 6 zeros is the last 6 symbols of the period).")
+    return Measurement(metrics=msmts, counts=counts, eye=eye, oma_type="outer")

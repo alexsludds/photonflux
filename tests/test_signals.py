@@ -1,5 +1,6 @@
 """PRBS pattern generation (engine-agnostic stimulus)."""
 import numpy as np
+import pytest
 
 from photonflux import prbs
 
@@ -52,3 +53,14 @@ def test_prbs13_run_lengths_for_tdec():
     # run of 8 ones at all, so oma_8180 would come back NaN
     head = "".join(map(str, seq[:511]))
     assert max(len(r) for r in head.split("0") if r) < 8
+
+
+def test_pam4_gray_mapping():
+    from photonflux.signals import pam4_gray
+    # 00->0, 01->1, 11->2, 10->3: adjacent levels differ by one bit
+    assert pam4_gray([0, 0, 0, 1, 1, 1, 1, 0]).tolist() == [0, 1, 2, 3]
+    sym = pam4_gray(np.tile(prbs(13), 2))    # PRBS-13Q
+    assert sym.size == 8191
+    assert np.bincount(sym).tolist() == [2047, 2048, 2048, 2048]
+    with pytest.raises(ValueError, match="even"):
+        pam4_gray([1, 0, 1])

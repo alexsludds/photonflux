@@ -254,6 +254,36 @@ Upstream to stateye, independent of everything else:
 Exit criterion: `pip install git+https://github.com/AyarLabs/stateye` succeeds in a
 fresh venv and `python -m pytest tests/` passes.
 
+### Update: photonflux now tracks `DerekK44/stateye` (v1.8)
+
+[`DerekK44/stateye`](https://github.com/DerekK44/stateye) is a fork of upstream that
+adds PAM-4 waveform/histogram analysis and TDECQ (`tdecq_outer`, `tdecq_xp`). The
+`eye` extra points there, and `photonflux.tdec.measure_pam4` exposes TDECQ. The fork
+still has B1, B2 and B6, and adds three regressions of its own. All are fixed in
+[`patches/stateye-modern-toolchain.patch`](patches/stateye-modern-toolchain.patch),
+which is written against the fork's `main`:
+
+```bash
+git clone https://github.com/DerekK44/stateye && cd stateye
+git apply /path/to/photonflux/docs/patches/stateye-modern-toolchain.patch
+pip install --no-deps .
+```
+
+| Fork bug | Effect | Fix |
+|---|---|---|
+| NRZ path passes the new `(nx, ny, n_thresholds)` bathtub into 2-D stats code | every NRZ `eye_height_*` / `eye_width_*` is 0, `vecp_*` is missing, `vertical_ber` becomes an array | pass `self.bathtub[:, :, 0]` |
+| PAM-4 threshold refinement assigns `threshold_lower` to `threshold_upper` | upper threshold is overwritten with the lower one after the first waveform | assign to `threshold_lower` |
+| `CustomEye` sets the NRZ "before" default but checks PAM-4 for "after" | `CustomEye(format="NRZ")` raises | mirror `IdealEye`'s defaults |
+
+With the patch, every NRZ metric (101 of them on PRBS-13 / PRBS-9 test waveforms) is
+bit-identical to v1.7, and the fork's suite passes 17 of 19 tests. The two failures
+(`test_eye` HDF5 save and `test_slicer_sensitivity`) fail the same way on upstream v1.7.
+
+PAM-4 pattern gotcha: OMA_outer needs a run of 7 threes and a run of 6 zeros. PRBS-13Q
+has one of each, and the zeros are the last 6 symbols of the period, so feed a
+*rotated* PRBS-13Q or every `_outer` metric is NaN. stateye scores TDECQ without the
+802.3 reference FFE, so treat it as an upper bound on the compliant value.
+
 ---
 
 ## 3. Phase 1 — the bridge: photonflux waveform → stateye measurement (1 day)

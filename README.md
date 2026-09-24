@@ -129,6 +129,7 @@ as named examples 36–42 in the web app. One-line index:
 | `link_cmos.py` | full CW + MZM link, transistor driver + CMOS-inverter TIA (no PDK) | `out/link_cmos.png` |
 | `link_sky130.py` | the same link with **real SKY130 BSIM4 FETs** | `out/link_sky130.png` |
 | `ring_mod_sky130.py` | Verilog-A microring modulator driven by a SKY130 inverter; DC tuning + optical eye | `out/ring_mod.png` |
+| `mrm_tdec_sky130.py` | **53.125 GBd NRZ transmitter co-optimization for OMA − TDEC**, measured by [stateye](https://github.com/DerekK44/stateye) (v1.8 fork; see `docs/stateye-integration-plan.md` for the NumPy-2 patch): bus gap × laser lock point × SKY130 inverter (W_p, W_n, L), full-period PRBS-13 through a Bessel–Thomson reference receiver. Needs `pip install -e '.[eye]'` | `out/mrm_tdec_*.png` |
 | `soa_fp_laser.py` | Fabry-Perot laser from an SOA between two mirrors — lasing emerges from the loop | `out/soa_fp_laser.png` |
 | `soa_vernier_laser.py` | Vernier laser seeded by ASE noise, with a live one-FSR mode hop | `out/soa_vernier_laser.png` |
 | `edfa_wdm.py` | **EDFA gain dynamics** (`models/optical_field/edfa.va`): drop 7 of 8 WDM channels and the surviving channel surges as the shared ms-lifetime erbium reservoir refills — settled gains, surge, and the recovery time constant (∝ `tau_c`) pinned to the analytic reservoir; a C-band gain-tilt spectrum + ASE/NF floor alongside | `out/edfa_wdm.png` |
@@ -152,6 +153,17 @@ as named examples 36–42 in the web app. One-line index:
 3. **Evaluation** — the OSDI binary runs natively inside circulax's
    Newton/transient loop (bosdi's OSDI↔JAX shim), with the card baked in and
    not-given parameters resolved by the VA's own `$param_given` ladder.
+
+**Process corners.** `corner` is any of the PDK's five FET corners — `tt`,
+`ss`, `ff`, `sf`, `fs` — and each is its own
+card and OSDI descriptor. `photonflux.corners.aggregate` folds a per-corner
+objective into a worst-case (or mean) score. In the browser, the top-bar
+**Corner** menu sets it for every FET; `all` overlays the analysis at all five
+corners, and Optimize then scores the worst corner. `mrm_tdec_sky130.py
+--corners all [--relock]` runs the MRM co-optimization for worst-case
+OMA − TDEC. `tests/test_corners.py` pins the drive ordering (ss < tt < ff).
+Mind SKY130's skewed names, which read PMOS-first: `sf` is a *fast* NMOS
+with a *slow* PMOS, `fs` the reverse.
 
 Behaviour (pinned by `tests/test_cx.py`): the nfet is off at gmin, has a
 monotone `Id(Vgs)` transfer, and a physical on-current at 1.8 V; the CMOS

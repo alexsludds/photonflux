@@ -155,6 +155,13 @@ container image does this, so production runs exactly one process.
   can apply the result back to the schematic. Derivative-free by design:
   eye/BER objectives are noisy and rebuild-parameters have no gradient
   through a recompile.
+* **Process corners**: the top-bar **Corner** menu sets the SKY130 corner
+  (`tt`/`ss`/`ff`/`sf`/`fs`) for every FET. `all` runs any plot-producing
+  analysis once per corner and overlays the runs (it composes with the
+  parameter-sweep pane), and makes Optimize corner-robust: each design is
+  scored by its worst corner (or the mean, per the optimize `corners`
+  select), the per-corner values are reported, and the final plots show the
+  worst corner.
 * **Expressions (fx button)**: derived traces evaluated server-side per
   run — `iph [A] = (1.8 - vout)/500`, `gain_db [dB] = db(vout/vin)`,
   `spectrum = spec(vout)` (extra log-f plot), scalars (`vpp = pk2pk(vout)`)

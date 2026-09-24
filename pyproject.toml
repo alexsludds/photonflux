@@ -11,10 +11,16 @@ requires-python = ">=3.10"
 dependencies = [
     "numpy",
     "matplotlib",
+    "scipy",
 ]
 
 [project.optional-dependencies]
 dev = ["pytest"]
+# Eye-diagram / TDEC / TDECQ measurement (photonflux.tdec). DerekK44's fork is
+# stateye 1.8 (adds PAM-4 + TDECQ). Like upstream it does not build on NumPy 2
+# and has no pyproject.toml; apply docs/patches/stateye-modern-toolchain.patch
+# (see docs/stateye-integration-plan.md section 2) until that lands.
+eye = ["stateye @ git+https://github.com/DerekK44/stateye"]
 
 [project.scripts]
 photonflux = "photonflux.cli:main"

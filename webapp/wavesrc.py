@@ -25,8 +25,13 @@ import hashlib
 
 import numpy as np
 
-PRBS_TAPS = {7: (7, 6), 9: (9, 5), 11: (11, 9), 15: (15, 14),
-             23: (23, 18), 31: (31, 28)}
+# Feedback taps as exponents of G(x), excluding the x^0 term. Most orders take
+# a primitive trinomial, but degree 13 has none — PRBS-13 is the four-term
+# IEEE 802.3 polynomial (the pattern 802.3bs/cd specify for TDECQ), which is
+# why the tap values are tuples of arbitrary length rather than pairs.
+PRBS_TAPS = {7: (7, 6), 9: (9, 5), 11: (11, 9),
+             13: (13, 12, 2, 1),          # x^13 + x^12 + x^2 + x + 1
+             15: (15, 14), 23: (23, 18), 31: (31, 28)}
 
 EDGE_PTS = 9      # samples across one raised-cosine edge
 
@@ -35,13 +40,15 @@ def prbs_bits(order: int, n: int, seed: int = 1) -> np.ndarray:
     """First n bits of PRBS-<order> from the standard LFSR (seed != 0)."""
     if order not in PRBS_TAPS:
         raise ValueError(f"PRBS order must be one of {sorted(PRBS_TAPS)}")
-    t1, t2 = PRBS_TAPS[order]
+    taps = PRBS_TAPS[order]
     state = int(seed) & ((1 << order) - 1) or 1
     out = np.empty(n, dtype=np.int8)
     for i in range(n):
-        fb = ((state >> (order - t1)) ^ (state >> (order - t2))) & 1
+        fb = 0
+        for t in taps:
+            fb ^= state >> (order - t)
         out[i] = state & 1
-        state = (state >> 1) | (fb << (order - 1))
+        state = (state >> 1) | ((fb & 1) << (order - 1))
     return out
 
 

@@ -8,10 +8,23 @@ from __future__ import annotations
 
 import numpy as np
 
-__all__ = ["prbs", "sample_centers"]
+__all__ = ["prbs", "pam4_gray", "sample_centers"]
 
-# Fibonacci LFSR second tap for x^n + x^k + 1 generators.
-_PRBS_TAPS = {5: 3, 6: 5, 7: 6, 9: 5, 11: 9, 15: 14, 23: 18, 31: 28}
+# Fibonacci LFSR feedback taps: the exponents of G(x) excluding the x^0 term.
+# Most orders take a primitive trinomial x^n + x^k + 1, but degree 13 has none,
+# so PRBS-13 uses the four-term IEEE 802.3 polynomial (the pattern 802.3bs/cd
+# specify for TDECQ) -- hence a tap *list* rather than a single second tap.
+_PRBS_TAPS = {
+    5: (5, 3),
+    6: (6, 5),
+    7: (7, 6),
+    9: (9, 5),
+    11: (11, 9),
+    13: (13, 12, 2, 1),  # x^13 + x^12 + x^2 + x + 1  (IEEE 802.3 PRBS13)
+    15: (15, 14),
+    23: (23, 18),
+    31: (31, 28),
+}
 
 
 def prbs(order: int = 7, nbits: int | None = None, seed: int = 1) -> np.ndarray:
@@ -21,14 +34,30 @@ def prbs(order: int = 7, nbits: int | None = None, seed: int = 1) -> np.ndarray:
     if seed <= 0 or seed >= (1 << order):
         raise ValueError("seed must be a nonzero state narrower than the register")
     nbits = nbits or (1 << order) - 1
-    k = _PRBS_TAPS[order]
+    taps = _PRBS_TAPS[order]
+    mask = (1 << order) - 1
     reg = seed
     out = np.empty(nbits, dtype=np.int8)
     for i in range(nbits):
         out[i] = reg & 1
-        fb = ((reg >> (order - 1)) ^ (reg >> (k - 1))) & 1
-        reg = ((reg << 1) | fb) & ((1 << order) - 1)
+        fb = 0
+        for t in taps:
+            fb ^= reg >> (t - 1)
+        reg = ((reg << 1) | (fb & 1)) & mask
     return out
+
+
+def pam4_gray(bits) -> np.ndarray:
+    """Pair bits MSB-first into Gray-coded PAM-4 symbols 0..3.
+
+    00->0, 01->1, 11->2, 10->3 (IEEE 802.3 clause 120). Two periods of PRBS-13
+    through this give PRBS-13Q, the TDECQ test pattern.
+    """
+    b = np.asarray(bits, dtype=np.int8)
+    if b.size % 2:
+        raise ValueError("PAM-4 needs an even number of bits")
+    msb, lsb = b[0::2], b[1::2]
+    return (2 * msb + (msb ^ lsb)).astype(np.int8)
 
 
 def sample_centers(

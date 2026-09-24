@@ -6,21 +6,127 @@ values into a copy of the schematic and runs the inner analysis, so runtime
 parameters (R, gain, vpi, ...) and compile-time ones (PRBS settings, SKY130
 w/l, channel fits) are handled uniformly through the caches. Objectives:
 
-  expr:<name>   scalar defined in the expressions panel (e.g. obj = pk2pk(vout))
-  eye:<probe>   worst inner eye opening at that probe (needs a PRBS source)
-  ber:<probe>   log10 of the Q-fit BER from the link report (minimize)
-  fom           COM-style FOM from the pulse analysis [dB]
+  expr:<name>     scalar defined in the expressions panel (e.g. obj = pk2pk(vout))
+  eye:<probe>     worst inner eye opening at that probe (needs a PRBS source)
+  ber:<probe>     log10 of the Q-fit BER from the link report (minimize)
+  fom             COM-style FOM from the pulse analysis [dB]
+  tdec:<probe>    IEEE 802.3 TDEC at an optical probe [dB] (minimize)
+  omatdec:<probe> OMA - TDEC at an optical probe [dBm] (maximize)
+
+Process corners: when the schematic's corner is several SKY130 corners
+(Corner menu = "all"), every evaluation runs the inner analysis once per
+corner and the optimizer maximizes the *worst* corner (``aggregate:
+"worst"``, default) or the corner *mean*. The per-corner objective at the
+optimum is reported, and the final plots are from the worst corner.
 
 Nelder-Mead is bounded by clipping to the user's min/max box. Derivative-
 free beats FD-gradient descent here because eye/BER objectives are noisy
 and several parameters recompile the circuit (no JAX gradient exists
-through a recompile).
+through a recompile) -- and the TDEC objectives run through stateye's Cython
+histogram, which has no gradient at all. SKY130 FETs are OSDI FFI calls that
+JAX cannot differentiate either, and a worst-case objective is non-smooth
+where the worst corner changes.
 """
 from __future__ import annotations
 
 import copy
 
 import numpy as np
+
+# TDEC settings the browser has no UI for yet. They matter: s_noise sets the
+# saturation floor of OMA - TDEC (see photonflux.tdec.oma_tdec_floor_dbm), and
+# ref_bw is the reference-receiver bandwidth TDEC is defined through.
+TDEC_DEFAULTS = {"s_noise_mW": 0.01, "ber": 1e-12,
+                 "ref_bw_factor": 0.75, "ref_bw_order": 4}
+
+
+def _tdec_objective(res: dict, probe: str, ui_hint: float | None,
+                    kind: str, cfg: dict | None = None):
+    """TDEC / OMA-TDEC at an optical probe, via photonflux.tdec + stateye.
+
+    Uses the ``_4140`` level-estimation family, not ``_8180``: the ``_8180``
+    metrics need runs of >=8 identical bits, which only a full-period PRBS-13
+    supplies (8191 bits ~ 154 ns at 53 GBd) -- far longer than a canvas
+    transient. ``tdec_4140`` tracks ``tdec_8180`` to a near-constant +0.01 dB
+    bias, so it ranks designs correctly; for the reportable _8180 number run
+    examples/mrm_tdec_sky130.py.
+    """
+    from photonflux import tdec as _tdec
+
+    if ui_hint is None or not (ui_hint > 0):
+        raise ValueError(
+            f"{kind}:{probe} needs the unit interval — add a PRBS source and "
+            "set the top-bar baud rate")
+
+    tr = next((t for t in res.get("traces", [])
+               if (t.get("probe") or t["name"]) == probe), None)
+    if tr is None:
+        raise ValueError(f"{kind}: no probe {probe!r} in the result")
+    if tr.get("unit") != "mW":
+        raise ValueError(
+            f"{kind}:{probe} needs an *optical* probe (power in mW); "
+            f"{probe!r} is in {tr.get('unit') or '?'}. TDEC is a transmitter "
+            "metric measured on optical power.")
+
+    from photonflux.tdec import MIN_RECORD_UI
+
+    t = np.asarray(res["x"], float)
+    v = np.asarray(tr["values"], float)
+    if t.size < 64:
+        raise ValueError(f"{kind}: only {t.size} samples — raise `points`")
+
+    # Record length is a property of the analysis, not of the design point, so
+    # a short transient fails identically everywhere: raise it as the config
+    # error it is instead of letting every point look like a bad design.
+    n_ui = float(t[-1] - t[0]) / float(ui_hint)
+    if n_ui < MIN_RECORD_UI + 8:      # +8 for the settling measure() discards
+        raise ValueError(
+            f"{kind}:{probe} has only {n_ui:.0f} UI of record; stateye needs "
+            f">={MIN_RECORD_UI + 8}. Raise t_stop to at least "
+            f"{(MIN_RECORD_UI + 8) * float(ui_hint) * 1e9:.1f} ns.")
+    # the solver's dense output is not guaranteed uniform; stateye needs a
+    # fixed dt, so resample onto the finest uniform grid the record supports
+    dt = float(np.median(np.diff(t)))
+    tu = np.arange(t[0], t[-1], dt)
+    v = np.interp(tu, t, v)
+
+    # A design whose eye is completely shut gives stateye no edges to lock a
+    # CDR to, and its histogram reductions then run on empty arrays. That is a
+    # legitimately bad point, not a broken objective, so reject it rather than
+    # letting it abort the search. Everything above this line raises instead:
+    # those are configuration errors that would fail identically at every point.
+    span = float(np.max(v) - np.min(v))
+    if not np.isfinite(span) or span < 1e-9:
+        return None
+
+    c = {**TDEC_DEFAULTS, **(cfg or {})}
+    try:
+        m = _tdec.measure(
+            v, dt, 1.0 / float(ui_hint),
+            s_noise_mW=float(c["s_noise_mW"]), ber=float(c["ber"]),
+            ref_rx_bw_factor=float(c["ref_bw_factor"]),
+            ref_rx_order=int(c["ref_bw_order"]),
+            oma_type="8180", strict=False,
+        )
+    except (ValueError, IndexError, ZeroDivisionError):
+        return None
+
+    # Prefer the reportable _8180 family and fall back to _4140 only when the
+    # record is too short to contain runs of >=8 identical bits. A transient
+    # spanning a full PRBS-13 period gets the real metric; a short canvas run
+    # gets the surrogate, which trails it by a near-constant +0.01 dB.
+    want = str(c.get("oma_type", "auto"))
+    if want == "auto":
+        fam = ("8180" if m.counts.get("oma_8180", 0) >= _tdec.MIN_SEGMENT_COUNT
+               else "4140")
+    else:
+        fam = want
+
+    val = (m[f"tdec_{fam}"] if kind == "tdec"
+           else _tdec.oma_tdec_dbm(m.metrics, fam))
+    if val is None or not np.isfinite(val):
+        return None
+    return float(val)
 
 
 def _patch(sch: dict, params: list[dict], x: np.ndarray) -> dict:
@@ -33,12 +139,15 @@ def _patch(sch: dict, params: list[dict], x: np.ndarray) -> dict:
     return out
 
 
-def _objective(res: dict, spec: str, ui_hint: float | None):
+def _objective(res: dict, spec: str, ui_hint: float | None,
+               tdec_cfg: dict | None = None):
     import linkpost
 
     kind, _, arg = spec.partition(":")
     if not res.get("ok"):
         return None
+    if kind in ("tdec", "omatdec"):
+        return _tdec_objective(res, arg, ui_hint, kind, tdec_cfg)
     if kind == "expr":
         for s in res.get("scalars", []):
             if s["name"] == arg:
@@ -60,7 +169,8 @@ def _objective(res: dict, spec: str, ui_hint: float | None):
         rep = res.get("pulse")
         return float(rep["fom_db"]) if rep else None
     raise ValueError(f"unknown objective {spec!r} — use expr:<name>, "
-                     "eye:<probe>, ber:<probe> or fom")
+                     "eye:<probe>, ber:<probe>, fom, tdec:<probe> or "
+                     "omatdec:<probe>")
 
 
 def run_optimize(payload: dict) -> dict:
@@ -75,8 +185,12 @@ def run_optimize(payload: dict) -> dict:
     if not params:
         return {"ok": False, "error": "optimize: no parameters given "
                 "(syntax: INST.param=min:max, ...)"}
-    if len(params) > 4:
-        return {"ok": False, "error": "optimize: at most 4 parameters"}
+    # A CMOS inverter needs four instance params to express "the inverter
+    # sizing (W, L)" — P and N width and length — so a full transmitter
+    # co-optimization (bus gap, lock point, W, L) needs six, not four.
+    # Nelder-Mead cost grows with dimension: budget iters accordingly.
+    if len(params) > 8:
+        return {"ok": False, "error": "optimize: at most 8 parameters"}
     spec = str(cfg.get("objective", "")).strip()
     if not spec:
         return {"ok": False, "error": "optimize: no objective given"}
@@ -87,6 +201,26 @@ def run_optimize(payload: dict) -> dict:
                          "ffe_taps": 0, "dfe_taps": 0}
     if spec.startswith("fom"):
         inner["mode"] = "pulse"
+
+    from photonflux.corners import AGGREGATES, aggregate
+
+    corners = simulate.sch_corners(sch)
+    agg_mode = str(cfg.get("aggregate", "worst"))
+    if agg_mode not in AGGREGATES:
+        return {"ok": False, "error": f"optimize: aggregate must be one of "
+                f"{', '.join(AGGREGATES)}, not {agg_mode!r}"}
+
+    tdec_cfg = cfg.get("tdec") or {}
+    if spec.startswith(("tdec:", "omatdec:")):
+        try:
+            import photonflux.tdec  # noqa: F401
+        except ImportError as exc:
+            return {"ok": False, "error":
+                    f"optimize: the {spec.split(':')[0]} objective needs "
+                    f"stateye, which is not installed here ({exc}). Install "
+                    "the optional extra (pip install -e '.[eye]'; see "
+                    "docs/patches/ if the build fails) or optimize "
+                    "eye:<probe> instead."}
 
     lo = np.array([float(p["min"]) for p in params])
     hi = np.array([float(p["max"]) for p in params])
@@ -99,15 +233,36 @@ def run_optimize(payload: dict) -> dict:
 
     evals = {"n": 0}
     history: list[dict] = []
+    per_corner: dict[tuple, dict] = {}   # x -> {corner: objective}
+
+    def at_corner(x, corner):
+        sch_c = _patch(sch, params, x)
+        sch_c["corner"] = corner
+        return sch_c
 
     def f(x):
         x = np.clip(x, lo, hi)
-        res = simulate.run({"schematic": _patch(sch, params, x),
-                            "analysis": inner})
-        val = _objective(res, spec, ui_hint)
+        vals = {}
+        for c in corners:
+            res = simulate.run({"schematic": at_corner(x, c),
+                                "analysis": inner})
+            try:
+                vals[c] = _objective(res, spec, ui_hint, tdec_cfg)
+            except ValueError as exc:
+                # a misconfigured objective (wrong probe domain, no UI) fails
+                # the same way at every point, so surface it instead of
+                # returning inf forever and reporting a meaningless "optimum"
+                raise RuntimeError(f"optimize: {exc}") from None
+            if vals[c] is None:
+                break          # one failed corner fails the design
         evals["n"] += 1
+        # any failed corner -> None: a design that only converges at some
+        # corners is not robust, and scoring the survivors would reward it
+        val = aggregate(vals, agg_mode, maximize=maximize) \
+            if len(vals) == len(corners) else None
         if val is None:
             return np.inf     # failed run / missing objective: reject
+        per_corner[tuple(float(v) for v in x)] = vals
         history.append({"x": [float(v) for v in x], "obj": float(val)})
         return -val if maximize else val
 
@@ -151,12 +306,32 @@ def run_optimize(payload: dict) -> dict:
                     simplex[i] = simplex[0] + 0.5 * (simplex[i] - simplex[0])
                     fs[i] = f(simplex[i])
 
-    order = np.argsort(fs)
-    best_x = np.asarray(simplex[order[0]])
-    best_f = fs[order[0]]
+    if not history:
+        return {"ok": False, "error":
+                f"optimize: {spec} could not be evaluated at any of the "
+                f"{evals['n']} points tried. Every run either failed or the "
+                "objective was undefined there — widen the parameter box, or "
+                "check that the objective's probe exists and carries the "
+                "right quantity."}
+
+    # rank only the vertices that actually evaluated: a simplex can finish with
+    # its best corner in a region the objective could not score, and reporting
+    # that as the optimum would be worse than useless
+    finite = [i for i, v in enumerate(fs) if np.isfinite(v)]
+    if not finite:
+        return {"ok": False, "error":
+                f"optimize: {spec} scored {len(history)} point(s) during the "
+                "search but none of the final simplex vertices — the optimum "
+                "sits against a region where the objective is undefined. "
+                "Narrow the parameter box around the feasible region."}
+    best_i = min(finite, key=lambda i: fs[i])
+    best_x = np.asarray(simplex[best_i])
+    best_f = fs[best_i]
     best_obj = -best_f if maximize else best_f
 
-    # FD sensitivities at the optimum (central, 2% of span)
+    # FD sensitivities at the optimum (central, 2% of span). None, not NaN:
+    # json.dumps emits a bare NaN token, which is invalid JSON and makes the
+    # browser's JSON.parse reject the whole response.
     sens = []
     for i, p in enumerate(params):
         h = 0.02 * (hi[i] - lo[i])
@@ -168,18 +343,34 @@ def run_optimize(payload: dict) -> dict:
             g = (fp - fm) / (xp[i] - xm[i])
             sens.append(float(-g if maximize else g))
         else:
-            sens.append(float("nan"))
+            sens.append(None)
 
-    # final run at the optimum: full result for the plots
-    final = simulate.run({"schematic": _patch(sch, params, best_x),
+    # final run at the optimum: full result for the plots, at the worst
+    # corner (also when averaging -- it is the one worth looking at)
+    best_corners = per_corner.get(tuple(float(v) for v in best_x)) or {}
+    show = corners[0]
+    if len(corners) > 1 and best_corners:
+        pick = min if maximize else max
+        show = pick(best_corners, key=best_corners.get)
+    final = simulate.run({"schematic": at_corner(best_x, show),
                           "analysis": inner})
     final["optim"] = {
         "objective": spec, "maximize": maximize, "best_obj": float(best_obj),
         "best": [{"inst": p["inst"], "param": p["param"],
                   "value": float(v)} for p, v in zip(params, best_x)],
-        "sens": sens, "evals": evals["n"] + 2 * len(params) + 1,
+        # f() already counted the FD sensitivity points; +1 is the final run
+        "sens": sens, "evals": evals["n"] + 1,
         "history": [h["obj"] for h in history],
+        "evals_per_point": len(corners),
     }
+    if len(corners) > 1:
+        final["optim"].update({
+            "aggregate": agg_mode, "plotted_corner": show,
+            "corners": {c: float(v) for c, v in best_corners.items()}})
+        final.setdefault("log", []).append(
+            f"optimize: {agg_mode} over corners "
+            + ", ".join(f"{c} {v:.6g}" for c, v in best_corners.items())
+            + f"; plots show the {show} corner")
     final.setdefault("log", []).append(
         f"optimize: {spec} -> {best_obj:.6g} after "
         f"{final['optim']['evals']} evaluations")

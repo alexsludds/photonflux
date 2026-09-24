@@ -31,6 +31,17 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
+
+
+def _finite(o):
+    """Replace NaN/Infinity with null so the payload is valid JSON."""
+    if isinstance(o, float):
+        return o if o == o and o not in (float("inf"), float("-inf")) else None
+    if isinstance(o, dict):
+        return {k: _finite(v) for k, v in o.items()}
+    if isinstance(o, (list, tuple)):
+        return [_finite(v) for v in o]
+    return o
 sys.path.insert(0, str(HERE))
 sys.path.insert(0, str(HERE.parent))  # repo root -> photonflux importable
 
@@ -135,7 +146,16 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def _json(self, obj, code: int = 200) -> None:
-        self._send(code, json.dumps(obj).encode(), "application/json")
+        # json.dumps emits bare NaN/Infinity by default, which is invalid JSON
+        # and makes the browser's JSON.parse reject the entire response — a
+        # single non-finite number anywhere loses the whole result. Try the
+        # strict encoding first (fast, and the normal case), and only pay for
+        # sanitising when something non-finite actually slipped in.
+        try:
+            body = json.dumps(obj, allow_nan=False)
+        except ValueError:
+            body = json.dumps(_finite(obj), allow_nan=False)
+        self._send(code, body.encode(), "application/json")
 
     def do_GET(self) -> None:  # noqa: N802
         path = self.path.split("?", 1)[0]

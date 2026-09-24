@@ -1450,7 +1450,7 @@ CATALOG: dict[str, dict] = {
             _p("mode", "nrz", "", "Mode", rebuild=True, kind="enum",
                choices=["nrz", "pam4", "pulse", "qam"]),
             _p("order", 7, "", "PRBS order", rebuild=True, kind="enum",
-               choices=[7, 9, 11, 15, 23, 31]),
+               choices=[7, 9, 11, 13, 15, 23, 31]),
             _p("v0", -0.5, "V", "Low level", rebuild=True),
             _p("v1", 0.5, "V", "High level", rebuild=True),
             _p("tr", 20e-12, "s", "Edge time (20-80%)", rebuild=True),
@@ -2817,15 +2817,15 @@ for _entry in CATALOG.values():
 del _entry
 
 
-def build_models(sky130_geoms: dict[str, tuple[str, float, float]] | None = None,
+def build_models(sky130_geoms: dict[str, tuple[str, float, float, str]] | None = None,
                  waveforms: dict[str, tuple] | None = None,
                  noisy: dict[str, tuple] | None = None,
                  ltis: dict[str, dict] | None = None) -> dict:
     """models_map for compile_circuit.
 
-    ``sky130_geoms`` maps a model key (e.g. ``"sky130_nfet:1x0.15"``) to
-    (device, w_um, l_um) — each distinct FET flavor+geometry is its own OSDI
-    descriptor. ``waveforms`` maps a model key (``"prbs:<hash>"``) to its
+    ``sky130_geoms`` maps a model key (e.g. ``"sky130_nfet:1x0.15@tt"``) to
+    (device, w_um, l_um, corner) — each distinct FET flavor + geometry +
+    process corner is its own OSDI descriptor. ``waveforms`` maps a model key (``"prbs:<hash>"``) to its
     (t, v) breakpoint arrays for the pattern/PWL sources.
     """
     from circulax.components.electronic import (
@@ -2912,8 +2912,8 @@ def build_models(sky130_geoms: dict[str, tuple[str, float, float]] | None = None
     for key, entry in CATALOG.items():
         if entry.get("user_va"):
             models[key] = cx.va(USER_VA_DIR / f"{entry['user_va']}.va")
-    for key, (device, w_um, l_um) in (sky130_geoms or {}).items():
-        models[key] = cx.sky130_fet(device, w=w_um, l=l_um)
+    for key, (device, w_um, l_um, corner) in (sky130_geoms or {}).items():
+        models[key] = cx.sky130_fet(device, w=w_um, l=l_um, corner=corner)
     for key, (wt, wv) in (waveforms or {}).items():
         models[key] = _waveform_source(wt, wv)
     for key, (kind, bank, dt_n) in (noisy or {}).items():

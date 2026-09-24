@@ -3408,6 +3408,13 @@ function renderLink() {
           <tr><th>Q-fit BER</th><td>${q.ber_est.toExponential(2)}</td></tr>
           <tr><th>levels</th><td>${q.levels.map((x) => fmtSI(x)).join(" / ")}</td></tr>`
           : `<tr><th>Q fit</th><td>${q.reason || "failed"}</td></tr>`}
+          ${rep.tdecq ? `
+          <tr><th>TDECQ</th><td><b>${rep.tdecq.tdecq_db.toFixed(2)} dB</b>
+            <span class="link-hint">(${rep.tdecq.tdecq_raw_db.toFixed(2)} dB unequalized${
+              rep.tdecq.family === "outer" ? "" : "; crossing-point OMA — run a full PRBS-13Q for OMA_outer"})</span></td></tr>
+          <tr><th>TDECQ ref. FFE</th><td>${fmtTaps(rep.tdecq.ffe_taps)}
+            <span class="link-hint">(C<sub>eq</sub> ${rep.tdecq.ceq.toFixed(3)};
+            BT4 ref Rx at baud/2, SER ${rep.tdecq.ser}, S ${fmtSI(rep.tdecq.s_noise_mw * 1e-3)}W)</span></td></tr>` : ""}
           <tr><th>RX FFE taps</th><td>${fmtTaps(rep.ffe_taps)}${eqMode}</td></tr>
           <tr><th>RX DFE taps</th><td>${fmtTaps(rep.dfe_taps)}</td></tr>
         </table>

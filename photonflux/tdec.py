@@ -204,11 +204,25 @@ def oma_tdec_dbm(msmts: dict, oma_type: str = "8180") -> float:
 
 def _prepare(p_thru_mW, dt_sec, baud, ref_rx_bw_factor, ref_rx_order,
              ref_rx_bw_hz, settle_ui):
-    """Reference-receiver filter, settling trim and record-length guard
-    shared by the NRZ and PAM-4 measurements."""
+    """Reference-receiver filter, integer-samples/UI resampling, settling
+    trim and record-length guard shared by the NRZ and PAM-4 measurements.
+    Returns ``(p, dt_sec)`` on the resampled grid.
+
+    stateye folds the record assuming a whole number of samples per UI: at
+    24.93 samples/UI a clean PAM-4 eye scored 27.9 dB TDECQ instead of 4.2,
+    and 24.5 crashed its bathtub fit. Any fractional grid -- a transient
+    whose t_stop/points do not divide the UI -- is therefore interpolated
+    onto the nearest integer rate (at least 16 samples/UI) first.
+    """
     p = np.asarray(p_thru_mW, dtype=float)
     if p.ndim != 1:
         raise ValueError(f"expected a 1-D power waveform, got shape {p.shape}")
+    sps = 1.0 / (baud * dt_sec)
+    sps_int = max(16, int(round(sps)))
+    if abs(sps - sps_int) > 1e-9 * sps_int:
+        t = np.arange(p.size) * dt_sec
+        dt_sec = 1.0 / (baud * sps_int)
+        p = np.interp(np.arange(0.0, t[-1], dt_sec), t, p)
 
     p = reference_receiver(p, dt_sec, baud, bw_factor=ref_rx_bw_factor,
                            order=ref_rx_order, bw_hz=ref_rx_bw_hz)
@@ -230,7 +244,7 @@ def _prepare(p_thru_mW, dt_sec, baud, ref_rx_bw_factor, ref_rx_order,
             f"record is only {n_ui:.0f} UI after discarding {settle_ui} UI of "
             f"settling; need >={MIN_RECORD_UI} for stateye to lock and fill "
             "the level filters. Raise the transient's t_stop.")
-    return p
+    return p, dt_sec
 
 
 def measure(
@@ -264,8 +278,8 @@ def measure(
     PRBS-13), and is otherwise a silent NaN.
     """
     stateye = _require_stateye()
-    p = _prepare(p_thru_mW, dt_sec, baud, ref_rx_bw_factor, ref_rx_order,
-                 ref_rx_bw_hz, settle_ui)
+    p, dt_sec = _prepare(p_thru_mW, dt_sec, baud, ref_rx_bw_factor,
+                         ref_rx_order, ref_rx_bw_hz, settle_ui)
 
     # half_ui is mandatory for TDEC: its 0.4/0.6 UI histogram windows are
     # referenced to the eye crossing. (stateye's README says "adaptive" is the
@@ -361,8 +375,8 @@ def measure_pam4(
     if not hasattr(stateye.IdealEye, "set_tdecq_ser"):
         raise ImportError("measure_pam4 needs stateye >= 1.8; see "
                           "docs/stateye-integration-plan.md for the install.")
-    p = _prepare(p_thru_mW, dt_sec, baud, ref_rx_bw_factor, ref_rx_order,
-                 ref_rx_bw_hz, settle_ui)
+    p, dt_sec = _prepare(p_thru_mW, dt_sec, baud, ref_rx_bw_factor,
+                         ref_rx_order, ref_rx_bw_hz, settle_ui)
 
     eq: dict = {}
     if ffe_taps:

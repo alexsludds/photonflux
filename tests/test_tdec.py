@@ -271,3 +271,16 @@ def test_measure_pam4_reference_ffe_recovers_isi(needs_pam4):
     assert np.isfinite(eq["tdecq_outer"])
     assert not np.isfinite(raw["tdecq_outer"]) or \
         eq["tdecq_outer"] < raw["tdecq_outer"]
+
+
+def test_fractional_samples_per_ui_is_resampled(needs_pam4):
+    """stateye assumes whole samples/UI; a 24.93-sample grid used to score
+    a clean eye at ~28 dB TDECQ (and 24.5 crashed). The bridge resamples."""
+    sig = _prbs13q(0.002)
+    t = np.arange(sig.size) * DT
+    ref = tdec.measure_pam4(sig, DT, BAUD, s_noise_mW=0.005, ffe_taps=0)
+    for sps in (24.93, 24.5):
+        dt = 1.0 / (BAUD * sps)
+        p = np.interp(np.arange(0.0, t[-1], dt), t, sig)
+        m = tdec.measure_pam4(p, dt, BAUD, s_noise_mW=0.005, ffe_taps=0)
+        assert m["tdecq_outer"] == pytest.approx(ref["tdecq_outer"], abs=0.3)

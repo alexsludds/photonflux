@@ -28,9 +28,19 @@ so the search runs a cheap PRBS-9 surrogate over (gap, lock) inside a discrete
 (W_p, W_n, L) grid, then rescores the winners on full PRBS-13. Every reported
 number comes from PRBS-13.
 
+**Process corners.** ``--corners tt,ss,ff,sf,fs`` (or ``all``) evaluates every
+design at each SKY130 FET corner and scores it by ``--aggregate``: ``worst``
+(default; the design is only as good as its worst corner) or ``mean``. The
+bus gap and the inverter are fixed at design time, but a real link re-locks
+the laser per die with its thermal tuner, so ``--relock`` gives each corner its
+own lock point instead of forcing one shared value. Each corner is its own
+SKY130 card, so the first run at a new corner pays the card cost again.
+
     python examples/mrm_tdec_sky130.py single       # one operating point
     python examples/mrm_tdec_sky130.py sweep        # gap x lock contour
     python examples/mrm_tdec_sky130.py optimize     # the full co-optimization
+    python examples/mrm_tdec_sky130.py single --corners all
+    python examples/mrm_tdec_sky130.py optimize --corners all --relock
 
     -> out/mrm_tdec_*.png, out/mrm_tdec_results.csv
 """
@@ -61,6 +71,7 @@ from _drivers import single_stage_inverter, stitch_driver  # noqa: E402
 from photodiode_tia import Photodiode  # noqa: E402
 
 from photonflux import cx, tdec  # noqa: E402
+from photonflux.corners import aggregate, parse_corners  # noqa: E402
 from photonflux.coupler import DEFAULT_O_BAND  # noqa: E402
 from photonflux.signals import prbs  # noqa: E402
 
@@ -95,6 +106,7 @@ class LinkSpec:
     v_dd: float = 1.8
     r_pd_load: float = 1e3
     t_rise: float = 7e-12
+    corner: str = "tt"            # SKY130 FET process corner of the driver
 
     # numerics
     spu: int = 32                 # samples per UI
@@ -223,7 +235,8 @@ def simulate(spec: LinkSpec, bits: np.ndarray):
     mdl["nrz"] = nrz_source(bits, t_bit, 0.0, spec.v_dd,
                             spec.t_rise, spec.t_rise)
 
-    parts = single_stage_inverter(w_p=spec.w_p_um, w_n=spec.w_n_um, l=spec.l_um)
+    parts = single_stage_inverter(w_p=spec.w_p_um, w_n=spec.w_n_um, l=spec.l_um,
+                                  corner=spec.corner)
     vdrv = stitch_driver(parts, inst, conn, mdl, gnd,
                          vin="VIN,p1", vdd="VDD,p1", load="RING,vp")
     conn["GND,p1"] = tuple(gnd)
@@ -284,7 +297,7 @@ def score(spec: LinkSpec, *, order: int | None = None, s_noise_mW: float = 0.01,
     except (RuntimeError, ValueError, AssertionError) as exc:
         print(f"    eval failed at gap {spec.gap_nm:.0f} nm / lock "
               f"{spec.detune_pm:+.0f} pm, W {spec.w_p_um:g}/{spec.w_n_um:g} "
-              f"L {spec.l_um:g}: {exc}")
+              f"L {spec.l_um:g} [{spec.corner}]: {exc}")
         return None
     return m
 
@@ -297,6 +310,22 @@ def objective(spec: LinkSpec, **kw) -> float:
     _FLOOR_HITS[0] += int(m["at_floor"])
     _FLOOR_HITS[1] += 1
     return m["oma_tdec_dbm"]
+
+
+def robust_objective(spec: LinkSpec, corners, mode: str, locks=None, **kw):
+    """OMA - TDEC aggregated over process corners.
+
+    `locks` optionally maps corner -> lock point [pm] (per-die re-locking);
+    otherwise every corner uses ``spec.detune_pm``. Returns ``(score,
+    per_corner)`` with score = -inf when any corner fails -- a design that
+    only converges at some corners is not robust.
+    """
+    per = {c: objective(replace(spec, corner=c,
+                                detune_pm=(locks or {}).get(c, spec.detune_pm)),
+                        **kw)
+           for c in corners}
+    agg = aggregate(per, mode)
+    return (-np.inf if agg is None else agg), per
 
 
 # [saturated, total] evaluations -- OMA - TDEC bottoms out at a floor set by
@@ -323,7 +352,39 @@ def report_floor_hits(s_noise_mW: float, ber: float) -> None:
 # ---------------------------------------------------------------------------
 # modes
 # ---------------------------------------------------------------------------
+def _single_corners(spec: LinkSpec, args) -> None:
+    """One design at several corners: a per-corner table plus the aggregate."""
+    print(f"design: gap {spec.gap_nm:.0f} nm, lock {spec.detune_pm:+.0f} pm, "
+          f"W {spec.w_p_um:g}/{spec.w_n_um:g} um, L {spec.l_um:g} um, "
+          f"PRBS-{spec.prbs_order}")
+    print(f"\n  {'corner':6s}  {'OMA [mW]':>9s}  {'TDEC [dB]':>9s}  "
+          f"{'OMA-TDEC [dBm]':>14s}  {'ER [dB]':>7s}")
+    per = {}
+    for c in args.corners:
+        m = score(replace(spec, corner=c), s_noise_mW=args.s_noise, ber=args.ber,
+                  ref_bw_factor=args.ref_bw, ref_order=args.ref_order)
+        if m is None:
+            per[c] = None
+            print(f"  {c:6s}  {'failed':>9s}")
+            continue
+        ot = m.oma_type
+        per[c] = m["oma_tdec_dbm"]
+        print(f"  {c:6s}  {m[f'oma_{ot}']:9.4f}  {m[f'tdec_{ot}']:+9.3f}  "
+              f"{m['oma_tdec_dbm']:+14.3f}  {m[f'extinction_ratio_{ot}']:7.2f}"
+              + ("  AT FLOOR" if m["at_floor"] else ""))
+    agg = aggregate(per, args.aggregate)
+    if agg is None:
+        print(f"\n  {args.aggregate}: undefined (a corner failed)")
+        return
+    worst = min((c for c in per if per[c] is not None), key=per.get)
+    print(f"\n  {args.aggregate} over {len(per)} corners: {agg:+.3f} dBm "
+          f"(worst corner: {worst})")
+
+
 def mode_single(spec: LinkSpec, args) -> None:
+    if len(args.corners) > 1:
+        return _single_corners(spec, args)
+    spec = replace(spec, corner=args.corners[0])
     cmt = spec.cmt()
     print(f"device: R = {spec.radius_um} um, kappa2 = {spec.kappa2:.4f} "
           f"(gap {spec.gap_nm:.0f} nm, critical = {cmt['kappa2_crit']:.4f})")
@@ -333,7 +394,7 @@ def mode_single(spec: LinkSpec, args) -> None:
     print(f"lock:   laser {spec.detune_pm:+.0f} pm from resonance "
           f"({spec.detune_pm/(cmt['fwhm_pm']/2):+.2f} HWHM)")
     print(f"driver: {spec.w_p_um}/{spec.w_n_um} um at L = {spec.l_um} um, "
-          f"VDD = {spec.v_dd} V")
+          f"VDD = {spec.v_dd} V, {spec.corner} corner")
     n = len(pattern(spec.prbs_order))
     print(f"pattern: PRBS-{spec.prbs_order}, {n} bits at {spec.baud/1e9:g} GBd, "
           f"{spec.spu} samples/UI -> {n*spec.spu} timesteps")
@@ -379,17 +440,18 @@ def mode_sweep(spec: LinkSpec, args) -> None:
 
     total = len(gaps) * len(detunes)
     print(f"sweep: {len(gaps)} gaps x {len(detunes)} lock points = {total} "
-          f"evaluations on PRBS-{args.surrogate_order}")
+          f"points on PRBS-{args.surrogate_order}, {args.aggregate} over "
+          f"corners {','.join(args.corners)}")
     t0 = time.time()
     k = 0
     for j, g in enumerate(gaps):
         for i, d in enumerate(detunes):
             k += 1
             s = replace(spec, gap_nm=float(g), detune_pm=float(d))
-            grid[i, j] = objective(s, order=args.surrogate_order,
-                                   s_noise_mW=args.s_noise, ber=args.ber,
-                                   ref_bw_factor=args.ref_bw,
-                                   ref_order=args.ref_order)
+            grid[i, j], _ = robust_objective(
+                s, args.corners, args.aggregate, order=args.surrogate_order,
+                s_noise_mW=args.s_noise, ber=args.ber,
+                ref_bw_factor=args.ref_bw, ref_order=args.ref_order)
             print(f"  [{k:3d}/{total}] gap {g:5.0f} nm  lock {d:+6.0f} pm  "
                   f"kappa2 {s.kappa2:.4f}  OMA-TDEC {grid[i,j]:+7.3f} dBm")
     print(f"sweep took {time.time()-t0:.0f} s")
@@ -503,11 +565,42 @@ def mode_optimize(spec: LinkSpec, args) -> None:
     w_ns = [float(x) for x in args.w_n.split(",")]
     ls = [float(x) for x in args.l.split(",")]
     geoms = list(itertools.product(w_ps, w_ns, ls))
+    corners = args.corners
+    kw = dict(order=args.surrogate_order, s_noise_mW=args.s_noise, ber=args.ber,
+              ref_bw_factor=args.ref_bw, ref_order=args.ref_order)
 
     print(f"outer grid: {len(geoms)} (W_p, W_n, L) points "
-          f"-- each new pair costs 41-80 s of SKY130 card + OSDI compile")
-    print(f"inner loop: bounded Nelder-Mead over (gap, lock) on "
-          f"PRBS-{args.surrogate_order}, <= {args.max_evals} evals each\n")
+          f"-- each new pair costs 41-80 s of SKY130 card + OSDI compile "
+          f"per corner")
+    if args.relock:
+        # Each die re-locks its own laser, so the lock point is a per-corner
+        # tuning knob, not a design variable: for a candidate gap, each corner
+        # gets its own 1-D lock search, and the gap is scored by the aggregate
+        # of those per-corner optima. (A joint gap + N-lock simplex wastes its
+        # budget: under "worst", only the worst corner's lock moves the score.)
+        n_gap = max(6, args.max_evals // args.lock_evals)
+        print(f"inner loop: Nelder-Mead over gap (<= {n_gap} evals), each "
+              f"re-locking every corner (<= {args.lock_evals} evals per "
+              f"corner) on PRBS-{args.surrogate_order}")
+    else:
+        print(f"inner loop: bounded Nelder-Mead over (gap, shared lock) on "
+              f"PRBS-{args.surrogate_order}, <= {args.max_evals} evals each")
+    if len(corners) > 1:
+        print(f"corners: {','.join(corners)}, scored by {args.aggregate} "
+              f"({len(corners)} transients per evaluation)")
+    print()
+
+    def relock(base, gap):
+        """Best lock point and OMA - TDEC for each corner at this gap."""
+        out = {}
+        for c in corners:
+            sc = replace(base, gap_nm=gap, corner=c)
+            x, fval, _ = _nelder_mead(
+                lambda z: -objective(replace(sc, detune_pm=float(z[0])), **kw),
+                [spec.detune_pm], [args.det_lo], [args.det_hi],
+                max_evals=args.lock_evals)
+            out[c] = (float(x[0]), -fval)
+        return out
 
     t_start = time.time()
     rows = []
@@ -515,26 +608,49 @@ def mode_optimize(spec: LinkSpec, args) -> None:
         base = replace(spec, w_p_um=wp, w_n_um=wn, l_um=lch)
         t0 = time.time()
 
-        def neg(x):
-            s = replace(base, gap_nm=float(x[0]), detune_pm=float(x[1]))
-            return -objective(s, order=args.surrogate_order,
-                              s_noise_mW=args.s_noise, ber=args.ber,
-                              ref_bw_factor=args.ref_bw, ref_order=args.ref_order)
+        if args.relock:
+            found: dict[float, dict] = {}
 
-        x, fval, n_evals = _nelder_mead(
-            neg, [spec.gap_nm, spec.detune_pm],
-            [args.gap_lo, args.det_lo], [args.gap_hi, args.det_hi],
-            max_evals=args.max_evals)
-        best = replace(base, gap_nm=float(x[0]), detune_pm=float(x[1]))
+            def neg(x):
+                found[float(x[0])] = per = relock(base, float(x[0]))
+                agg = aggregate({c: v for c, (_, v) in per.items()},
+                                args.aggregate)
+                return np.inf if agg is None else -agg
+
+            x, fval, n_evals = _nelder_mead(
+                neg, [spec.gap_nm], [args.gap_lo], [args.gap_hi],
+                max_evals=n_gap)
+            locks = {c: lk for c, (lk, _) in found[float(x[0])].items()}
+            best = replace(base, gap_nm=float(x[0]),
+                           detune_pm=locks[corners[0]])
+        else:
+            def neg(x):
+                val, _ = robust_objective(
+                    replace(base, gap_nm=float(x[0]), detune_pm=float(x[1])),
+                    corners, args.aggregate, **kw)
+                return -val
+
+            x, fval, n_evals = _nelder_mead(
+                neg, [spec.gap_nm, spec.detune_pm],
+                [args.gap_lo, args.det_lo], [args.gap_hi, args.det_hi],
+                max_evals=args.max_evals)
+            locks = None
+            best = replace(base, gap_nm=float(x[0]), detune_pm=float(x[1]))
+
+        lock_txt = ("/".join(f"{c} {v:+.0f}" for c, v in locks.items())
+                    if locks else f"{best.detune_pm:+.0f}")
         print(f"[{gi}/{len(geoms)}] W {wp:g}/{wn:g} L {lch:g}: "
-              f"gap {x[0]:5.0f} nm  lock {x[1]:+6.0f} pm  "
+              f"gap {x[0]:5.0f} nm  lock {lock_txt} pm  "
               f"surrogate OMA-TDEC {-fval:+7.3f} dBm  "
               f"({n_evals} evals, {time.time()-t0:.0f} s)")
-        rows.append({"w_p_um": wp, "w_n_um": wn, "l_um": lch,
-                     "gap_nm": x[0], "detune_pm": x[1], "kappa2": best.kappa2,
-                     "surrogate_oma_tdec_dbm": -fval,
-                     "energy_fj_per_bit": best.energy_fj_per_bit(),
-                     "spec": best})
+        row = {"w_p_um": wp, "w_n_um": wn, "l_um": lch,
+               "gap_nm": x[0], "detune_pm": best.detune_pm,
+               "kappa2": best.kappa2, "surrogate_oma_tdec_dbm": -fval,
+               "energy_fj_per_bit": best.energy_fj_per_bit(),
+               "spec": best, "locks": locks, "lock_txt": lock_txt}
+        for c, v in (locks or {}).items():
+            row[f"lock_{c}_pm"] = v
+        rows.append(row)
 
     # --- final rescore of the survivors on full PRBS-13 --------------------
     rows.sort(key=lambda r: r["surrogate_oma_tdec_dbm"], reverse=True)
@@ -542,36 +658,55 @@ def mode_optimize(spec: LinkSpec, args) -> None:
     print(f"\nrescoring top {len(top)} on full PRBS-13 "
           f"({len(pattern(13))} bits, ~16x the surrogate cost)")
     for r in top:
-        m = score(r["spec"], order=13, s_noise_mW=args.s_noise, ber=args.ber,
-                  ref_bw_factor=args.ref_bw, ref_order=args.ref_order)
-        if m is None:
-            r["oma_tdec_dbm"] = float("nan")
-            continue
-        r["oma_tdec_dbm"] = m["oma_tdec_dbm"]
-        r["oma_mw"] = m["oma_8180"]
-        r["tdec_db"] = m["tdec_8180"]
-        r["er_db"] = m["extinction_ratio_8180"]
+        per, meas = {}, {}
+        for c in corners:
+            lock = (r["locks"] or {}).get(c, r["spec"].detune_pm)
+            m = score(replace(r["spec"], corner=c, detune_pm=lock), order=13,
+                      s_noise_mW=args.s_noise, ber=args.ber,
+                      ref_bw_factor=args.ref_bw, ref_order=args.ref_order)
+            per[c] = None if m is None else m["oma_tdec_dbm"]
+            r[f"oma_tdec_{c}_dbm"] = float("nan") if m is None else m["oma_tdec_dbm"]
+            if m is not None:
+                meas[c] = m
+        agg = aggregate(per, args.aggregate)
+        r["oma_tdec_dbm"] = float("nan") if agg is None else agg
+        if meas:
+            # OMA / TDEC / ER columns come from the corner that set the score
+            # (the worst one), so a row never mixes corners
+            r["corner"] = wc = min(meas, key=lambda c: meas[c]["oma_tdec_dbm"])
+            m, ot = meas[wc], meas[wc].oma_type
+            r["oma_mw"] = m[f"oma_{ot}"]
+            r["tdec_db"] = m[f"tdec_{ot}"]
+            r["er_db"] = m[f"extinction_ratio_{ot}"]
+        corner_txt = "  ".join(f"{c} {per[c]:+.3f}" if per[c] is not None
+                               else f"{c} failed" for c in corners)
         print(f"  W {r['w_p_um']:g}/{r['w_n_um']:g} L {r['l_um']:g}  "
-              f"gap {r['gap_nm']:.0f} nm  lock {r['detune_pm']:+.0f} pm  ->  "
-              f"OMA-TDEC {r['oma_tdec_dbm']:+.3f} dBm  "
-              f"(OMA {r['oma_mw']:.4f} mW, TDEC {r['tdec_db']:+.3f} dB, "
-              f"ER {r['er_db']:.2f} dB, surrogate error "
-              f"{r['oma_tdec_dbm']-r['surrogate_oma_tdec_dbm']:+.3f} dB)")
+              f"gap {r['gap_nm']:.0f} nm  lock {r['lock_txt']} pm  ->  "
+              f"OMA-TDEC {r['oma_tdec_dbm']:+.3f} dBm"
+              + (f" ({args.aggregate}; {corner_txt})" if len(corners) > 1 else "")
+              + f"  surrogate error "
+              f"{r['oma_tdec_dbm']-r['surrogate_oma_tdec_dbm']:+.3f} dB")
 
     scored = [r for r in top if np.isfinite(r.get("oma_tdec_dbm", np.nan))]
     if scored:
         win = max(scored, key=lambda r: r["oma_tdec_dbm"])
         print(f"\nBEST: W_p {win['w_p_um']:g} um, W_n {win['w_n_um']:g} um, "
               f"L {win['l_um']:g} um, gap {win['gap_nm']:.0f} nm "
-              f"(kappa2 {win['kappa2']:.4f}), lock {win['detune_pm']:+.0f} pm")
-        print(f"      OMA - TDEC = {win['oma_tdec_dbm']:+.3f} dBm on full PRBS-13, "
-              f"{win['energy_fj_per_bit']:.1f} fJ/bit at the electrode")
+              f"(kappa2 {win['kappa2']:.4f}), lock {win['lock_txt']} pm")
+        what = (f"{args.aggregate} over corners {','.join(corners)}"
+                if len(corners) > 1 else f"{corners[0]} corner")
+        print(f"      OMA - TDEC = {win['oma_tdec_dbm']:+.3f} dBm on full PRBS-13 "
+              f"({what}), {win['energy_fj_per_bit']:.1f} fJ/bit at the electrode")
 
     OUT.mkdir(exist_ok=True)
     csv_path = OUT / "mrm_tdec_results.csv"
     cols = ["w_p_um", "w_n_um", "l_um", "gap_nm", "detune_pm", "kappa2",
             "surrogate_oma_tdec_dbm", "oma_tdec_dbm", "oma_mw", "tdec_db",
             "er_db", "energy_fj_per_bit"]
+    if len(corners) > 1:
+        cols += ["corner"] + [f"oma_tdec_{c}_dbm" for c in corners]
+    if args.relock:
+        cols += [f"lock_{c}_pm" for c in corners]
     with csv_path.open("w", newline="") as fh:
         w = csv.DictWriter(fh, fieldnames=cols, extrasaction="ignore")
         w.writeheader()
@@ -611,7 +746,21 @@ def main() -> None:
     ap.add_argument("--s-noise", type=float, default=0.01,
                     help="TDEC S: O/E + scope noise std [mW]")
     ap.add_argument("--ber", type=float, default=1e-12)
+    ap.add_argument("--corners", default="tt",
+                    help="SKY130 FET corners, comma list or 'all' "
+                         "(tt,ss,ff,sf,fs)")
+    ap.add_argument("--aggregate", choices=("worst", "mean"), default="worst",
+                    help="how per-corner OMA - TDEC folds into one score")
+    ap.add_argument("--relock", action="store_true",
+                    help="optimize: one lock point per corner (per-die "
+                         "thermal re-lock) instead of one shared value")
+    ap.add_argument("--lock-evals", type=int, default=10,
+                    help="--relock: lock-point search budget per corner")
     args = ap.parse_args()
+    try:
+        args.corners = parse_corners(args.corners)
+    except ValueError as exc:
+        ap.error(str(exc))
 
     spec = LinkSpec(baud=args.baud, gap_nm=args.gap, detune_pm=args.detune,
                     spu=args.spu, prbs_order=args.prbs_order,

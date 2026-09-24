@@ -605,10 +605,15 @@ def sky130_card(device: str, w: float, l: float, corner: str = "tt") -> dict[str
 
     ``device`` is the short cell name (``nfet_01v8``, ``pfet_01v8``, ...);
     ``w``/``l`` are the sky130 subckt values in **um** and only matter for
-    model-bin selection. ngspice does all the heavy lifting: ``.lib``
-    stitching, ``{...}`` card expressions, and W/L bin selection; we read the
-    result back with ``showmod``. Cached as JSON.
+    model-bin selection. ``corner`` is a SKY130 FET process corner (``tt``,
+    ``ss``, ``ff``, ``sf``, ``fs``; see :mod:`photonflux.corners`). ngspice
+    does all the heavy lifting: ``.lib`` stitching, ``{...}`` card
+    expressions, and W/L bin selection; we read the result back with
+    ``showmod``. Cached as JSON.
     """
+    from .corners import check_corner
+
+    check_corner(corner)
     key = _hash(str(toolchain.sky130_lib()), device, corner, f"{w:.6g}", f"{l:.6g}")
     return _showmod_card(
         f""".title sky130 card extraction
@@ -652,7 +657,9 @@ def sky130_fet(
     ``w``/``l`` in **um** (sky130 subckt convention). They select the model
     bin and become the instance geometry; per-instance overrides go through
     netlist ``settings`` in **meters** (``{"w": 2e-6}``) and must stay inside
-    the same bin. Ports are ``("d", "g", "s", "b")``.
+    the same bin. Ports are ``("d", "g", "s", "b")``. ``corner`` selects the
+    SKY130 process corner (``tt``/``ss``/``ff``/``sf``/``fs``, see
+    :mod:`photonflux.corners`); each corner is its own card and descriptor.
 
     ``backend="osdi"`` (default) returns an ``OsdiModelDescriptor`` — exact
     BSIM4.8 physics evaluated natively; pass it in ``models_map`` like any

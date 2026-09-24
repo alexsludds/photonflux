@@ -42,6 +42,17 @@ _CIRCUIT_CACHE: dict[str, Any] = {}   # schematic-hash -> (circuit, meta)
 _MODELS_CACHE: dict[str, Any] = {}    # sky130-geometry-key set -> models_map
 
 
+def sch_corners(sch: dict) -> tuple[str, ...]:
+    """The SKY130 process corner(s) a schematic runs at (``sch["corner"]``:
+    one corner, a comma list, or ``"all"``; default ``tt``)."""
+    from photonflux.corners import parse_corners
+
+    try:
+        return parse_corners(sch.get("corner") or "tt")
+    except ValueError as exc:
+        raise NetlistError(str(exc)) from None
+
+
 # ---------------------------------------------------------------------------
 # schematic -> circulax netlist
 # ---------------------------------------------------------------------------
@@ -91,6 +102,14 @@ def schematic_to_netlist(sch: dict, wave_span: float = DEFAULT_WAVE_SPAN,
     instances = sch.get("instances") or {}
     wires = sch.get("wires") or []
     probes = sch.get("probes") or []
+    corners = sch_corners(sch)
+    if len(corners) > 1:
+        raise NetlistError(
+            f"corners {','.join(corners)}: a multi-corner run overlays one "
+            "plot-producing analysis per corner (transient, DC/AC sweep, "
+            "noise, pulse) or optimizes across them; this analysis runs at a "
+            "single corner — pick one in the Corner menu.")
+    corner = corners[0]
 
     # Flatten user-defined subcircuits first, so everything below operates on a
     # primitive netlist with hierarchical refdes (``X1.WG1``). Definition edits
@@ -248,9 +267,10 @@ def schematic_to_netlist(sch: dict, wave_span: float = DEFAULT_WAVE_SPAN,
                 has_osdi = True
                 w = float(settings.pop("w_um"))
                 length = float(settings.pop("l_um"))
-                model_key = f"{ctype}:{w:g}x{length:g}"
+                model_key = f"{ctype}:{w:g}x{length:g}@{corner}"
                 cx_instances[name] = {"component": model_key,
-                                      "_geom": (sky["device"], w, length)}
+                                      "_geom": (sky["device"], w, length,
+                                                corner)}
                 settings = {}
             elif sky:  # res/cap: value measured from the PDK, ideal element
                 w = float(settings.pop("w_um", 0.0))
@@ -342,7 +362,7 @@ def schematic_to_netlist(sch: dict, wave_span: float = DEFAULT_WAVE_SPAN,
                            "so there is something to record")
 
     # strip helper keys
-    geoms: dict[str, tuple[float, float]] = {}
+    geoms: dict[str, tuple[str, float, float, str]] = {}
     waveforms: dict[str, tuple] = {}
     for inst in cx_instances.values():
         g = inst.pop("_geom", None)
@@ -1419,7 +1439,8 @@ def _run_ac_sweep(sch: dict, analysis: dict) -> dict:
         try:
             import sky130_cards
             t0 = time.perf_counter()
-            n_new = sky130_cards.prewarm(sky["device"], geoms)
+            n_new = sky130_cards.prewarm(sky["device"], geoms,
+                                         sch_corners(sch)[0])
             if n_new:
                 log.append(
                     f"extracted {n_new} new SKY130 {sky['device']} card(s) in "
@@ -1551,11 +1572,13 @@ def _prewarm_sky130_for_sweep(sch: dict, axes: list, log: list) -> None:
         try:
             import sky130_cards
             t0 = time.perf_counter()
-            n_new = sky130_cards.prewarm(sky["device"], geoms)
+            n_new = sum(sky130_cards.prewarm(sky["device"], geoms, c)
+                        for c in sch_corners(sch))
             if n_new:
                 log.append(
                     f"extracted {n_new} new SKY130 {sky['device']} card(s) in "
-                    f"one library parse ({time.perf_counter() - t0:.1f}s)")
+                    f"one library parse per corner "
+                    f"({time.perf_counter() - t0:.1f}s)")
         except Exception as exc:  # noqa: BLE001 — never block the sweep on this
             log.append(f"batch card prewarm skipped "
                        f"({type(exc).__name__}: {exc})")
@@ -1642,7 +1665,10 @@ def _run_sweep_overlay(payload: dict) -> dict:
     axes = rc.get("sweep") or []
     color_mode = (rc.get("overlay") or {}).get("color_mode", "shaded")
 
-    grid = _expand_sweep_grid(axes)
+    corners = sch_corners(sch)
+    multi = len(corners) > 1
+    grid = [([("*corner", c)] if multi else []) + pt
+            for c in corners for pt in _expand_sweep_grid(axes)]
     if not grid:
         raise NetlistError("run configuration: the sweep has no values")
     if len(grid) > _SWEEP_MAX_RUNS:
@@ -1653,7 +1679,8 @@ def _run_sweep_overlay(payload: dict) -> dict:
     inner = {k: v for k, v in analysis.items() if k != "run_config"}
     n = len(grid)
     log = [f"parameter sweep: {n} runs over "
-           + " x ".join(f"{ax['instance']}.{ax['param']}" for ax in axes)]
+           + " x ".join((["corner"] if multi else [])
+                        + [f"{ax['instance']}.{ax['param']}" for ax in axes])]
     _prewarm_sky130_for_sweep(copy.deepcopy(sch), axes, log)
 
     from progress import PROGRESS
@@ -1664,11 +1691,14 @@ def _run_sweep_overlay(payload: dict) -> dict:
     for i, point in enumerate(grid):
         PROGRESS.set_run(i)
         frac = i / max(1, n - 1)
-        label = ", ".join(f"{inst}.{param}={_fmt_si(val)}"
-                          for inst, param, val in point)
+        label = ", ".join(f"corner={p[1]}" if p[0] == "*corner"
+                          else f"{p[0]}.{p[1]}={_fmt_si(p[2])}" for p in point)
         sch_i = copy.deepcopy(sch)
-        for inst, param, val in point:
-            _patch_point(sch_i, inst, param, float(val))
+        for p in point:
+            if p[0] == "*corner":
+                sch_i["corner"] = p[1]
+            else:
+                _patch_point(sch_i, p[0], p[1], float(p[2]))
         res = run({"schematic": sch_i, "analysis": inner})
         if res.get("cancelled"):
             # User hit Stop mid-sweep: abort the whole fan-out instead of
@@ -1752,9 +1782,13 @@ def _run_inner(payload: dict) -> dict:
         # single-axis AC keep their own fast engines below, so they are
         # excluded here (DC sweeps arrive as mode "dcsweep"; single-axis AC
         # carries sweep_values).
+        # A multi-corner schematic (Corner menu = "all") overlays the same
+        # analysis once per SKY130 corner through the same engine.
         rc = analysis.get("run_config") or {}
-        if rc.get("sweep") and mode != "optimize" \
-                and not (mode == "ac" and analysis.get("sweep_values")):
+        multi_corner = len(sch_corners(sch)) > 1 and mode != "optimize"
+        if multi_corner or (rc.get("sweep") and mode != "optimize"
+                            and not (mode == "ac"
+                                     and analysis.get("sweep_values"))):
             return _run_sweep_overlay(payload)
         # AC parameter sweep compiles a fresh circuit per value, so it owns
         # its own circuit lifecycle (and log) instead of a single _get_circuit.

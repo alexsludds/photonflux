@@ -13,11 +13,19 @@ w/l, channel fits) are handled uniformly through the caches. Objectives:
   tdec:<probe>    IEEE 802.3 TDEC at an optical probe [dB] (minimize)
   omatdec:<probe> OMA - TDEC at an optical probe [dBm] (maximize)
 
+Process corners: when the schematic's corner is several SKY130 corners
+(Corner menu = "all"), every evaluation runs the inner analysis once per
+corner and the optimizer maximizes the *worst* corner (``aggregate:
+"worst"``, default) or the corner *mean*. The per-corner objective at the
+optimum is reported, and the final plots are from the worst corner.
+
 Nelder-Mead is bounded by clipping to the user's min/max box. Derivative-
 free beats FD-gradient descent here because eye/BER objectives are noisy
 and several parameters recompile the circuit (no JAX gradient exists
 through a recompile) -- and the TDEC objectives run through stateye's Cython
-histogram, which has no gradient at all.
+histogram, which has no gradient at all. SKY130 FETs are OSDI FFI calls that
+JAX cannot differentiate either, and a worst-case objective is non-smooth
+where the worst corner changes.
 """
 from __future__ import annotations
 
@@ -194,6 +202,14 @@ def run_optimize(payload: dict) -> dict:
     if spec.startswith("fom"):
         inner["mode"] = "pulse"
 
+    from photonflux.corners import AGGREGATES, aggregate
+
+    corners = simulate.sch_corners(sch)
+    agg_mode = str(cfg.get("aggregate", "worst"))
+    if agg_mode not in AGGREGATES:
+        return {"ok": False, "error": f"optimize: aggregate must be one of "
+                f"{', '.join(AGGREGATES)}, not {agg_mode!r}"}
+
     tdec_cfg = cfg.get("tdec") or {}
     if spec.startswith(("tdec:", "omatdec:")):
         try:
@@ -217,21 +233,36 @@ def run_optimize(payload: dict) -> dict:
 
     evals = {"n": 0}
     history: list[dict] = []
+    per_corner: dict[tuple, dict] = {}   # x -> {corner: objective}
+
+    def at_corner(x, corner):
+        sch_c = _patch(sch, params, x)
+        sch_c["corner"] = corner
+        return sch_c
 
     def f(x):
         x = np.clip(x, lo, hi)
-        res = simulate.run({"schematic": _patch(sch, params, x),
-                            "analysis": inner})
-        try:
-            val = _objective(res, spec, ui_hint, tdec_cfg)
-        except ValueError as exc:
-            # a misconfigured objective (wrong probe domain, no UI) fails the
-            # same way at every point, so surface it instead of returning inf
-            # forever and reporting a meaningless "optimum"
-            raise RuntimeError(f"optimize: {exc}") from None
+        vals = {}
+        for c in corners:
+            res = simulate.run({"schematic": at_corner(x, c),
+                                "analysis": inner})
+            try:
+                vals[c] = _objective(res, spec, ui_hint, tdec_cfg)
+            except ValueError as exc:
+                # a misconfigured objective (wrong probe domain, no UI) fails
+                # the same way at every point, so surface it instead of
+                # returning inf forever and reporting a meaningless "optimum"
+                raise RuntimeError(f"optimize: {exc}") from None
+            if vals[c] is None:
+                break          # one failed corner fails the design
         evals["n"] += 1
+        # any failed corner -> None: a design that only converges at some
+        # corners is not robust, and scoring the survivors would reward it
+        val = aggregate(vals, agg_mode, maximize=maximize) \
+            if len(vals) == len(corners) else None
         if val is None:
             return np.inf     # failed run / missing objective: reject
+        per_corner[tuple(float(v) for v in x)] = vals
         history.append({"x": [float(v) for v in x], "obj": float(val)})
         return -val if maximize else val
 
@@ -314,16 +345,32 @@ def run_optimize(payload: dict) -> dict:
         else:
             sens.append(None)
 
-    # final run at the optimum: full result for the plots
-    final = simulate.run({"schematic": _patch(sch, params, best_x),
+    # final run at the optimum: full result for the plots, at the corner that
+    # set the score (the worst one; the first corner when averaging)
+    best_corners = per_corner.get(tuple(float(v) for v in best_x)) or {}
+    show = corners[0]
+    if len(corners) > 1 and best_corners:
+        pick = min if maximize else max
+        show = pick(best_corners, key=best_corners.get)
+    final = simulate.run({"schematic": at_corner(best_x, show),
                           "analysis": inner})
     final["optim"] = {
         "objective": spec, "maximize": maximize, "best_obj": float(best_obj),
         "best": [{"inst": p["inst"], "param": p["param"],
                   "value": float(v)} for p, v in zip(params, best_x)],
-        "sens": sens, "evals": evals["n"] + 2 * len(params) + 1,
+        # f() already counted the FD sensitivity points; +1 is the final run
+        "sens": sens, "evals": evals["n"] + 1,
         "history": [h["obj"] for h in history],
+        "evals_per_point": len(corners),
     }
+    if len(corners) > 1:
+        final["optim"].update({
+            "aggregate": agg_mode, "plotted_corner": show,
+            "corners": {c: float(v) for c, v in best_corners.items()}})
+        final.setdefault("log", []).append(
+            f"optimize: {agg_mode} over corners "
+            + ", ".join(f"{c} {v:.6g}" for c, v in best_corners.items())
+            + f"; plots show the {show} corner")
     final.setdefault("log", []).append(
         f"optimize: {spec} -> {best_obj:.6g} after "
         f"{final['optim']['evals']} evaluations")

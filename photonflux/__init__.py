@@ -42,6 +42,7 @@ _LAZY = {
     "signals": ("photonflux.signals", None),
     "toolchain": ("photonflux.toolchain", None),
     "coupler": ("photonflux.coupler", None),
+    "corners": ("photonflux.corners", None),
     "tdec": ("photonflux.tdec", None),
     "prbs": ("photonflux.signals", "prbs"),
     "sample_centers": ("photonflux.signals", "sample_centers"),

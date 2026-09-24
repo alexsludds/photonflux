@@ -25,6 +25,16 @@
   <label class="an-label"
     title="Global signaling baud rate for the schematic. The PRBS source's unit interval (UI = 1/baud) and the eye-diagram fold both pull from this.">Baud
     <input id="glob-baud" type="text" value="10G" size="5"> Bd</label>
+  <label class="an-label"
+    title="SKY130 process corner for every SKY130 FET on the schematic (first letter NMOS, second PMOS; s = slow, f = fast). 'all' runs the analysis at all five corners and overlays them; Optimize then scores the worst corner (or the mean). Each new corner extracts its own model cards the first time.">Corner
+    <select id="glob-corner">
+      <option value="tt">tt</option>
+      <option value="ss">ss</option>
+      <option value="ff">ff</option>
+      <option value="sf">sf</option>
+      <option value="fs">fs</option>
+      <option value="all">all</option>
+    </select></label>
   <span class="sep"></span>
   <label class="an-label">Analysis
     <select id="sel-analysis">
@@ -67,6 +77,11 @@
       <label>objective <input id="an-op-obj" type="text" size="9"
         placeholder="eye:vout"></label>
       <label>iters <input id="an-op-iters" type="text" value="30" size="3"></label>
+      <label title="With Corner = all: score each design by its worst corner (a guarantee) or the corner mean.">corners
+        <select id="an-op-agg">
+          <option value="worst">worst</option>
+          <option value="mean">mean</option>
+        </select></label>
       <label>t_stop <input id="an-op-tstop" type="text" value="25.6n" size="5"> s</label>
       <label>points <input id="an-op-points" type="text" value="4000" size="5"></label>
     </span>

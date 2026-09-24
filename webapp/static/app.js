@@ -773,6 +773,8 @@ function globalBaud() {
   return b > 0 ? b : DEFAULT_BAUD;
 }
 function globalUI() { return 1 / globalBaud(); }
+// SKY130 process corner for every FET ("all" = overlay / optimize across all)
+function globalCorner() { return (state.globals && state.globals.corner) || "tt"; }
 
 // Make `state.globals.baud` authoritative. On a schematic that predates the
 // global (or a fresh load), seed it from the first PRBS source's unit interval
@@ -799,6 +801,8 @@ function adoptGlobals(st) {
 function syncGlobalsUI() {
   const el = document.getElementById("glob-baud");
   if (el && document.activeElement !== el) el.value = fmtNum(globalBaud());
+  const ce = document.getElementById("glob-corner");
+  if (ce) ce.value = globalCorner();
 }
 
 function newId(type) {
@@ -2341,6 +2345,7 @@ function collectAnalysisBase() {
         // match the "tdec" test — OMA - TDEC is maximized.
         maximize: !(obj.startsWith("ber") || obj.startsWith("tdec")),
         iters: parseInt($("an-op-iters").value) || 30,
+        aggregate: $("an-op-agg").value,
       },
     };
   }
@@ -2425,6 +2430,7 @@ function applyAnalysis(a) {
     const o = a.optimize || {};
     $("an-op-obj").value = o.objective || "";
     $("an-op-iters").value = o.iters || 30;
+    $("an-op-agg").value = o.aggregate || "worst";
     $("an-op-params").value = (o.params || []).map((p) =>
       `${p.inst}.${p.param}=${fmtSI(p.min)}:${fmtSI(p.max)}`).join(", ");
   } else if (a.mode === "noise") {
@@ -2540,6 +2546,7 @@ async function runSim() {
       // instances of them (namespaced refdes, spliced ports, baked params)
       ...(state.subcircuits && Object.keys(state.subcircuits).length
         ? { subcircuits: state.subcircuits } : {}),
+      corner: globalCorner(),
     },
     analysis: collectAnalysis(),
   };
@@ -3340,7 +3347,12 @@ function renderLink() {
         <tr><th>objective</th><td colspan="2">${opt.objective}
           (${opt.maximize ? "maximized" : "minimized"})</td></tr>
         <tr><th>best value</th><td colspan="2"><b>${fmtSI(opt.best_obj)}</b>
-          after ${opt.evals} runs</td></tr>
+          after ${opt.evals} ${opt.corners
+            ? `points &times; ${opt.evals_per_point} corners` : "runs"}</td></tr>
+        ${opt.corners ? `<tr><th>${opt.aggregate} of</th><td colspan="2">${
+          Object.entries(opt.corners).map(([c, v]) =>
+            `${c === opt.plotted_corner ? `<b>${c}</b>` : c} ${fmtSI(v)}`).join(" &middot; ")}
+          <span class="link-hint">(plots: ${opt.plotted_corner})</span></td></tr>` : ""}
         <tr><th></th><td><b>optimum</b></td><td><b>d(obj)/d(param)</b></td></tr>
         ${rows}
         <tr><td colspan="3"><button id="btn-opt-apply">Apply to schematic</button></td></tr>
@@ -3601,6 +3613,10 @@ $("glob-baud").addEventListener("change", () => {
 });
 $("glob-baud").addEventListener("keydown",
   (e) => { if (e.key === "Enter") e.target.blur(); });
+$("glob-corner").addEventListener("change", () => {
+  const v = $("glob-corner").value;
+  commit(() => { state.globals = state.globals || {}; state.globals.corner = v; });
+});
 
 function loadDocument(doc) {
   const sch = doc.schematic || doc;

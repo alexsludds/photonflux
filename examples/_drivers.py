@@ -11,7 +11,8 @@ connections + models that gets stitched between four external nets:
                       VDD GND
 
 Three flavors, all built from exact-BSIM4.8 SKY130 FETs (OSDI, via
-``cx.sky130_fet``):
+``cx.sky130_fet``) at any process corner (``corner="ss"`` etc., default
+``tt``; see :mod:`photonflux.corners`):
 
 * ``single_stage_inverter`` — one CMOS inverter (pfet + nfet). Logically
   **inverting**: electrode = NOT(input). This is the classic ring/MZM driver.
@@ -81,15 +82,16 @@ class DriverParts:
     inbar_members: tuple = ()  # Miller-neutralization plate -> complement-input net
 
 
-def _fets(name: str, stage: int, w_p: float, w_n: float, l: float) -> dict:  # noqa: E741
+def _fets(name: str, stage: int, w_p: float, w_n: float, l: float,  # noqa: E741
+          corner: str) -> dict:
     """SKY130 pfet/nfet model factories for one inverter stage, keyed uniquely.
 
     Identical geometries content-hash to the same OSDI object, so tapered and
-    untapered stages both compile only the distinct (W, L) bins once.
+    untapered stages both compile only the distinct (W, L, corner) cards once.
     """
     return {
-        f"{name}_pfet{stage}": cx.sky130_fet("pfet_01v8", w=w_p, l=l),
-        f"{name}_nfet{stage}": cx.sky130_fet("nfet_01v8", w=w_n, l=l),
+        f"{name}_pfet{stage}": cx.sky130_fet("pfet_01v8", w=w_p, l=l, corner=corner),
+        f"{name}_nfet{stage}": cx.sky130_fet("nfet_01v8", w=w_n, l=l, corner=corner),
     }
 
 
@@ -99,6 +101,7 @@ def single_stage_inverter(
     w_n: float,
     l: float,  # noqa: E741
     name: str = "DRV",
+    corner: str = "tt",
     cw: float = 5e-15,
 ) -> DriverParts:
     """One CMOS inverter (pfet ``w_p`` over nfet ``w_n``, channel length ``l``).
@@ -116,7 +119,7 @@ def single_stage_inverter(
             cwo: {"component": cap, "settings": {"C": cw}},
         },
         connections={},                       # every net is external here
-        models={**_fets(name, 0, w_p, w_n, l), cap: Capacitor},
+        models={**_fets(name, 0, w_p, w_n, l, corner), cap: Capacitor},
         in_members=(f"{mp},g", f"{mn},g"),
         out_members=(f"{mp},d", f"{mn},d", f"{cwo},p1"),
         vdd_members=(f"{mp},s", f"{mp},b"),
@@ -132,6 +135,7 @@ def single_stage_neutralized_inverter(
     l: float,  # noqa: E741
     c_neut: float,
     name: str = "DRV",
+    corner: str = "tt",
     cw: float = 5e-15,
 ) -> DriverParts:
     """Single CMOS inverter with a Miller-neutralization cap of size ``c_neut``.
@@ -162,7 +166,7 @@ def single_stage_neutralized_inverter(
             cn: {"component": cap, "settings": {"C": c_neut}},
         },
         connections={},                       # every net is external here
-        models={**_fets(name, 0, w_p, w_n, l), cap: Capacitor},
+        models={**_fets(name, 0, w_p, w_n, l, corner), cap: Capacitor},
         in_members=(f"{mp},g", f"{mn},g"),
         # electrode net carries the drains, wiring cap, and the CN electrode plate
         out_members=(f"{mp},d", f"{mn},d", f"{cwo},p1", f"{cn},p1"),
@@ -179,6 +183,7 @@ def two_stage_inverter(
     w_n: float,
     l: float,  # noqa: E741
     name: str = "DRV",
+    corner: str = "tt",
     taper: float = 1.0,
     cw: float = 5e-15,
     c_mid: float = 3e-15,
@@ -220,8 +225,8 @@ def two_stage_inverter(
             f"{mp1},d": (f"{mn1},d", f"{mp2},g", f"{mn2},g", f"{cmid},p1"),
         },
         models={
-            **_fets(name, 1, w_p, w_n, l),
-            **_fets(name, 2, wp2, wn2, l),
+            **_fets(name, 1, w_p, w_n, l, corner),
+            **_fets(name, 2, wp2, wn2, l, corner),
             cap: Capacitor,
         },
         in_members=(f"{mp1},g", f"{mn1},g"),

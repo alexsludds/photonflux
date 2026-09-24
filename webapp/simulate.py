@@ -42,15 +42,30 @@ _CIRCUIT_CACHE: dict[str, Any] = {}   # schematic-hash -> (circuit, meta)
 _MODELS_CACHE: dict[str, Any] = {}    # sky130-geometry-key set -> models_map
 
 
+def _has_sky130_fet(sch: dict) -> bool:
+    """Any SKY130 FET on the canvas or inside a subcircuit definition."""
+    groups = [sch.get("instances") or {}]
+    groups += [(d or {}).get("instances") or {}
+               for d in (sch.get("subcircuits") or {}).values()]
+    return any((CATALOG.get(i.get("type"), {}).get("sky130") or {}).get("kind")
+               == "fet" for g in groups for i in g.values())
+
+
 def sch_corners(sch: dict) -> tuple[str, ...]:
-    """The SKY130 process corner(s) a schematic runs at (``sch["corner"]``:
-    one corner, a comma list, or ``"all"``; default ``tt``)."""
+    """The SKY130 process corner(s) a schematic runs at (``sch["corner"]``,
+    or the GUI's ``globals.corner``: one corner, a comma list, or ``"all"``;
+    default ``tt``). A schematic without SKY130 FETs is corner-independent,
+    so several corners collapse to one run instead of N identical ones."""
     from photonflux.corners import parse_corners
 
+    spec = sch.get("corner") or (sch.get("globals") or {}).get("corner") or "tt"
     try:
-        return parse_corners(sch.get("corner") or "tt")
+        corners = parse_corners(spec)
     except ValueError as exc:
         raise NetlistError(str(exc)) from None
+    if len(corners) > 1 and not _has_sky130_fet(sch):
+        return corners[:1]
+    return corners
 
 
 # ---------------------------------------------------------------------------
@@ -1786,6 +1801,11 @@ def _run_inner(payload: dict) -> dict:
         # analysis once per SKY130 corner through the same engine.
         rc = analysis.get("run_config") or {}
         multi_corner = len(sch_corners(sch)) > 1 and mode != "optimize"
+        if multi_corner and mode == "dc":
+            raise NetlistError(
+                "Corner = all: the DC operating point is a table, not a "
+                "curve, so it cannot overlay corners — pick a single corner, "
+                "or use a DC sweep to overlay all five.")
         if multi_corner or (rc.get("sweep") and mode != "optimize"
                             and not (mode == "ac"
                                      and analysis.get("sweep_values"))):

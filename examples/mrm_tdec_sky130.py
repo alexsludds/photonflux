@@ -566,22 +566,41 @@ def mode_optimize(spec: LinkSpec, args) -> None:
     ls = [float(x) for x in args.l.split(",")]
     geoms = list(itertools.product(w_ps, w_ns, ls))
     corners = args.corners
-    # --relock: one lock point per corner (each die re-locks its laser);
-    # otherwise one lock point shared by every corner
-    locks_per = corners if args.relock else ("*",)
+    kw = dict(order=args.surrogate_order, s_noise_mW=args.s_noise, ber=args.ber,
+              ref_bw_factor=args.ref_bw, ref_order=args.ref_order)
 
     print(f"outer grid: {len(geoms)} (W_p, W_n, L) points "
           f"-- each new pair costs 41-80 s of SKY130 card + OSDI compile "
           f"per corner")
-    print(f"inner loop: bounded Nelder-Mead over gap + {len(locks_per)} lock "
-          f"point(s) on PRBS-{args.surrogate_order}, <= {args.max_evals} evals each")
+    if args.relock:
+        # Each die re-locks its own laser, so the lock point is a per-corner
+        # tuning knob, not a design variable: for a candidate gap, each corner
+        # gets its own 1-D lock search, and the gap is scored by the aggregate
+        # of those per-corner optima. (A joint gap + N-lock simplex wastes its
+        # budget: under "worst", only the worst corner's lock moves the score.)
+        n_gap = max(6, args.max_evals // args.lock_evals)
+        print(f"inner loop: Nelder-Mead over gap (<= {n_gap} evals), each "
+              f"re-locking every corner (<= {args.lock_evals} evals per "
+              f"corner) on PRBS-{args.surrogate_order}")
+    else:
+        print(f"inner loop: bounded Nelder-Mead over (gap, shared lock) on "
+              f"PRBS-{args.surrogate_order}, <= {args.max_evals} evals each")
     if len(corners) > 1:
         print(f"corners: {','.join(corners)}, scored by {args.aggregate} "
               f"({len(corners)} transients per evaluation)")
     print()
 
-    def locks_of(x):
-        return dict(zip(corners, x[1:])) if args.relock else None
+    def relock(base, gap):
+        """Best lock point and OMA - TDEC for each corner at this gap."""
+        out = {}
+        for c in corners:
+            sc = replace(base, gap_nm=gap, corner=c)
+            x, fval, _ = _nelder_mead(
+                lambda z: -objective(replace(sc, detune_pm=float(z[0])), **kw),
+                [spec.detune_pm], [args.det_lo], [args.det_hi],
+                max_evals=args.lock_evals)
+            out[c] = (float(x[0]), -fval)
+        return out
 
     t_start = time.time()
     rows = []
@@ -589,32 +608,49 @@ def mode_optimize(spec: LinkSpec, args) -> None:
         base = replace(spec, w_p_um=wp, w_n_um=wn, l_um=lch)
         t0 = time.time()
 
-        def neg(x):
-            s = replace(base, gap_nm=float(x[0]), detune_pm=float(x[1]))
-            val, _ = robust_objective(
-                s, corners, args.aggregate, locks=locks_of(x),
-                order=args.surrogate_order, s_noise_mW=args.s_noise,
-                ber=args.ber, ref_bw_factor=args.ref_bw,
-                ref_order=args.ref_order)
-            return -val
+        if args.relock:
+            found: dict[float, dict] = {}
 
-        n_lock = len(locks_per)
-        x, fval, n_evals = _nelder_mead(
-            neg, [spec.gap_nm] + [spec.detune_pm] * n_lock,
-            [args.gap_lo] + [args.det_lo] * n_lock,
-            [args.gap_hi] + [args.det_hi] * n_lock,
-            max_evals=args.max_evals)
-        best = replace(base, gap_nm=float(x[0]), detune_pm=float(x[1]))
-        lock_txt = "/".join(f"{v:+.0f}" for v in x[1:])
+            def neg(x):
+                found[float(x[0])] = per = relock(base, float(x[0]))
+                agg = aggregate({c: v for c, (_, v) in per.items()},
+                                args.aggregate)
+                return np.inf if agg is None else -agg
+
+            x, fval, n_evals = _nelder_mead(
+                neg, [spec.gap_nm], [args.gap_lo], [args.gap_hi],
+                max_evals=n_gap)
+            locks = {c: lk for c, (lk, _) in found[float(x[0])].items()}
+            best = replace(base, gap_nm=float(x[0]),
+                           detune_pm=locks[corners[0]])
+        else:
+            def neg(x):
+                val, _ = robust_objective(
+                    replace(base, gap_nm=float(x[0]), detune_pm=float(x[1])),
+                    corners, args.aggregate, **kw)
+                return -val
+
+            x, fval, n_evals = _nelder_mead(
+                neg, [spec.gap_nm, spec.detune_pm],
+                [args.gap_lo, args.det_lo], [args.gap_hi, args.det_hi],
+                max_evals=args.max_evals)
+            locks = None
+            best = replace(base, gap_nm=float(x[0]), detune_pm=float(x[1]))
+
+        lock_txt = ("/".join(f"{c} {v:+.0f}" for c, v in locks.items())
+                    if locks else f"{best.detune_pm:+.0f}")
         print(f"[{gi}/{len(geoms)}] W {wp:g}/{wn:g} L {lch:g}: "
               f"gap {x[0]:5.0f} nm  lock {lock_txt} pm  "
               f"surrogate OMA-TDEC {-fval:+7.3f} dBm  "
               f"({n_evals} evals, {time.time()-t0:.0f} s)")
-        rows.append({"w_p_um": wp, "w_n_um": wn, "l_um": lch,
-                     "gap_nm": x[0], "detune_pm": lock_txt, "kappa2": best.kappa2,
-                     "surrogate_oma_tdec_dbm": -fval,
-                     "energy_fj_per_bit": best.energy_fj_per_bit(),
-                     "spec": best, "locks": locks_of(x)})
+        row = {"w_p_um": wp, "w_n_um": wn, "l_um": lch,
+               "gap_nm": x[0], "detune_pm": best.detune_pm,
+               "kappa2": best.kappa2, "surrogate_oma_tdec_dbm": -fval,
+               "energy_fj_per_bit": best.energy_fj_per_bit(),
+               "spec": best, "locks": locks, "lock_txt": lock_txt}
+        for c, v in (locks or {}).items():
+            row[f"lock_{c}_pm"] = v
+        rows.append(row)
 
     # --- final rescore of the survivors on full PRBS-13 --------------------
     rows.sort(key=lambda r: r["surrogate_oma_tdec_dbm"], reverse=True)
@@ -622,7 +658,7 @@ def mode_optimize(spec: LinkSpec, args) -> None:
     print(f"\nrescoring top {len(top)} on full PRBS-13 "
           f"({len(pattern(13))} bits, ~16x the surrogate cost)")
     for r in top:
-        per = {}
+        per, meas = {}, {}
         for c in corners:
             lock = (r["locks"] or {}).get(c, r["spec"].detune_pm)
             m = score(replace(r["spec"], corner=c, detune_pm=lock), order=13,
@@ -630,16 +666,22 @@ def mode_optimize(spec: LinkSpec, args) -> None:
                       ref_bw_factor=args.ref_bw, ref_order=args.ref_order)
             per[c] = None if m is None else m["oma_tdec_dbm"]
             r[f"oma_tdec_{c}_dbm"] = float("nan") if m is None else m["oma_tdec_dbm"]
-            if m is not None and c == corners[0]:
-                r["oma_mw"] = m["oma_8180"]
-                r["tdec_db"] = m["tdec_8180"]
-                r["er_db"] = m["extinction_ratio_8180"]
+            if m is not None:
+                meas[c] = m
         agg = aggregate(per, args.aggregate)
         r["oma_tdec_dbm"] = float("nan") if agg is None else agg
+        if meas:
+            # OMA / TDEC / ER columns come from the corner that set the score
+            # (the worst one), so a row never mixes corners
+            r["corner"] = wc = min(meas, key=lambda c: meas[c]["oma_tdec_dbm"])
+            m, ot = meas[wc], meas[wc].oma_type
+            r["oma_mw"] = m[f"oma_{ot}"]
+            r["tdec_db"] = m[f"tdec_{ot}"]
+            r["er_db"] = m[f"extinction_ratio_{ot}"]
         corner_txt = "  ".join(f"{c} {per[c]:+.3f}" if per[c] is not None
                                else f"{c} failed" for c in corners)
         print(f"  W {r['w_p_um']:g}/{r['w_n_um']:g} L {r['l_um']:g}  "
-              f"gap {r['gap_nm']:.0f} nm  lock {r['detune_pm']} pm  ->  "
+              f"gap {r['gap_nm']:.0f} nm  lock {r['lock_txt']} pm  ->  "
               f"OMA-TDEC {r['oma_tdec_dbm']:+.3f} dBm"
               + (f" ({args.aggregate}; {corner_txt})" if len(corners) > 1 else "")
               + f"  surrogate error "
@@ -650,7 +692,7 @@ def mode_optimize(spec: LinkSpec, args) -> None:
         win = max(scored, key=lambda r: r["oma_tdec_dbm"])
         print(f"\nBEST: W_p {win['w_p_um']:g} um, W_n {win['w_n_um']:g} um, "
               f"L {win['l_um']:g} um, gap {win['gap_nm']:.0f} nm "
-              f"(kappa2 {win['kappa2']:.4f}), lock {win['detune_pm']} pm")
+              f"(kappa2 {win['kappa2']:.4f}), lock {win['lock_txt']} pm")
         what = (f"{args.aggregate} over corners {','.join(corners)}"
                 if len(corners) > 1 else f"{corners[0]} corner")
         print(f"      OMA - TDEC = {win['oma_tdec_dbm']:+.3f} dBm on full PRBS-13 "
@@ -662,7 +704,9 @@ def mode_optimize(spec: LinkSpec, args) -> None:
             "surrogate_oma_tdec_dbm", "oma_tdec_dbm", "oma_mw", "tdec_db",
             "er_db", "energy_fj_per_bit"]
     if len(corners) > 1:
-        cols += [f"oma_tdec_{c}_dbm" for c in corners]
+        cols += ["corner"] + [f"oma_tdec_{c}_dbm" for c in corners]
+    if args.relock:
+        cols += [f"lock_{c}_pm" for c in corners]
     with csv_path.open("w", newline="") as fh:
         w = csv.DictWriter(fh, fieldnames=cols, extrasaction="ignore")
         w.writeheader()
@@ -710,6 +754,8 @@ def main() -> None:
     ap.add_argument("--relock", action="store_true",
                     help="optimize: one lock point per corner (per-die "
                          "thermal re-lock) instead of one shared value")
+    ap.add_argument("--lock-evals", type=int, default=10,
+                    help="--relock: lock-point search budget per corner")
     args = ap.parse_args()
     try:
         args.corners = parse_corners(args.corners)

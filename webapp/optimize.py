@@ -345,8 +345,8 @@ def run_optimize(payload: dict) -> dict:
         else:
             sens.append(None)
 
-    # final run at the optimum: full result for the plots, at the corner that
-    # set the score (the worst one; the first corner when averaging)
+    # final run at the optimum: full result for the plots, at the worst
+    # corner (also when averaging -- it is the one worth looking at)
     best_corners = per_corner.get(tuple(float(v) for v in best_x)) or {}
     show = corners[0]
     if len(corners) > 1 and best_corners:

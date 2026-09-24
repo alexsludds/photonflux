@@ -91,6 +91,24 @@ def test_netlist_refuses_a_multi_corner_schematic(simulate):
         simulate.schematic_to_netlist(_fet_schematic("nominal"))
 
 
+def test_gui_globals_corner_is_honored(simulate):
+    """The GUI keeps the corner in globals.corner; notebook runs post that
+    state as-is, so the backend must read it rather than silently run tt."""
+    sch = _fet_schematic()
+    sch["globals"] = {"corner": "ff"}
+    assert simulate.sch_corners(sch) == ("ff",)
+    sch["corner"] = "ss"                       # an explicit key wins
+    assert simulate.sch_corners(sch) == ("ss",)
+
+
+def test_a_schematic_without_fets_ignores_multi_corner(simulate):
+    """No SKY130 FET -> corner-independent: one run, not five identical ones."""
+    sch = _fet_schematic("all")
+    assert len(simulate.sch_corners(sch)) == 5
+    del sch["instances"]["M1"]
+    assert simulate.sch_corners(sch) == ("tt",)
+
+
 # ---------------------------------------------------------------------------
 # physics: the corners actually move the device the way their names say
 # ---------------------------------------------------------------------------

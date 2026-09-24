@@ -316,7 +316,9 @@ def measure_pam4(
     *,
     s_noise_mW: float = 0.0,
     ser: float = 4.8e-4,
-    ceq: float = 1.0,
+    ffe_taps: int = 5,
+    ffe_pre: int = 1,
+    symbols=None,
     ref_rx_bw_factor: float | None = 0.5,
     ref_rx_order: int = 4,
     ref_rx_bw_hz: float | None = None,
@@ -342,10 +344,18 @@ def measure_pam4(
     reference receiver defaults to the TDECQ 4th-order Bessel-Thomson at half
     the baud rate.
 
-    stateye does not run the 802.3 reference FFE: the eye is scored as
-    received, and `ceq` (the FFE noise-enhancement coefficient) is taken as
-    given. Treat ``tdecq_outer`` as TDECQ with the equaliser bypassed -- an
-    upper bound on the compliant value.
+    Equalization: TDECQ is defined through the 802.3 reference equalizer, a
+    T-spaced FFE after the reference receiver. ``ffe_taps`` sets its length
+    (5, one pre-cursor via ``ffe_pre``, is the 802.3bs/cd reference; 0
+    scores the eye unequalized). Taps are designed by MMSE with
+    ``stateye.ffe_mmse`` (sum to 1) and their noise enhancement
+    ``C_eq = sqrt(sum c^2)`` feeds TDECQ. Pass the transmitted PAM-4
+    ``symbols`` (any rotation) whenever they are known -- as a TDECQ scope
+    knows its test pattern; without them the design is decision-directed
+    and only reliable while the unequalized eye is still open. The metrics
+    gain ``ffe_taps`` (list), ``ceq`` and ``ffe_rms_error_before/after``.
+    MMSE taps are not the TDECQ-minimizing taps the standard asks for, so
+    the result is at or slightly above the compliant value.
     """
     stateye = _require_stateye()
     if not hasattr(stateye.IdealEye, "set_tdecq_ser"):
@@ -353,6 +363,22 @@ def measure_pam4(
                           "docs/stateye-integration-plan.md for the install.")
     p = _prepare(p_thru_mW, dt_sec, baud, ref_rx_bw_factor, ref_rx_order,
                  ref_rx_bw_hz, settle_ui)
+
+    eq: dict = {}
+    if ffe_taps:
+        if not hasattr(stateye, "ffe_mmse"):
+            raise ImportError(
+                "ffe_taps needs the stateye reference equalizer "
+                "(stateye.ffe_mmse); install stateye with "
+                "docs/patches/stateye-modern-toolchain.patch applied, or pass "
+                "ffe_taps=0.")
+        sps = 1.0 / (baud * dt_sec)
+        taps, info = stateye.ffe_mmse(p, sps, n_taps=int(ffe_taps),
+                                      n_pre=int(ffe_pre), symbols=symbols)
+        p = stateye.apply_ffe(p, taps, sps, n_pre=info["n_pre"])
+        eq = {"ffe_taps": [float(c) for c in taps], "ceq": info["ceq"],
+              "ffe_rms_error_before": info["rms_error_before"],
+              "ffe_rms_error_after": info["rms_error_after"]}
 
     eye = stateye.IdealEye(
         datarate_gbps=baud / 1e9,
@@ -363,13 +389,14 @@ def measure_pam4(
         sampling_offset_mode="half_ui",   # TDECQ's 0.45/0.55 UI windows need it
     )
     eye.set_tdecq_s_noise(s_noise_mW)
-    eye.set_tdecq_ceq(ceq)
+    eye.set_tdecq_ceq(eq.get("ceq", 1.0))
     eye.set_tdecq_ser(ser)
     eye.add_data(p, "mW")
 
     msmts = {k: (float(v) if isinstance(v, np.generic) else v)
              for k, v in eye.get_measurements().items()}
     counts = dict(eye.get_measurement_counts())
+    msmts.update(eq)
     if strict and not np.isfinite(msmts.get("tdecq_outer", np.nan)):
         raise ValueError(
             "stateye returned a non-finite TDECQ: OMA_outer needs a run of 7 "

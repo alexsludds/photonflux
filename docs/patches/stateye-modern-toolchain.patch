@@ -7,6 +7,15 @@ index 0000000..b9fb549
 +[build-system]
 +requires = ["setuptools>=68", "wheel", "Cython>=3", "numpy>=2"]
 +build-backend = "setuptools.build_meta"
+diff --git a/stateye/__init__.py b/stateye/__init__.py
+index 2edc94a..58cf7d8 100644
+--- a/stateye/__init__.py
++++ b/stateye/__init__.py
+@@ -2,3 +2,4 @@ from .version import __version__
+ 
+ from .ideal_eye import IdealEye
+ from .custom_eye import CustomEye
++from .equalization import apply_ffe, ffe_mmse, noise_enhancement
 diff --git a/stateye/custom_eye.py b/stateye/custom_eye.py
 index 093f6b3..8763b71 100644
 --- a/stateye/custom_eye.py
@@ -22,6 +31,169 @@ index 093f6b3..8763b71 100644
          if (num_bits_to_filter_on_after is None) and (format == "PAM4"):
              num_bits_to_filter_on_after = 1
  
+diff --git a/stateye/equalization.py b/stateye/equalization.py
+new file mode 100644
+index 0000000..63b8618
+--- /dev/null
++++ b/stateye/equalization.py
+@@ -0,0 +1,157 @@
++"""
++TDECQ reference equalizer: a T-spaced feed-forward equalizer (FFE).
++
++IEEE 802.3 (clause 121.8.5 and its successors) measures TDECQ through a
++reference receiver followed by a reference equalizer: an N-tap T-spaced FFE
++whose tap weights sum to 1 (unit DC gain). The equalizer's noise enhancement
++factor
++
++    C_eq = sqrt(sum(c_i ** 2))
++
++scales the added-noise term of TDECQ; pass it to ``Eye.set_tdecq_ceq``.
++
++The standard chooses the taps that minimize TDECQ. This module designs them by
++MMSE (least squares on symbol-centre samples against an equally spaced PAM-4
++ladder, with the known test pattern or decision-directed) under the sum-to-1
++constraint -- one linear solve, where a direct TDECQ minimization needs one full eye analysis per trial
++tap set. MMSE taps open the eye the same way and are the usual scope default;
++the resulting TDECQ is at or slightly above the TDECQ-optimal value.
++
++Typical use::
++
++    taps, info = ffe_mmse(wvf, samples_per_symbol, n_taps=5)
++    eq = apply_ffe(wvf, taps, samples_per_symbol, n_pre=info["n_pre"])
++    eye.set_tdecq_ceq(noise_enhancement(taps))
++    eye.add_data(eq, "mW")
++"""
++import numpy as np
++
++
++def noise_enhancement(taps) -> float:
++    """C_eq = sqrt(sum c_i^2) for taps normalized to sum to 1."""
++    c = np.asarray(taps, dtype=float)
++    return float(np.sqrt(np.sum((c / np.sum(c)) ** 2)))
++
++
++def apply_ffe(wvf, taps, samples_per_symbol: float, n_pre: int = 1) -> np.ndarray:
++    """T-spaced FFE on an oversampled waveform.
++
++    y(t) = sum_j c_j * x(t - (j - n_pre) * T), with ``n_pre`` pre-cursor
++    taps. ``samples_per_symbol`` may be fractional; shifted copies are
++    linearly interpolated (edges hold their end values).
++    """
++    x = np.asarray(wvf, dtype=float)
++    n = np.arange(x.size, dtype=float)
++    y = np.zeros_like(x)
++    for j, c in enumerate(np.asarray(taps, dtype=float)):
++        y += c * np.interp(n - (j - n_pre) * samples_per_symbol, n, x)
++    return y
++
++
++def _symbol_samples(x, sps, phase):
++    idx = phase + sps * np.arange(int((x.size - 1 - phase) // sps) + 1)
++    return np.interp(idx, np.arange(x.size, dtype=float), x)
++
++
++def _slice(s, n_levels, iterations: int = 20):
++    """Symbol index 0..n_levels-1 per sample: 1-D k-means (Lloyd) seeded at
++    the equiprobable quantiles, thresholds at midpoints of the level means."""
++    thr = np.quantile(s, np.arange(1, n_levels) / n_levels)
++    for _ in range(iterations):
++        d = np.searchsorted(thr, s)
++        means = np.array([s[d == k].mean() if np.any(d == k) else np.nan
++                          for k in range(n_levels)])
++        if np.isnan(means).any():
++            break
++        new = 0.5 * (means[1:] + means[:-1])
++        if np.allclose(new, thr):
++            break
++        thr = new
++    return np.searchsorted(thr, s)
++
++
++def best_sampling_phase(wvf, samples_per_symbol: float, n_levels: int = 4,
++                        n_phases: int = 32) -> float:
++    """Sampling phase [samples] with the tightest level clusters.
++
++    Scores each candidate phase by the within-level variance of the
++    symbol-rate samples (after equiprobable slicing) relative to their total
++    variance -- the phase where the eye is most open vertically.
++    """
++    x = np.asarray(wvf, dtype=float)
++    best, best_score = 0.0, np.inf
++    for phase in np.linspace(0.0, samples_per_symbol, n_phases, endpoint=False):
++        s = _symbol_samples(x, samples_per_symbol, phase)
++        d = _slice(s, n_levels)
++        within = sum(np.var(s[d == k]) * np.mean(d == k)
++                     for k in range(n_levels) if np.any(d == k))
++        score = within / max(np.var(s), 1e-300)
++        if score < best_score:
++            best, best_score = float(phase), score
++    return best
++
++
++def _align(s, symbols):
++    """Rotate the known symbol sequence to the lag that best matches ``s``."""
++    ref = np.resize(np.asarray(symbols, dtype=float), s.size)
++    ref -= ref.mean()
++    x = s - s.mean()
++    xc = np.fft.irfft(np.fft.rfft(x) * np.conj(np.fft.rfft(ref)), n=s.size)
++    return np.roll(np.resize(np.asarray(symbols), s.size), int(np.argmax(xc)))
++
++
++def ffe_mmse(wvf, samples_per_symbol: float, n_taps: int = 5, n_pre: int = 1,
++             n_levels: int = 4, symbols=None, iterations: int = 6,
++             skip_symbols: int = 16):
++    """Design an N-tap T-spaced FFE by MMSE under sum(taps) = 1.
++
++    Returns ``(taps, info)``; ``info`` holds ``n_pre``, the sampling
++    ``phase`` [samples], ``ceq`` and the rms error before/after.
++
++    Targets are an equally spaced ``n_levels`` ladder between the outer
++    level means, so the equalizer flattens the ladder as well as the ISI.
++    With ``symbols`` (the transmitted sequence, e.g. PRBS-13Q; any rotation
++    -- it is aligned by cross-correlation) the targets are exact, as on a
++    TDECQ scope that knows its test pattern -- use this whenever the pattern
++    is known. Without it the design is decision-directed (equiprobable
++    slicing, refined ``iterations`` times): fine while the unequalized eye is
++    still mostly open, but it cannot recover an eye that starts closed.
++    """
++    if n_taps < 1 or not 0 <= n_pre < n_taps:
++        raise ValueError("need n_taps >= 1 and 0 <= n_pre < n_taps")
++    x = np.asarray(wvf, dtype=float)
++    sps = float(samples_per_symbol)
++    phase = best_sampling_phase(x, sps, n_levels)
++    s = _symbol_samples(x, sps, phase)
++
++    n_post = n_taps - 1 - n_pre
++    k = np.arange(max(skip_symbols, n_post), s.size - n_pre)
++    # rows: symbol k; columns: tap j sees sample k - (j - n_pre)
++    X = np.stack([s[k - (j - n_pre)] for j in range(n_taps)], axis=1)
++    # Unknowns z = [c, a, b]: equalized samples X c should sit on the ladder
++    # a * u + b (u = symbol / (L-1)). The ladder gain and offset are free --
++    # a unit-DC-gain FFE sets its own span -- so minimize |X c - a u - b|^2
++    # subject to sum(c) = 1 (KKT system).
++    known = symbols is not None
++    d = _align(s, symbols) if known else _slice(s, n_levels)
++    e = np.concatenate([np.ones(n_taps), [0.0, 0.0]])
++    for _ in range(1 if known else max(1, iterations)):
++        u = d[k] / (n_levels - 1)
++        A = np.hstack([X, -u[:, None], -np.ones((k.size, 1))])
++        kkt = np.block([[2 * A.T @ A, e[:, None]], [e[None, :], np.zeros((1, 1))]])
++        rhs = np.zeros(n_taps + 3)
++        rhs[-1] = 1.0
++        z = np.linalg.lstsq(kkt, rhs, rcond=None)[0]
++        c, a, b = z[:n_taps], z[n_taps], z[n_taps + 1]
++        if not known:        # re-decide on the equalized samples
++            d = d.copy()
++            d[k] = _slice(X @ c, n_levels)
++
++    t = a * d[k] / (n_levels - 1) + b
++    # "before" is the raw main-cursor sample against its own best-fit ladder
++    raw = np.polyfit(d[k], X[:, n_pre], 1)
++    info = {"n_pre": n_pre, "phase": phase, "ceq": noise_enhancement(c),
++            "rms_error_before": float(np.sqrt(np.mean(
++                (X[:, n_pre] - np.polyval(raw, d[k])) ** 2))),
++            "rms_error_after": float(np.sqrt(np.mean((X @ c - t) ** 2)))}
++    return c, info
 diff --git a/stateye/eye.py b/stateye/eye.py
 index 525bf7c..67b6ec1 100644
 --- a/stateye/eye.py
@@ -86,3 +258,50 @@ index d282540..386f672 100644
  	cdef bint match
  
  	for i in range(n - (nb + na + 1)):
+diff --git a/tests/test_equalization.py b/tests/test_equalization.py
+new file mode 100644
+index 0000000..c809a5b
+--- /dev/null
++++ b/tests/test_equalization.py
+@@ -0,0 +1,41 @@
++import numpy as np
++
++from stateye.equalization import apply_ffe, ffe_mmse, noise_enhancement
++
++
++def _isi_pam4(n=4000, sps=16, post=0.35, seed=0):
++    rng = np.random.default_rng(seed)
++    sym = rng.integers(0, 4, n)
++    lv = sym / 3.0
++    # one post-cursor of ISI at the symbol rate, then hold each symbol
++    isi = lv + post * np.concatenate([[0.0], lv[:-1]])
++    return np.repeat(isi, sps), sym, sps
++
++
++def test_taps_sum_to_one_and_ceq():
++    assert noise_enhancement([1.0]) == 1.0
++    assert noise_enhancement([-0.1, 1.2, -0.1]) == pytest.approx(np.sqrt(1.46))
++    w, _, sps = _isi_pam4()
++    taps, info = ffe_mmse(w, sps, n_taps=5, symbols=_isi_pam4()[1])
++    assert np.isclose(np.sum(taps), 1.0)
++    assert taps[2] < 0          # the post-cursor tap cancels the ISI
++    assert info["ceq"] == noise_enhancement(taps) > 1.0
++
++
++import pytest
++
++
++@pytest.mark.parametrize("known,post", [(True, 0.35), (False, 0.08)])
++def test_ffe_cancels_a_post_cursor(known, post):
++    """Known pattern: exact even when the raw eye is closed (post 0.35 >
++    level spacing 1/3). Blind: only while the raw eye is still open."""
++    w, sym, sps = _isi_pam4(post=post)
++    taps, info = ffe_mmse(w, sps, n_taps=5, n_pre=1,
++                          symbols=sym if known else None)
++    assert info["rms_error_after"] < 0.1 * info["rms_error_before"]
++    eq = apply_ffe(w, taps, sps, n_pre=info["n_pre"])
++    s = eq[int(sps // 2)::sps][20:-20]
++    d = sym[20:-20]
++    # equalized levels separate cleanly: max of each level < min of the next
++    for k in range(3):
++        assert s[d == k].max() < s[d == k + 1].min()

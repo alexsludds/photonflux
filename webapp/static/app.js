@@ -1612,11 +1612,13 @@ function showVeriloga(type, path) {
 function renderInspector() {
   schedulePushMirror();   // selection is part of the notebook-facing mirror
   const body = $("inspector-body");
+  // an empty inspector shrinks to a one-line hint so the run panel above it
+  // gets the height
+  $("inspector").classList.toggle("empty", !selection && !editingSubDef());
   if (!selection) {
     if (editingSubDef()) { renderSubDefInspector(); return; }
-    body.innerHTML = `<div class="insp-empty">Nothing selected.<br><br>
-      Select a component to edit its parameters, a wire to inspect the net,
-      or a probe to rename it.</div>`;
+    body.innerHTML = `<div class="insp-empty">Select a part, wire or probe
+      to edit it.</div>`;
     return;
   }
   if (selection.kind === "inst") {
@@ -3638,6 +3640,7 @@ function zoomToFit() {
     x0 = Math.min(x0, i.x - 20); y0 = Math.min(y0, i.y - 30);
     x1 = Math.max(x1, i.x + sym.w + 20); y1 = Math.max(y1, i.y + sym.h + 30);
   }
+  const circuitBox = [x0, y0, x1, y1];
   for (const note of sheet.notes || []) {
     const rows = (note.title ? 1 : 0) +
       (note.lines || String(note.text || "").split("\n")).length;
@@ -3653,8 +3656,14 @@ function zoomToFit() {
     requestAnimationFrame(() => setTimeout(zoomToFit, 120));
     return;
   }
-  const k = Math.min(1.6, Math.max(0.25,
-    Math.min(r.width / (x1 - x0), r.height / (y1 - y0)) * 0.92));
+  const fit = (bx0, by0, bx1, by1) => Math.min(1.6, Math.max(0.25,
+    Math.min(r.width / (bx1 - bx0), r.height / (by1 - by0)) * 0.92));
+  // Frame the notes too, unless a long note would shrink the circuit itself
+  // to under 3/4 of its own fit -- then the circuit wins and the note is a
+  // pan away.
+  let k = fit(x0, y0, x1, y1);
+  const kCircuit = fit(...circuitBox);
+  if (k < 0.75 * kCircuit) { [x0, y0, x1, y1] = circuitBox; k = kCircuit; }
   view.k = k;
   view.x = (r.width - (x1 + x0) * k) / 2;
   view.y = (r.height - (y1 + y0) * k) / 2;

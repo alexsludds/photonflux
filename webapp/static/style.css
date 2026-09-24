@@ -47,9 +47,11 @@ body { display: flex; flex-direction: column; }
 /* ---------------- run panel: Analysis / Measure / Vary ---------------- */
 #rightcol { width: 272px; flex: 0 0 auto; display: flex; flex-direction: column;
   background: var(--panel); border-left: 1px solid var(--border); min-height: 0; }
-#runpanel { flex: 0 1 auto; overflow-y: auto; max-height: 62%; padding: 8px;
+#runpanel { flex: 1 1 auto; overflow-y: auto; min-height: 0; padding: 8px;
   display: flex; flex-direction: column; gap: 8px; border-bottom: 1px solid var(--border); }
-#rightcol #inspector { width: auto; border-left: none; flex: 1 1 auto; min-height: 120px; }
+#rightcol #inspector { width: auto; border-left: none; flex: 0 1 auto; max-height: 55%; }
+#rightcol #inspector.empty { flex: 0 0 auto; padding: 6px 10px; }
+#rightcol #inspector.empty .insp-empty { padding-top: 0; }
 .rp-card { background: var(--panel2); border: 1px solid var(--border); border-radius: 8px;
   padding: 8px 10px; display: flex; flex-direction: column; gap: 6px; }
 .rp-h { margin: 0 0 2px; font-size: 12px; font-weight: 600; color: var(--text);
@@ -456,3 +458,5 @@ body { display: flex; flex-direction: column; }
 #toolbar > * { flex-shrink: 0; white-space: nowrap; }
 #toolbar > .tb-spacer, #toolbar > #run-status { flex-shrink: 1; }
 #sel-example { max-width: 220px; }
+#tab-plots:empty::before { content: "No results yet. Press Run (Cmd+Enter) to fill this dock.";
+  display: block; padding: 18px; color: var(--text-dim); font-size: 12px; }

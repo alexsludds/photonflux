@@ -24,7 +24,7 @@
   <span class="tb-spacer"></span>
   <label class="an-label"
     title="Global signaling baud rate for the schematic. The PRBS source's unit interval (UI = 1/baud) and the eye-diagram fold both pull from this.">Baud
-    <input id="glob-baud" type="text" value="10G" size="5"> Bd</label>
+    <input id="glob-baud" type="text" value="10G" size="8"> Bd</label>
   <label class="an-label"
     title="SKY130 process corner for every SKY130 FET on the schematic. ss = slow NMOS + PMOS, ff = fast both; the skewed names read PMOS-first in SKY130: sf = fast NMOS / slow PMOS, fs = slow NMOS / fast PMOS. 'all' runs the analysis at all five corners and overlays them; Optimize then scores the worst corner (or the mean). Each new corner extracts its own model cards the first time.">Corner
     <select id="glob-corner">

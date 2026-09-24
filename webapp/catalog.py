@@ -1436,11 +1436,13 @@ CATALOG: dict[str, dict] = {
                "or Gray-coded PAM4 levels between v0/v1, raised-cosine edges. "
                "Optional TX FFE pre/post-cursor de-emphasis (dB), RLM "
                "predistortion for a quadrature-biased MZM (set rlm_vpi to "
-               "its V-pi), and RJ/PJ/DCD jitter on the edge times. "
-               "mode=pulse emits one isolated UI for pulse-response runs. "
-               "mode=qam emits an RRC-shaped I or Q drive (pick qam=qpsk/"
-               "qam16/qam64, qam_drive=i/q) for the IQ modulator — one source "
-               "per rail, sharing order/seed. "
+               "its V-pi), and jitter on the edge times: random (RJ, "
+               "Gaussian rms), sinusoidal (SJ, peak amplitude at sj_freq), "
+               "deterministic (DJ, dual-Dirac: each edge shifted by +-DJ/2 "
+               "at random, so dj_ui is the peak-to-peak DJ(dd) that "
+               "TJ = DJ + 2Q*RJ budgets use) and duty-cycle distortion "
+               "(DCD). mode=pulse emits one isolated UI for pulse-response "
+               "runs. For coherent QAM drive use the QAM Source. "
                "The unit interval is set globally by the top-bar baud rate "
                "(UI = 1/baud), not per source. "
                "The waveform is baked at compile time: parameter edits "
@@ -1448,26 +1450,47 @@ CATALOG: dict[str, dict] = {
         "ports": _ports("p1:e p2:e"),
         "params": [
             _p("mode", "nrz", "", "Mode", rebuild=True, kind="enum",
-               choices=["nrz", "pam4", "pulse", "qam"]),
+               choices=["nrz", "pam4", "pulse"]),
             _p("order", 7, "", "PRBS order", rebuild=True, kind="enum",
                choices=[7, 9, 11, 13, 15, 23, 31]),
             _p("v0", -0.5, "V", "Low level", rebuild=True),
             _p("v1", 0.5, "V", "High level", rebuild=True),
             _p("tr", 20e-12, "s", "Edge time (20-80%)", rebuild=True),
             _p("seed", 1, "", "PRBS seed", rebuild=True),
-            _p("qam", "qpsk", "", "QAM order", rebuild=True, kind="enum",
-               choices=["qpsk", "qam16", "qam64"]),
-            _p("qam_drive", "i", "", "QAM rail", rebuild=True, kind="enum",
-               choices=["i", "q"]),
-            _p("rrc_beta", 0.1, "", "RRC roll-off", rebuild=True),
-            _p("sps", 16, "", "QAM samples/UI", rebuild=True),
             _p("ffe_pre_db", 0.0, "dB", "TX FFE pre-cursor", rebuild=True),
             _p("ffe_post_db", 0.0, "dB", "TX FFE post-cursor", rebuild=True),
             _p("rlm_vpi", 0.0, "V", "RLM V-pi (0 = off)", rebuild=True),
             _p("rj_ui", 0.0, "UI", "Random jitter (rms)", rebuild=True),
-            _p("pj_ui", 0.0, "UI", "Periodic jitter (amp)", rebuild=True),
-            _p("pj_freq", 10e6, "Hz", "PJ frequency", rebuild=True),
+            _p("sj_ui", 0.0, "UI", "Sinusoidal jitter (peak)", rebuild=True),
+            _p("sj_freq", 10e6, "Hz", "SJ frequency", rebuild=True),
+            _p("dj_ui", 0.0, "UI", "Deterministic jitter (pk-pk)",
+               rebuild=True),
             _p("dcd_ui", 0.0, "UI", "Duty-cycle distortion", rebuild=True),
+        ],
+        "wave": "prbs",
+    },
+    "qam_source": {
+        "label": "QAM Source",
+        "category": "Sources",
+        "doc": "Coherent QAM drive for one rail of the IQ modulator: PRBS "
+               "bits Gray-mapped onto a QPSK/16-QAM/64-QAM constellation, "
+               "root-raised-cosine shaped, scaled to v0..v1. Use two — "
+               "qam_drive = i and q — sharing order and seed, one per "
+               "electrode. The symbol rate is the top-bar baud rate. Baked "
+               "at compile time: parameter edits recompile (seconds).",
+        "ports": _ports("p1:e p2:e"),
+        "params": [
+            _p("qam", "qpsk", "", "QAM order", rebuild=True, kind="enum",
+               choices=["qpsk", "qam16", "qam64"]),
+            _p("qam_drive", "i", "", "Rail", rebuild=True, kind="enum",
+               choices=["i", "q"]),
+            _p("order", 15, "", "PRBS order", rebuild=True, kind="enum",
+               choices=[7, 9, 11, 13, 15, 23, 31]),
+            _p("seed", 1, "", "PRBS seed", rebuild=True),
+            _p("v0", -0.5, "V", "Low level", rebuild=True),
+            _p("v1", 0.5, "V", "High level", rebuild=True),
+            _p("rrc_beta", 0.1, "", "RRC roll-off", rebuild=True),
+            _p("sps", 16, "", "Samples/UI", rebuild=True),
         ],
         "wave": "prbs",
     },

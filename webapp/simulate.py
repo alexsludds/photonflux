@@ -241,6 +241,8 @@ def schematic_to_netlist(sch: dict, wave_span: float = DEFAULT_WAVE_SPAN,
 
                 try:
                     if wave == "prbs":
+                        if ctype == "qam_source":
+                            settings["mode"] = "qam"
                         if str(settings.get("mode")) == "qam":
                             wt, wv = wavesrc.qam_drive_waveform(settings,
                                                                wave_span)

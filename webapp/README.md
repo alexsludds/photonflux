@@ -114,8 +114,10 @@ container image does this, so production runs exactly one process.
 * **PRBS / pattern source**: PRBS7/9/11/15/23/31 (same LFSR taps as the
   companion time-domain serdes codebase), NRZ or Gray-coded PAM4, raised-
   cosine edges, TX FFE pre/post-cursor de-emphasis (dB), RLM predistortion
-  for a quadrature-biased MZM (set `rlm_vpi`), RJ/PJ/DCD jitter on the edge
-  times, and a single-pulse mode. The waveform is precomputed and baked at
+  for a quadrature-biased MZM (set `rlm_vpi`), edge jitter (RJ Gaussian
+  rms, SJ sinusoidal peak at `sj_freq`, DJ dual-Dirac peak-to-peak, DCD),
+  and a single-pulse mode. Coherent QAM drive is a separate **QAM Source**
+  (one per I/Q rail). The waveform is precomputed and baked at
   compile time (parameter edits recompile, seconds). A **PWL source** plays
   arbitrary `t v` breakpoints (paste or Load CSV) — the simplest way to
   replay waveforms from another simulator.

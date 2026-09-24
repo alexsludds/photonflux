@@ -108,20 +108,29 @@ def _tx_ffe(settings: dict, levels: np.ndarray) -> np.ndarray:
 
 
 def _edge_offsets(settings: dict, nsym: int, ui: float) -> np.ndarray:
-    """Per-boundary time offsets [s]: RJ + PJ + DCD (in UI units)."""
+    """Per-boundary time offsets [s]: RJ + SJ + DJ + DCD (in UI units).
+
+    RJ is Gaussian (rms). SJ is sinusoidal (peak amplitude at sj_freq). DJ is
+    dual-Dirac: every edge moves by +DJ/2 or -DJ/2 at random, so ``dj_ui`` is
+    the peak-to-peak DJ(dd) of the TJ = DJ + 2*Q*RJ budget. (``pj_ui`` /
+    ``pj_freq`` are the old names for SJ and are still read.)
+    """
     rj = float(settings.get("rj_ui", 0.0))
-    pj = float(settings.get("pj_ui", 0.0))
-    pj_f = float(settings.get("pj_freq", 10e6))
+    sj = float(settings.get("sj_ui", settings.get("pj_ui", 0.0)))
+    sj_f = float(settings.get("sj_freq", settings.get("pj_freq", 10e6)))
+    dj = float(settings.get("dj_ui", 0.0))
     dcd = float(settings.get("dcd_ui", 0.0))
-    if rj == 0.0 and pj == 0.0 and dcd == 0.0:
+    if rj == 0.0 and sj == 0.0 and dj == 0.0 and dcd == 0.0:
         return np.zeros(nsym + 1)
     rng = np.random.default_rng(int(settings.get("seed", 1)) + 12345)
     k = np.arange(nsym + 1, dtype=float)
     off = np.zeros(nsym + 1)
     if rj > 0:
         off += rj * rng.standard_normal(nsym + 1)
-    if pj > 0:
-        off += pj * np.sin(2 * np.pi * pj_f * k * ui)
+    if sj > 0:
+        off += sj * np.sin(2 * np.pi * sj_f * k * ui)
+    if dj > 0:
+        off += np.where(rng.random(nsym + 1) < 0.5, -dj / 2, dj / 2)
     if dcd > 0:
         off += np.where(k % 2 == 0, +dcd / 2, -dcd / 2)
     return np.clip(off, -0.4, 0.4) * ui

@@ -17,6 +17,7 @@ const ID_PREFIX = {
   waveguide: "WG", splitter: "SPL", dir_coupler: "DC", photodiode: "PD",
   apd: "APD",
   vdc: "V", vpulse: "VP", vsin: "VS", idc: "I", resistor: "R",
+  prbs: "PRBS", qam_source: "QAM",
   capacitor: "C", inductor: "L", diode: "D", nmos: "MN", pmos: "MP",
   sky130_nfet: "XN", sky130_nfet_lvt: "XN", sky130_nfet_5v: "XN",
   sky130_nfet_nvt: "XN", sky130_pfet: "XP", sky130_pfet_lvt: "XP",
@@ -785,13 +786,13 @@ function adoptGlobals(st) {
   if (!(st.globals.baud > 0)) {
     let baud = DEFAULT_BAUD;
     for (const inst of Object.values(st.instances || {})) {
-      const ui = inst.type === "prbs" ? (inst.settings || {}).ui : undefined;
+      const ui = isPatternSrc(inst.type) ? (inst.settings || {}).ui : undefined;
       if (ui > 0) { baud = 1 / ui; break; }
     }
     st.globals.baud = baud;
   }
   for (const inst of Object.values(st.instances || {})) {
-    if (inst.type === "prbs" && inst.settings) delete inst.settings.ui;
+    if (isPatternSrc(inst.type) && inst.settings) delete inst.settings.ui;
   }
 }
 
@@ -921,7 +922,7 @@ function render() {
       let valTxt = "";
       if (inst.type === "port") {
         valTxt = (inst.settings && inst.settings.name) || "?";  // boundary port name
-      } else if (inst.type === "prbs") {
+      } else if (isPatternSrc(inst.type)) {
         valTxt = `${fmtSI(globalUI())}s`;   // UI pulled from the global baud rate
       } else if (hp && cat) {
         const spec = cat.params.find((p) => p.name === hp);
@@ -2534,7 +2535,7 @@ async function runSim() {
       // UI = 1/baud here so the backend waveform builder, eye and BER post-proc
       // all see one consistent rate.
       instances: Object.fromEntries(Object.entries(state.instances).map(
-        ([id, i]) => [id, { type: i.type, settings: i.type === "prbs"
+        ([id, i]) => [id, { type: i.type, settings: isPatternSrc(i.type)
           ? { ...(i.settings || {}), ui: globalUI() } : (i.settings || {}) }])),
       wires: state.wires.map((w) => [w.from, w.to]),
       probes: state.probes.map((p) => ({ name: p.name, at: p.at,
@@ -3776,6 +3777,27 @@ $("btn-upva").addEventListener("click", () => {
 
 // coerce a persisted schematic into the in-memory shape (missing collections
 // default to empty; wires may be legacy [from, to] pairs)
+// sources whose symbol rate is the global baud rate (UI injected on Run)
+function isPatternSrc(type) { return type === "prbs" || type === "qam_source"; }
+
+// Older schematics: QAM drive was a PRBS-source mode, and SJ was called
+// "periodic jitter" (pj_*). Rewrite them in place to the current parts.
+function migrateInstances(insts) {
+  for (const inst of Object.values(insts || {})) {
+    const st = inst.settings;
+    if (inst.type !== "prbs" || !st) continue;
+    if (st.mode === "qam") {
+      inst.type = "qam_source";
+      for (const k of ["mode", "tr", "ffe_pre_db", "ffe_post_db", "rlm_vpi",
+                       "rj_ui", "pj_ui", "pj_freq", "dcd_ui"]) delete st[k];
+      continue;
+    }
+    if ("pj_ui" in st) { st.sj_ui = st.pj_ui; delete st.pj_ui; }
+    if ("pj_freq" in st) { st.sj_freq = st.pj_freq; delete st.pj_freq; }
+  }
+  return insts;
+}
+
 function normalizeSchematic(s) {
   const wires = (w) => (w || []).map((e) =>
     Array.isArray(e) ? { from: e[0], to: e[1] } : e);
@@ -3792,7 +3814,7 @@ function normalizeSchematic(s) {
         bind: (p.bind || []).map((b) => ({ instance: b.instance, param: b.param })),
       })),
       schematic: {
-        instances: ds.instances || {},
+        instances: migrateInstances(ds.instances || {}),
         wires: wires(ds.wires),
         probes: ds.probes || [],
         notes: ds.notes || [],
@@ -3801,7 +3823,7 @@ function normalizeSchematic(s) {
     };
   }
   return {
-    instances: (s && s.instances) || {},
+    instances: migrateInstances((s && s.instances) || {}),
     wires: wires(s && s.wires),
     probes: (s && s.probes) || [],
     notes: (s && s.notes) || [],

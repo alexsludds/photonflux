@@ -706,6 +706,14 @@ S.prbs = {
     <text x="12" y="46" style="font-size:7px">PRBS</text>`),
 };
 
+S.qam_source = {
+  w: 40, h: 60, pins: { p1: [20, 0], p2: [20, 60] }, label: [44, 26],
+  draw: () => srcGlyph(`
+    <circle class="${EL}" cx="15" cy="26" r="1.6"/><circle class="${EL}" cx="25" cy="26" r="1.6"/>
+    <circle class="${EL}" cx="15" cy="36" r="1.6"/><circle class="${EL}" cx="25" cy="36" r="1.6"/>
+    <text x="13" y="46" style="font-size:7px">QAM</text>`),
+};
+
 S.vpwl = {
   w: 40, h: 60, pins: { p1: [20, 0], p2: [20, 60] }, label: [44, 26],
   draw: () => srcGlyph(`

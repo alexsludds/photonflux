@@ -125,7 +125,8 @@ def _ion(device: str, corner: str) -> float:
 
 def test_corner_drive_strength_ordering(sky130_available):
     """ss < tt < ff for both flavors; the skewed corners move NMOS and PMOS
-    in opposite directions (sf: slow N, fast P; fs: fast N, slow P).
+    in opposite directions. SKY130's skewed names read PMOS-first: ``sf`` is a
+    *fast* NMOS with a *slow* PMOS, ``fs`` the reverse (see corners.py).
 
     First run extracts 8 new cards (~1-2 min each); cached afterwards."""
     if not sky130_available:
@@ -134,5 +135,5 @@ def test_corner_drive_strength_ordering(sky130_available):
     p = {c: _ion("pfet_01v8", c) for c in CORNERS}
     assert n["ss"] < n["tt"] < n["ff"]
     assert p["ss"] < p["tt"] < p["ff"]
-    assert n["sf"] < n["tt"] < n["fs"]
-    assert p["fs"] < p["tt"] < p["sf"]
+    assert n["fs"] < n["tt"] < n["sf"]
+    assert p["sf"] < p["tt"] < p["fs"]

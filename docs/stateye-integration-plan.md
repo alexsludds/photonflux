@@ -20,7 +20,8 @@ repos; nothing there is an estimate.
 | 2 — scipy Bessel reference receiver | **done** | `photonflux.tdec.reference_receiver` |
 | 2 — junction Δλ(V) / C_j(V) law | **not done** | see 4.3; the (W, L) optimum is biased until this lands |
 | 3 — optimizer + report | **done** | [`examples/mrm_tdec_sky130.py`](../examples/mrm_tdec_sky130.py) |
-| 4 — corners, energy Pareto, thermal | **not done** | see section 6 |
+| 4 — SKY130 process corners (worst-case OMA − TDEC) | **done** | `photonflux/corners.py`, `mrm_tdec_sky130.py --corners all [--relock]` |
+| 4 — energy Pareto, thermal | **not done** | see section 6 |
 
 The dependency direction landed as photonflux ← stateye (an optional `eye` extra in
 `pyproject.toml`), not the reverse. Section 1 explains why that was the right call and

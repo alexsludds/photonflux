@@ -1,15 +1,16 @@
 """SKY130 process corners and corner-robust objective aggregation.
 
 The SKY130 PDK ships five FET process corners as ``.lib`` sections of
-``sky130.lib.spice``. Each is named ``<nmos><pmos>``: ``s`` is slow (high Vt,
-low mobility) and ``f`` is fast. All five keep the typical resistor/capacitor
-models, so these are FET-only corners::
+``sky130.lib.spice``. All five keep the typical resistor/capacitor models, so
+these are FET-only corners. **Mind the skewed-corner letters**: measured on
+``nfet_01v8`` / ``pfet_01v8`` (on-current at |Vgs| = |Vds| = 1.8 V, pinned by
+``tests/test_corners.py``), SKY130's names read *PMOS first*::
 
-    tt  typical / typical
-    ss  slow NMOS / slow PMOS     (slowest edges, smallest drive)
-    ff  fast NMOS / fast PMOS     (fastest edges, largest drive)
-    sf  slow NMOS / fast PMOS     (skewed: slow falling, fast rising output)
-    fs  fast NMOS / slow PMOS     (skewed: fast falling, slow rising output)
+    tt  typical NMOS / typical PMOS
+    ss  slow NMOS / slow PMOS     (slowest edges; Ion -15 % N, -30 % P)
+    ff  fast NMOS / fast PMOS     (fastest edges; Ion +15 % N, +30 % P)
+    sf  FAST NMOS / SLOW PMOS     (skewed: inverter trip point drops)
+    fs  SLOW NMOS / FAST PMOS     (skewed: inverter trip point rises)
 
 ``cx.sky130_fet(..., corner=...)`` extracts the card for any of them; a design
 is corner-robust when its *worst* corner still meets the target.

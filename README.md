@@ -154,6 +154,17 @@ as named examples 36–42 in the web app. One-line index:
    Newton/transient loop (bosdi's OSDI↔JAX shim), with the card baked in and
    not-given parameters resolved by the VA's own `$param_given` ladder.
 
+**Process corners.** `corner` is any of the PDK's five FET corners — `tt`,
+`ss`, `ff`, `sf`, `fs` — and each is its own
+card and OSDI descriptor. `photonflux.corners.aggregate` folds a per-corner
+objective into a worst-case (or mean) score. In the browser, the top-bar
+**Corner** menu sets it for every FET; `all` overlays the analysis at all five
+corners, and Optimize then scores the worst corner. `mrm_tdec_sky130.py
+--corners all [--relock]` runs the MRM co-optimization for worst-case
+OMA − TDEC. `tests/test_corners.py` pins the drive ordering (ss < tt < ff).
+Mind SKY130's skewed names, which read PMOS-first: `sf` is a *fast* NMOS
+with a *slow* PMOS, `fs` the reverse.
+
 Behaviour (pinned by `tests/test_cx.py`): the nfet is off at gmin, has a
 monotone `Id(Vgs)` transfer, and a physical on-current at 1.8 V; the CMOS
 inverter rails to both supplies and trips near mid-supply. (The card carries

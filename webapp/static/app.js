@@ -2227,8 +2227,6 @@ function restorePaneFromAnalysis(a) {
     } else { $("rc-values2").value = ""; }
   }
   syncRunCfgDisabled(); updateRunCount(); persistRunCfg();
-  // opening a testbench that ships a sweep -> reveal the pane so it's not hidden
-  setRunCfgPanel(shipped);
 }
 
 // translate the pane + current analysis type into the run payload
@@ -2265,11 +2263,6 @@ function withRunCfg(a) {
   return a;
 }
 
-// the sweep pane lives in the run panel's Vary card and is always visible;
-// this just re-syncs its selectors and run count
-function setRunCfgPanel() {
-  refreshRunCfgSelectors(); syncRunCfgDisabled(); updateRunCount();
-}
 $("rp-open-fx").addEventListener("click", () => $("btn-exprs").click());
 // pane edits also autosave the workspace, so the per-tab runCfg survives a
 // reload without waiting for the next schematic mutation
@@ -3795,6 +3788,9 @@ function migrateInstances(insts) {
     if (inst.type !== "prbs" || !st) continue;
     if (st.mode === "qam") {
       inst.type = "qam_source";
+      // the PRBS default order was 7; keep the old symbol stream rather
+      // than inheriting the QAM Source's default of 15
+      if (!("order" in st)) st.order = 7;
       for (const k of ["mode", "tr", "ffe_pre_db", "ffe_post_db", "rlm_vpi",
                        "rj_ui", "pj_ui", "pj_freq", "dcd_ui"]) delete st[k];
       continue;

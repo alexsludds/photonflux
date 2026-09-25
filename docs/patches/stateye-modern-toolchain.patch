@@ -33,10 +33,10 @@ index 093f6b3..8763b71 100644
  
 diff --git a/stateye/equalization.py b/stateye/equalization.py
 new file mode 100644
-index 0000000..63b8618
+index 0000000..2f14d14
 --- /dev/null
 +++ b/stateye/equalization.py
-@@ -0,0 +1,157 @@
+@@ -0,0 +1,184 @@
 +"""
 +TDECQ reference equalizer: a T-spaced feed-forward equalizer (FFE).
 +
@@ -131,12 +131,37 @@ index 0000000..63b8618
 +
 +
 +def _align(s, symbols):
-+    """Rotate the known symbol sequence to the lag that best matches ``s``."""
-+    ref = np.resize(np.asarray(symbols, dtype=float), s.size)
-+    ref -= ref.mean()
++    """The stretch of the known symbol sequence that lines up with ``s``.
++
++    Two readings of ``symbols`` are tried and the better |correlation| wins:
++    a *periodic* pattern (one PRBS period, the record a rotation of it
++    repeated), searched circularly; and, when it is at least as long as the
++    record, a *linear* sequence (the pattern from t = 0, the record a window
++    starting later), searched over its windows so no wrapped-around symbol
++    becomes a target. |correlation| lets an inverting transmitter (power
++    falling as the symbol rises) align too -- :func:`ffe_mmse`'s ladder
++    gain is free to go negative.
++    """
++    sym = np.asarray(symbols)
++    n = s.size
 +    x = s - s.mean()
-+    xc = np.fft.irfft(np.fft.rfft(x) * np.conj(np.fft.rfft(ref)), n=s.size)
-+    return np.roll(np.resize(np.asarray(symbols), s.size), int(np.argmax(xc)))
++    ref = sym.astype(float) - sym.mean()
++
++    rep = np.resize(sym, n)
++    xc = np.fft.irfft(np.fft.rfft(x) * np.conj(np.fft.rfft(np.resize(ref, n))), n=n)
++    lag = int(np.argmax(np.abs(xc)))
++    best, best_c = np.roll(rep, lag), abs(xc[lag])
++
++    if sym.size >= n:
++        m = sym.size
++        size = 1 << int(np.ceil(np.log2(m + n)))
++        # corr[off] = sum_i x[i] * ref[off + i], off = 0 .. m - n
++        corr = np.fft.irfft(np.conj(np.fft.rfft(x, size)) * np.fft.rfft(ref, size),
++                            size)[: m - n + 1]
++        off = int(np.argmax(np.abs(corr)))
++        if abs(corr[off]) >= best_c:
++            best = sym[off: off + n]
++    return best
 +
 +
 +def ffe_mmse(wvf, samples_per_symbol: float, n_taps: int = 5, n_pre: int = 1,
@@ -149,8 +174,10 @@ index 0000000..63b8618
 +
 +    Targets are an equally spaced ``n_levels`` ladder between the outer
 +    level means, so the equalizer flattens the ladder as well as the ISI.
-+    With ``symbols`` (the transmitted sequence, e.g. PRBS-13Q; any rotation
-+    -- it is aligned by cross-correlation) the targets are exact, as on a
++    With ``symbols`` (the transmitted sequence: either one period of a
++    periodic pattern such as PRBS-13Q, in any rotation, or the sequence from
++    the start of transmission covering the whole record; it is aligned by
++    cross-correlation) the targets are exact, as on a
 +    TDECQ scope that knows its test pattern -- use this whenever the pattern
 +    is known. Without it the design is decision-directed (equiprobable
 +    slicing, refined ``iterations`` times): fine while the unequalized eye is
@@ -260,11 +287,12 @@ index d282540..386f672 100644
  	for i in range(n - (nb + na + 1)):
 diff --git a/tests/test_equalization.py b/tests/test_equalization.py
 new file mode 100644
-index 0000000..c809a5b
+index 0000000..e468794
 --- /dev/null
 +++ b/tests/test_equalization.py
-@@ -0,0 +1,41 @@
+@@ -0,0 +1,61 @@
 +import numpy as np
++import pytest
 +
 +from stateye.equalization import apply_ffe, ffe_mmse, noise_enhancement
 +
@@ -288,9 +316,6 @@ index 0000000..c809a5b
 +    assert info["ceq"] == noise_enhancement(taps) > 1.0
 +
 +
-+import pytest
-+
-+
 +@pytest.mark.parametrize("known,post", [(True, 0.35), (False, 0.08)])
 +def test_ffe_cancels_a_post_cursor(known, post):
 +    """Known pattern: exact even when the raw eye is closed (post 0.35 >
@@ -305,3 +330,25 @@ index 0000000..c809a5b
 +    # equalized levels separate cleanly: max of each level < min of the next
 +    for k in range(3):
 +        assert s[d == k].max() < s[d == k + 1].min()
++
++
++def test_align_linear_window_and_inversion():
++    """A long pattern from t = 0 against a record that starts later: no
++    wrap-around targets; an inverted record aligns on |correlation|."""
++    from stateye.equalization import _align
++
++    rng = np.random.default_rng(3)
++    sym = rng.integers(0, 4, 900)
++    rec = sym[12:812].astype(float)
++    assert np.array_equal(_align(rec, sym), sym[12:812])
++    assert np.array_equal(_align(-rec, sym), sym[12:812])
++    per = sym[:500]                       # one period, rotated record
++    assert np.array_equal(_align(np.roll(per, 37).astype(float), per),
++                          np.roll(per, 37))
++
++
++def test_inverting_transmitter_is_equalized():
++    w, sym, sps = _isi_pam4(post=0.2)
++    taps, info = ffe_mmse(-w, sps, n_taps=5, symbols=sym)
++    assert info["rms_error_after"] < 0.1 * info["rms_error_before"]
++

@@ -67,8 +67,10 @@ def _tdecq_report(t, values, pattern: dict, ui: float, cfg: dict,
     try:
         raw = tdec.measure_pam4(p, dt, 1.0 / ui, ffe_taps=0, **kw)
         eq = tdec.measure_pam4(p, dt, 1.0 / ui, ffe_taps=5, symbols=sym, **kw)
-    except (ValueError, IndexError, ImportError) as exc:
-        log.append(f"link report: TDECQ unavailable ({exc})")
+    except Exception as exc:  # noqa: BLE001 -- an optional report line must
+        # never take the transient result down with it
+        log.append(f"link report: TDECQ unavailable "
+                   f"({type(exc).__name__}: {exc})")
         return None
 
     def pick(m):

@@ -34,10 +34,10 @@ index 093f6b3..8763b71 100644
  
 diff --git a/stateye/equalization.py b/stateye/equalization.py
 new file mode 100644
-index 0000000..5935b5b
+index 0000000..fbae67f
 --- /dev/null
 +++ b/stateye/equalization.py
-@@ -0,0 +1,311 @@
+@@ -0,0 +1,319 @@
 +"""
 +TDECQ reference equalizer: a T-spaced feed-forward equalizer (FFE).
 +
@@ -173,8 +173,10 @@ index 0000000..5935b5b
 +    Returns ``(taps, info)``; ``info`` holds ``n_pre``, the sampling
 +    ``phase`` [samples], ``ceq`` and the rms error before/after.
 +
-+    Targets are an equally spaced ``n_levels`` ladder between the outer
-+    level means, so the equalizer flattens the ladder as well as the ISI.
++    This is the Wiener (max-SNR) FFE: least squares against an equally
++    spaced ``n_levels`` ladder whose span is fixed at the raw outer-level
++    separation, so the equalizer flattens the ladder as well as the ISI but
++    cannot win by shrinking the eye; the taps are then scaled to sum to 1.
 +    With ``symbols`` (the transmitted sequence: either one period of a
 +    periodic pattern such as PRBS-13Q, in any rotation, or the sequence from
 +    the start of transmission covering the whole record; it is aligned by
@@ -186,24 +188,31 @@ index 0000000..5935b5b
 +    """
 +    s, k, X, d, known, phase = _regression(
 +        wvf, samples_per_symbol, n_taps, n_pre, n_levels, symbols, skip_symbols)
-+    # Unknowns z = [c, a, b]: equalized samples X c should sit on the ladder
-+    # a * u + b (u = symbol / (L-1)). The ladder gain and offset are free --
-+    # a unit-DC-gain FFE sets its own span -- so minimize |X c - a u - b|^2
-+    # subject to sum(c) = 1 (KKT system).
-+    e = np.concatenate([np.ones(n_taps), [0.0, 0.0]])
++    # Wiener solution: equalized samples X c should hit a ladder of FIXED
++    # span a0 (the raw outer-level separation) plus a free offset b, i.e.
++    # min |X c - b - a0 u|^2 with u = symbol / (L-1); then normalize the
++    # taps to sum to 1. The fixed span matters: with a free ladder gain the
++    # fit can shrink the residual by shrinking the eye (a low-pass "average
++    # it all away" FFE with C_eq < 1 that closes the eye), which is exactly
++    # what a max-SNR design must not do. Scaling c afterwards changes signal
++    # and noise alike, so the normalized taps keep the Wiener SNR.
++    a0 = _span(X[:, n_pre], d[k], n_levels)
++    A = np.hstack([X, -np.ones((k.size, 1))])
 +    for _ in range(1 if known else max(1, iterations)):
 +        u = d[k] / (n_levels - 1)
-+        A = np.hstack([X, -u[:, None], -np.ones((k.size, 1))])
-+        kkt = np.block([[2 * A.T @ A, e[:, None]], [e[None, :], np.zeros((1, 1))]])
-+        rhs = np.zeros(n_taps + 3)
-+        rhs[-1] = 1.0
-+        z = np.linalg.lstsq(kkt, rhs, rcond=None)[0]
-+        c, a, b = z[:n_taps], z[n_taps], z[n_taps + 1]
++        c = np.linalg.lstsq(A, a0 * u, rcond=None)[0][:n_taps]
++        c = c / c.sum()
 +        if not known:        # re-decide on the equalized samples
 +            d = d.copy()
 +            d[k] = _slice(X @ c, n_levels)
 +
 +    return c, _info(c, X, d[k], n_pre, phase, n_levels)
++
++
++def _span(y, dk, n_levels):
++    """Outer-level separation of samples y given their decisions (> 0)."""
++    lo, hi = np.mean(y[dk == 0]), np.mean(y[dk == n_levels - 1])
++    return float(hi - lo) if hi != lo else 1.0
 +
 +
 +def _regression(wvf, sps, n_taps, n_pre, n_levels, symbols, skip_symbols):
@@ -246,10 +255,9 @@ index 0000000..5935b5b
 +    """Adapt an N-tap T-spaced FFE by normalized LMS, sum(taps) held at 1.
 +
 +    Starts from a single main tap and sweeps the record ``passes`` times.
-+    Each symbol takes a normalized gradient step on the taps and on the
-+    target ladder's gain and offset together (``mu`` is dimensionless:
-+    1e-3 slow and smooth, 0.1 fast and noisy), then re-projects the taps
-+    onto sum(c) = 1. Decisions come from ``symbols`` when given (training)
++    Each symbol takes a normalized gradient step on the taps and the target
++    ladder's offset (``mu`` is dimensionless: 1e-3 slow and smooth, 0.3 fast
++    and noisy); the taps are normalized to sum to 1 at the end. Decisions come from ``symbols`` when given (training)
 +    or from the equalized samples (decision-directed). This is how an adaptive receiver
 +    converges; :func:`ffe_mmse` is the block solution it converges toward.
 +    Returns ``(taps, info)`` like :func:`ffe_mmse`, plus ``info["mse"]``,
@@ -257,28 +265,28 @@ index 0000000..5935b5b
 +    """
 +    s, k, X, d, known, phase = _regression(
 +        wvf, samples_per_symbol, n_taps, n_pre, n_levels, symbols, skip_symbols)
-+    # Joint stochastic gradient on z = [c, a, b] -- the same problem
-+    # ffe_mmse solves in one block: e = x.c - (a u + b), with the taps
-+    # re-projected onto sum(c) = 1 after every update.
++    # Stochastic gradient on the same problem ffe_mmse solves in one block:
++    # e = x.c - b - a0 u against a ladder of fixed span a0 (free offset b),
++    # taps normalized to sum to 1 once adapted (see ffe_mmse for why the
++    # span must not float).
 +    c = np.zeros(n_taps)
 +    c[n_pre] = 1.0
 +    dk0 = d[k] if known else _slice(X[:, n_pre], n_levels)
-+    a, b = _ladder(X[:, n_pre], dk0, n_levels)
++    a0 = _span(X[:, n_pre], dk0, n_levels)
++    b = float(np.mean(X[:, n_pre]) - a0 * np.mean(dk0) / (n_levels - 1))
 +    mse = []
 +    for _ in range(max(1, int(passes))):
 +        dk = d[k] if known else _slice(X @ c, n_levels)
 +        u = dk / (n_levels - 1)
 +        err2 = 0.0
 +        for i in range(k.size):
-+            r = np.concatenate([X[i], [-u[i], -1.0]])
-+            e = X[i] @ c - a * u[i] - b
++            e = X[i] @ c - b - a0 * u[i]
 +            err2 += e * e
-+            step = mu * e / (r @ r + 1e-300)
++            step = mu * e / (X[i] @ X[i] + 1.0)
 +            c -= step * X[i]
-+            a += step * u[i]
 +            b += step
-+            c += (1.0 - c.sum()) / n_taps
-+        mse.append(err2 / k.size)
++        mse.append(err2 / k.size / a0 ** 2)
++    c = c / c.sum()
 +    dk = d[k] if known else _slice(X @ c, n_levels)
 +    return c, _info(c, X, dk, n_pre, phase, n_levels, mse=mse)
 +
@@ -415,10 +423,10 @@ index d282540..386f672 100644
  	for i in range(n - (nb + na + 1)):
 diff --git a/tests/test_equalization.py b/tests/test_equalization.py
 new file mode 100644
-index 0000000..d690701
+index 0000000..b70f6f0
 --- /dev/null
 +++ b/tests/test_equalization.py
-@@ -0,0 +1,89 @@
+@@ -0,0 +1,104 @@
 +import numpy as np
 +import pytest
 +
@@ -508,3 +516,18 @@ index 0000000..d690701
 +    assert np.isclose(np.sum(taps), 1.0)
 +    assert info["tdecq"] <= info0["tdecq"] + 1e-9
 +
++
++
++@pytest.mark.parametrize("method", ["mmse", "lms"])
++def test_noise_only_eye_is_not_averaged_away(method):
++    """No ISI, just noise: the max-SNR FFE is (nearly) a pass-through. A
++    design with a floating target span instead low-passes the eye shut
++    (C_eq < 1, smaller opening) to shrink its residual."""
++    from stateye.equalization import ffe_lms
++
++    w, sym, sps = _isi_pam4(post=0.0)
++    w = w + 0.03 * np.random.default_rng(2).standard_normal(w.size)
++    fn = ffe_mmse if method == "mmse" else ffe_lms
++    taps, info = fn(w, sps, symbols=sym)
++    assert info["ceq"] == pytest.approx(1.0, abs=0.05)
++    assert taps[1] > 0.95

@@ -3031,7 +3031,6 @@ function syncTdecqControls() {
 }
 $("tq-method").addEventListener("change", syncTdecqControls);
 $("eye-mod").addEventListener("change", syncTdecqControls);
-$("tq-show").addEventListener("change", renderEye);
 
 async function measureEye() {
   const out = $("tq-result"), btn = $("tq-run");
@@ -3103,9 +3102,14 @@ async function measureEye() {
       &nbsp;|&nbsp; levels ${r.levels.map((x) => x === null ? "—" : fmtSI(x)).join(" / ")}${u}
       <span class="tq-dim">(${secs} s)</span>${notes}`;
   }
+  const rxTxt = cfg.rx_bw === "off" ? "no ref Rx" : `BT${cfg.rx_order} ref Rx at ${cfg.rx_bw}×baud`;
+  const eqTxt = r.format === "NRZ" || !r.taps || !r.taps.length ? "no equalizer"
+    : `${r.taps.length}-tap ${r.method} FFE`;
   eyeScored = { result: lastResult, trace: sel,
-                t: r.scored.t, values: r.scored.values };
-  if ($("tq-show").checked) renderEye();
+                t: r.scored.t, values: r.scored.values,
+                caption: `stateye: ${rxTxt} + ${eqTxt} — ` + (r.format === "NRZ"
+                  ? `TDEC ${f(r.tdec_db)} dB` : `TDECQ ${f(r.tdecq_db)} dB`) };
+  renderEye();
 }
 $("tq-run").addEventListener("click", measureEye);
 
@@ -3168,15 +3172,31 @@ function renderEye() {
     ? fam.filter((q) => labelOf(q) === swSel.value)
     : fam;
   if (!shown.length) return;
-  let t = lastResult.x;
-  // "show scored eye": draw what stateye measured (after its reference
-  // receiver and equalizer) instead of the raw probe
+  const t = lastResult.x;
+  const perSweep = isSweep && swSel.value === "__all__";
   const sc = eyeScored;
-  if ($("tq-show").checked && sc && sc.result === lastResult
-      && sc.trace === sel.value) {
-    shown = [{ ...shown[0], name: `${sel.value} (scored)`, values: sc.values }];
-    t = sc.t;
+  const paired = !!(sc && sc.result === lastResult && sc.trace === sel.value);
+  // side by side after a stateye measurement: the simulated eye, and the eye
+  // stateye scored (after its reference receiver and equalizer)
+  $("eye-pair").classList.toggle("paired", paired);
+  $("eye-panel-eq").hidden = !paired;
+  $("eye-cap-sim").hidden = !paired;
+  drawEye(canvas, shown, t, perSweep, $("eye-metrics"), paired ? 620 : 900);
+  if (paired) {
+    $("eye-cap-eq").textContent = sc.caption;
+    drawEye($("eye-canvas-eq"),
+            [{ ...shown[0], name: `${sel.value} (stateye)`, values: sc.values }],
+            sc.t, false, $("eye-metrics-eq"), 620);
   }
+}
+
+// Fold `shown` records (sharing time axis `t`) at the Eye tab's UI and draw a
+// density eye into `canvas`; the level / height / width metrics go to
+// `metricsEl`. `perSweep` tints each record with its sweep colour.
+function drawEye(canvas, shown, t, perSweep, metricsEl, width) {
+  if (canvas.width !== width) canvas.width = width;
+  const swSel = $("eye-sweep");
+  const isSweep = perSweep || (!$("eye-sweep-wrap").hidden);
   const tr = shown[0];
   const ui = parseSI($("eye-ui").value);
   if (!(ui > 0) || t.length < 8) return;
@@ -3191,7 +3211,7 @@ function renderEye() {
   const osr = 64, dt = ui / osr;
   const n = Math.floor((tEnd - tSkip) / dt);
   if (n < 4 * osr) {
-    $("eye-metrics").textContent = "record too short for this UI";
+    metricsEl.textContent = "record too short for this UI";
     return;
   }
   const records = shown.map((q) => {
@@ -3210,7 +3230,7 @@ function renderEye() {
   for (const ys of records) {
     for (const y of ys) { if (y < lo) lo = y; if (y > hi) hi = y; }
   }
-  if (!(hi > lo)) { $("eye-metrics").textContent = "flat trace"; return; }
+  if (!(hi > lo)) { metricsEl.textContent = "flat trace"; return; }
   const pad = 0.08 * (hi - lo);
   lo -= pad; hi += pad;
 
@@ -3229,7 +3249,6 @@ function renderEye() {
   const alpha = Math.max(0.03, 0.10 / Math.sqrt(records.length));
   // overlaying several swept values: tint each eye with its plot colour so the
   // families stay distinguishable; otherwise use the flat per-domain hue.
-  const perSweep = isSweep && swSel.value === "__all__";
   const domHue = tr.domain === "optical"
     ? "rgb(255,183,77)" : "rgb(110,203,245)";
   ctx.lineWidth = 1;
@@ -3308,7 +3327,7 @@ function renderEye() {
   const swNote = isSweep
     ? (perSweep ? `${records.length} eyes overlaid  |  ` : `${swSel.value}  |  `)
     : "";
-  $("eye-metrics").textContent = swNote +
+  metricsEl.textContent = swNote +
     `levels: ${km.levels.map((x) => fmtSI(x)).join(" / ")} ${unit}` +
     `  |  eye height: ${eyes.map((h) => fmtSI(h)).join(" / ")} ${unit}` +
     `  |  width: ${(widthUI * 100).toFixed(0)}% UI` +

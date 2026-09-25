@@ -275,10 +275,19 @@
             <option value="512x2048">fine</option>
           </select></label>
         <button id="tq-run">Measure</button>
-        <label title="Draw the eye stateye scored: after the reference receiver and equalizer"><input type="checkbox" id="tq-show"> show scored eye</label>
         <div id="tq-result"></div>
       </div>
-      <canvas id="eye-canvas" width="900" height="420"></canvas>
+      <div id="eye-pair">
+        <div class="eye-panel">
+          <div id="eye-cap-sim" class="eye-cap" hidden>simulation (probe as recorded)</div>
+          <canvas id="eye-canvas" width="900" height="420"></canvas>
+        </div>
+        <div class="eye-panel" id="eye-panel-eq" hidden>
+          <div id="eye-cap-eq" class="eye-cap"></div>
+          <canvas id="eye-canvas-eq" width="620" height="420"></canvas>
+          <div id="eye-metrics-eq"></div>
+        </div>
+      </div>
       <div id="eye-hint" class="insp-empty" hidden></div>
     </div>
     <div id="tab-link" class="rpane">

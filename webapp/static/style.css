@@ -390,7 +390,17 @@ body { display: flex; flex-direction: column; }
 #tq-result .tq-big { font-size: 14px; font-weight: 700; color: var(--ok); }
 #tq-result .tq-dim { color: var(--text-dim); }
 #tq-result .tq-err { color: var(--err); }
-#eye-canvas { display: block; margin: 0 12px 12px;
+#eye-pair { display: flex; gap: 10px; padding: 0 12px 12px; }
+#eye-pair .eye-panel { flex: 1 1 0; min-width: 0; }
+#eye-pair:not(.paired) .eye-panel { flex: 0 1 auto; }
+#eye-pair .eye-panel[hidden] { display: none; }
+.eye-cap { font-size: 12px; font-weight: 600; color: var(--text); margin: 0 0 4px; }
+#eye-metrics-eq { font: 11px/1.4 "SF Mono", ui-monospace, monospace;
+  color: var(--text); margin-top: 4px; }
+#eye-canvas-eq { display: block; width: 100%; border: 1px solid var(--border);
+  border-radius: 6px; }
+#eye-pair.paired #eye-canvas { width: 100%; margin: 0; max-width: none; }
+#eye-canvas { display: block; margin: 0;
   max-width: calc(100% - 24px); border: 1px solid var(--border);
   border-radius: 6px; }
 

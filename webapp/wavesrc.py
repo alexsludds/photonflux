@@ -143,7 +143,10 @@ def prbs_waveform(settings: dict, span: float) -> tuple[np.ndarray, np.ndarray]:
     nsym = max(4, min(int(np.ceil(span / ui)) + 2, 1_000_000))
     frac = _symbols(settings, nsym)
     lv = _tx_ffe(settings, _levels(settings, frac))
-    off = _edge_offsets(settings, nsym, ui)
+    # a pulse-response (COM) run needs the clean single-UI pulse: jitter
+    # would move its two edges and corrupt the extracted response
+    off = (np.zeros(nsym + 1) if str(settings.get("mode")) == "pulse"
+           else _edge_offsets(settings, nsym, ui))
 
     # raised-cosine edge template centred on each symbol boundary
     s = np.linspace(0.0, 1.0, EDGE_PTS)

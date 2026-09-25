@@ -42,3 +42,14 @@ def test_legacy_pj_names_still_drive_sj():
 def test_dj_and_rj_add():
     both = _off(dj_ui=0.1, rj_ui=0.01)
     assert np.std(both) == pytest.approx(np.hypot(0.05, 0.01), rel=0.05)
+
+
+def test_pulse_mode_is_jitter_free():
+    """Pulse/COM extracts the single-UI response: the (now default) jitter
+    must not move its edges."""
+    base = {"mode": "pulse", "ui": UI, "tr": 10e-12, "v0": 0.0, "v1": 1.0}
+    t0, v0 = wavesrc.prbs_waveform(base, 20 * UI)
+    t1, v1 = wavesrc.prbs_waveform({**base, "rj_ui": 0.05, "sj_ui": 0.05,
+                                    "dj_ui": 0.05}, 20 * UI)
+    np.testing.assert_allclose(t0, t1, atol=1e-15)
+    np.testing.assert_array_equal(v0, v1)

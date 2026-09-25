@@ -1441,8 +1441,9 @@ CATALOG: dict[str, dict] = {
                "deterministic (DJ, dual-Dirac: each edge shifted by +-DJ/2 "
                "at random, so dj_ui is the peak-to-peak DJ(dd) that "
                "TJ = DJ + 2Q*RJ budgets use) and duty-cycle distortion "
-               "(DCD). mode=pulse emits one isolated UI for pulse-response "
-               "runs. For coherent QAM drive use the QAM Source. "
+               "(DCD). RJ, SJ and DJ default to 0.05 UI each; set them to 0 "
+               "for a clean pattern. mode=pulse emits one isolated, "
+               "jitter-free UI for pulse-response runs. For coherent QAM drive use the QAM Source. "
                "The unit interval is set globally by the top-bar baud rate "
                "(UI = 1/baud), not per source. "
                "The waveform is baked at compile time: parameter edits "
@@ -1460,10 +1461,10 @@ CATALOG: dict[str, dict] = {
             _p("ffe_pre_db", 0.0, "dB", "TX FFE pre-cursor", rebuild=True),
             _p("ffe_post_db", 0.0, "dB", "TX FFE post-cursor", rebuild=True),
             _p("rlm_vpi", 0.0, "V", "RLM V-pi (0 = off)", rebuild=True),
-            _p("rj_ui", 0.0, "UI", "Random jitter (rms)", rebuild=True),
-            _p("sj_ui", 0.0, "UI", "Sinusoidal jitter (peak)", rebuild=True),
+            _p("rj_ui", 0.05, "UI", "Random jitter (rms)", rebuild=True),
+            _p("sj_ui", 0.05, "UI", "Sinusoidal jitter (peak)", rebuild=True),
             _p("sj_freq", 10e6, "Hz", "SJ frequency", rebuild=True),
-            _p("dj_ui", 0.0, "UI", "Deterministic jitter (pk-pk)",
+            _p("dj_ui", 0.05, "UI", "Deterministic jitter (pk-pk)",
                rebuild=True),
             _p("dcd_ui", 0.0, "UI", "Duty-cycle distortion", rebuild=True),
         ],

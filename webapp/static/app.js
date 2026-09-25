@@ -3008,8 +3008,10 @@ function renderEye() {
   }
   if (!eyeInit) {
     eyeInit = true;
-    const d = eyeDefaults();
-    $("eye-ui").value = fmtSI(d.ui);
+    // fmtNum, not fmtSI: the fold needs the exact 1/baud. fmtSI's "18.8p"
+    // for 53.125 GBd is 0.12% short, which drifts a full UI across an
+    // 800-UI record and smears the eye shut.
+    $("eye-ui").value = fmtNum(eyeDefaults().ui);
     $("eye-mod").value = "auto";
     ["eye-ui", "eye-skip"].forEach((id) =>
       $(id).addEventListener("change", renderEye));

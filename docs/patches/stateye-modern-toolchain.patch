@@ -34,10 +34,10 @@ index 093f6b3..8763b71 100644
  
 diff --git a/stateye/equalization.py b/stateye/equalization.py
 new file mode 100644
-index 0000000..fbae67f
+index 0000000..54c02a8
 --- /dev/null
 +++ b/stateye/equalization.py
-@@ -0,0 +1,319 @@
+@@ -0,0 +1,321 @@
 +"""
 +TDECQ reference equalizer: a T-spaced feed-forward equalizer (FFE).
 +
@@ -282,9 +282,11 @@ index 0000000..fbae67f
 +        for i in range(k.size):
 +            e = X[i] @ c - b - a0 * u[i]
 +            err2 += e * e
-+            step = mu * e / (X[i] @ X[i] + 1.0)
++            # normalized LMS: scale-free in the signal's units (the offset
++            # b is a regressor of 1 in signal units, so add a0^2 for it)
++            step = mu * e / (X[i] @ X[i] + a0 * a0)
 +            c -= step * X[i]
-+            b += step
++            b += step * a0 * a0
 +        mse.append(err2 / k.size / a0 ** 2)
 +    c = c / c.sum()
 +    dk = d[k] if known else _slice(X @ c, n_levels)

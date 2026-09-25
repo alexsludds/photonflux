@@ -345,15 +345,15 @@ def measure_pam4(
     *,
     s_noise_mW: float = 0.0,
     ser: float = 4.8e-4,
-    ffe_taps: int = 5,
-    ffe_pre: int = 1,
+    ffe_taps: int = 15,
+    ffe_pre: int = 3,
     symbols=None,
     ffe_method: str = "mmse",
     ffe_mu: float = 0.05,
     ffe_passes: int = 5,
     ffe_manual=None,
     ffe_max_evals: int = 60,
-    dfe_taps: int = 0,
+    dfe_taps: int | None = None,
     dfe_manual=None,
     ffe_limits: str | None = "802.3dj",
     oma_reference=None,
@@ -385,8 +385,9 @@ def measure_pam4(
 
     Equalization: TDECQ is defined through the 802.3 reference equalizer, a
     T-spaced FFE after the reference receiver. ``ffe_taps`` sets its length
-    (5, one pre-cursor via ``ffe_pre``, is the 802.3bs/cd reference; 0
-    scores the eye unequalized). Taps are designed by MMSE with
+    (the default, 15 with three pre-cursors via ``ffe_pre`` plus one DFE
+    tap, is the 802.3dj D2.1 reference; 5 with one pre-cursor and no DFE is
+    802.3bs/cd's; 0 scores the eye unequalized). Taps are designed by MMSE with
     ``stateye.ffe_mmse`` (sum to 1) and their noise enhancement
     ``C_eq = sqrt(sum c^2)`` feeds TDECQ. Pass the transmitted PAM-4
     ``symbols`` (any rotation) whenever they are known -- as a TDECQ scope
@@ -399,10 +400,12 @@ def measure_pam4(
     ``ffe_passes`` sweeps of the record), ``"optimal"`` (Nelder-Mead on
     TDECQ itself from the MMSE start, ``ffe_max_evals`` eye analyses -- the
     802.3 definition, and slow) or ``"manual"`` (``ffe_manual``, a list of
-    taps, normalized to sum to 1; ``ffe_taps`` is then its length).
+    taps, normalized to sum to 1; ``ffe_taps`` is then its length, and a
+    list too short for ``ffe_pre`` pre-cursors takes its middle tap as main).
 
     ``dfe_taps`` adds a decision-feedback equalizer after the FFE (802.3dj
-    D2.1 uses one tap), designed jointly by the chosen method; with
+    D2.1 uses one tap; the default with an FFE, none with ``ffe_taps=0``
+    unless asked for), designed jointly by the chosen method; with
     ``"manual"`` its coefficients come from ``dfe_manual`` in the standard's
     normalization (b referenced to OMA/2 at the FFE input). Decisions are
     the known ``symbols`` when given (ideal DFE) or the equalizer's own.
@@ -427,6 +430,8 @@ def measure_pam4(
     p, dt_sec = _prepare(p_thru_mW, dt_sec, baud, ref_rx_bw_factor,
                          ref_rx_order, ref_rx_bw_hz, settle_ui)
 
+    if dfe_taps is None:                 # 802.3dj: one tap with the FFE
+        dfe_taps = 1 if ffe_taps else 0
     eq: dict = {}
     if ffe_taps or dfe_taps:
         if not hasattr(stateye, "tap_limit_violations"):
@@ -463,6 +468,8 @@ def measure_pam4(
                 noise_rms=noise)
         elif ffe_method == "manual":
             taps = np.asarray(ffe_manual if ffe_manual else [1.0], dtype=float)
+            if taps.ndim == 1 and pre >= taps.size:
+                pre = (taps.size - 1) // 2   # a short manual list: centred main
             if taps.ndim != 1 or taps.size < 1 or not pre < taps.size \
                     or taps.sum() == 0:
                 raise ValueError("manual FFE taps need a non-empty list with "

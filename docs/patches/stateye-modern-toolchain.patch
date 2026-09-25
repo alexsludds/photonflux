@@ -35,10 +35,10 @@ index 093f6b3..8763b71 100644
  
 diff --git a/stateye/equalization.py b/stateye/equalization.py
 new file mode 100644
-index 0000000..ab5c83a
+index 0000000..e18d905
 --- /dev/null
 +++ b/stateye/equalization.py
-@@ -0,0 +1,581 @@
+@@ -0,0 +1,668 @@
 +"""
 +TDECQ reference equalizer: a T-spaced feed-forward equalizer (FFE).
 +
@@ -206,19 +206,53 @@ index 0000000..ab5c83a
 +
 +    Scores each candidate phase by the within-level variance of the
 +    symbol-rate samples (after equiprobable slicing) relative to their total
-+    variance -- the phase where the eye is most open vertically.
++    variance -- the phase where the eye is most open vertically. A flat
++    optimum (an unfiltered, staircase-like eye) returns the centre of the
++    plateau, not its first phase: the DFE holds its feedback over the UI
++    centred on this phase, so it must sit mid-eye.
 +    """
 +    x = np.asarray(wvf, dtype=float)
-+    best, best_score = 0.0, np.inf
-+    for phase in np.linspace(0.0, samples_per_symbol, n_phases, endpoint=False):
++    phases = np.linspace(0.0, samples_per_symbol, n_phases, endpoint=False)
++    scores = np.empty(n_phases)
++    for i, phase in enumerate(phases):
 +        s = _symbol_samples(x, samples_per_symbol, phase)
 +        d = _slice(s, n_levels)
 +        within = sum(np.var(s[d == k]) * np.mean(d == k)
 +                     for k in range(n_levels) if np.any(d == k))
-+        score = within / max(np.var(s), 1e-300)
-+        if score < best_score:
-+            best, best_score = float(phase), score
-+    return best
++        scores[i] = within / max(np.var(s), 1e-300)
++    i0 = int(np.argmin(scores))
++    near = scores <= scores[i0] + 0.25 * (scores.max() - scores[i0])
++    if near.all():
++        return float(phases[i0])
++    lo = hi = 0                    # the circular run of near-best phases
++    while near[(i0 - lo - 1) % n_phases]:
++        lo += 1
++    while near[(i0 + hi + 1) % n_phases]:
++        hi += 1
++    mid = (i0 + (hi - lo) / 2.0) % n_phases
++    return float(mid * samples_per_symbol / n_phases)
++
++
++def eye_center_phase(wvf, samples_per_symbol: float, n_levels: int = 4) -> float:
++    """Sampling phase [samples] where TDECQ samples the eye: half a UI after
++    the ideal CDR's average crossing (stateye's half_ui mode). The
++    equalizer is designed there so its taps and the DFE, which acts only at
++    the sampling instant, correct the ISI TDECQ actually sees; the most-open
++    phase of :func: can sit a sizeable fraction of a UI
++    away on a band-limited, post-cursor-heavy pulse. Falls back to
++    :func: for fractional samples per UI (the CDR
++    needs whole ones)."""
++    sps = float(samples_per_symbol)
++    if abs(sps - round(sps)) > 1e-9:
++        return best_sampling_phase(wvf, sps, n_levels)
++    from .ideal_cdr import lock_ideal_cdr
++    x = np.asarray(wvf, dtype=float)
++    thr = float(np.mean(x))
++    edge, _ = lock_ideal_cdr(time=np.arange(x.size, dtype=float), wvf=x,
++                             threshold=thr, one_threshold=thr,
++                             zero_threshold=thr,
++                             samples_per_symbol=int(round(sps)))
++    return float((edge + sps / 2) % sps)
 +
 +
 +def _align(s, symbols):
@@ -288,7 +322,8 @@ index 0000000..ab5c83a
 +        wvf, samples_per_symbol, n_taps, n_pre, n_levels, symbols, skip_symbols,
 +        n_dfe)
 +    # Wiener solution: equalized samples X c should hit a ladder of FIXED
-+    # span a0 (the raw outer-level separation) plus a free offset b, i.e.
++    # span a0 (the settled outer-level separation, i.e. the OMA at the FFE
++    # input that TDECQ references) plus a free offset b, i.e.
 +    # min |X c - b - a0 u|^2 with u = symbol / (L-1); then normalize the
 +    # taps to sum to 1. The fixed span matters: with a free ladder gain the
 +    # fit can shrink the residual by shrinking the eye (a low-pass "average
@@ -297,7 +332,7 @@ index 0000000..ab5c83a
 +    # and noise alike, so the normalized taps keep the Wiener SNR.
 +    # With a DFE the unknowns grow to [c, g, b]: X c - U g - b = a0 u,
 +    # U the centred past decisions; g scales with c when c is normalized.
-+    a0 = _span(X[:, n_pre], d[k], n_levels)
++    a0 = _settled_span(s, d, n_levels)
 +    sigma = 0.02 * a0 if noise_rms is None else float(noise_rms)
 +    # noise rows: sqrt(N) sigma I on the FFE columns, target 0
 +    R = np.zeros((n_taps, n_taps + n_dfe + 1))
@@ -313,20 +348,21 @@ index 0000000..ab5c83a
 +        c, g = z[:n_taps] / scale, z[n_taps:n_taps + n_dfe] / scale
 +        y = X @ c - U @ g
 +        if not known:        # re-decide on the equalized samples
-+            d = d.copy()
-+            d[k] = _slice(y, n_levels)
++            d = _redecide(d, k, y, n_levels)
 +
 +    # DFE limits (802.3dj: 0 <= b <= 0.3 with b = g / OMA): clamp, then
 +    # re-solve the FFE around the fixed feedback (a few passes converge)
 +    lo, hi = DJ_LIMITS["dfe"]
 +    if n_dfe and np.any((g / a0 < lo) | (g / a0 > hi)):
 +        g = np.clip(g / a0, lo, hi) * a0
-+        A1 = np.hstack([X, -np.ones((k.size, 1))])
++        A1 = np.vstack([np.hstack([X, -np.ones((k.size, 1))]),
++                        R[:, list(range(n_taps)) + [-1]]])  # keep the noise rows
 +        u = d[k] / (n_levels - 1)
 +        U = _dfe_matrix(d, k, n_dfe, n_levels)
 +        scale = 1.0
 +        for _ in range(4):
-+            z = np.linalg.lstsq(A1, a0 * u + U @ (g * scale), rcond=None)[0]
++            z = np.linalg.lstsq(A1, np.concatenate(
++                [a0 * u + U @ (g * scale), np.zeros(n_taps)]), rcond=None)[0]
 +            scale = z[:n_taps].sum()
 +            c = z[:n_taps] / scale
 +        y = X @ c - U @ g
@@ -334,6 +370,26 @@ index 0000000..ab5c83a
 +    return c, _info(c, X, d[k], n_pre, phase, n_levels, y=y,
 +                    dfe_taps=[float(v) for v in g],
 +                    dfe_b=[float(v / a0) for v in g], decisions=d, span=a0)
++
++
++def _settled_span(s, d, n_levels, n_pre: int = 3, n_post: int = 16):
++    """Outer-level separation the symbol-rate samples s settle to on
++    long runs -- the OMA at the equalizer input, which TDECQ references --
++    from the least-squares pulse response on the decisions d: the sum of
++    its cursors. Post-cursor ISI of the cursor's sign leaves the settled
++    span wider than the sample-instant ladder; an equalizer that cancels it
++    (a DFE) gives that eye away, and the target must charge it for that."""
++    u = np.asarray(d, float) / (n_levels - 1)
++    k = np.arange(n_post, min(s.size, u.size) - n_pre)
++    if k.size < 4 * (n_pre + n_post + 1):
++        return _span(s[k], np.asarray(d)[k], n_levels)
++    A = np.stack([u[k - j] for j in range(-n_pre, n_post + 1)]
++                 + [np.ones(k.size)], axis=1)
++    h = np.linalg.lstsq(A, s[k], rcond=None)[0][:-1]
++    span = float(h.sum())
++    # an inverted link settles to a negative span; keep its sign convention
++    # (the ladder target a0 * u must match the samples' orientation)
++    return span if span != 0 else _span(s[k], np.asarray(d)[k], n_levels)
 +
 +
 +def _span(y, dk, n_levels):
@@ -349,15 +405,46 @@ index 0000000..ab5c83a
 +        raise ValueError("need n_taps >= 1 and 0 <= n_pre < n_taps")
 +    x = np.asarray(wvf, dtype=float)
 +    sps = float(sps)
-+    phase = best_sampling_phase(x, sps, n_levels)
++    phase = eye_center_phase(x, sps, n_levels)
 +    s = _symbol_samples(x, sps, phase)
 +    n_post = n_taps - 1 - n_pre
 +    k = np.arange(max(skip_symbols, n_post, n_dfe), s.size - n_pre)
-+    # rows: symbol k; columns: tap j sees sample k - (j - n_pre)
-+    X = np.stack([s[k - (j - n_pre)] for j in range(n_taps)], axis=1)
++    X, k = _tap_rows(x, sps, phase, k, n_taps, n_pre)
 +    known = symbols is not None
 +    d = _align(s, symbols) if known else _slice(s, n_levels)
 +    return s, k, X, d, known, phase
++
++
++# TDECQ reads the eye in two windows, 0.45 and 0.55 UI (+-0.05 UI about the
++# centre); the equalizer is fitted at both instants, so it cannot buy the
++# centre sample at the cost of the eye TDECQ actually scores
++TDECQ_WINDOWS_UI = (-0.05, 0.05)
++
++
++def _tap_rows(x, sps, phase, k, n_taps, n_pre):
++    """Regression rows for symbols k at each TDECQ window: tap j sees
++    sample k - (j - n_pre). Returns (X, k); the windows are interleaved
++    (symbol-major), so each symbol's rows sit together and k repeats each
++    symbol once per window -- LMS then steps through the record in time
++    order rather than sweeping one window and then the other."""
++    rows = []
++    for w in TDECQ_WINDOWS_UI:
++        s = _symbol_samples(x, sps, phase + w * sps)
++        kk = k[k < s.size - n_pre]
++        rows.append(np.stack([s[kk - (j - n_pre)] for j in range(n_taps)],
++                             axis=1))
++    n = min(r.shape[0] for r in rows)
++    X = np.stack([r[:n] for r in rows], axis=1).reshape(-1, n_taps)
++    return X, np.repeat(k[:n], len(rows))
++
++
++def _redecide(d, k, y, n_levels):
++    """Decision-directed update: slice each symbol on the mean of its
++    window samples y (rows as :func:`_tap_rows` orders them)."""
++    nw = len(TDECQ_WINDOWS_UI)
++    d = d.copy()
++    d[k[::nw]] = _slice(y.reshape(-1, nw).mean(axis=1), n_levels)
++    return d
 +
 +
 +def _ladder(y, dk, n_levels):
@@ -408,7 +495,8 @@ index 0000000..ab5c83a
 +    return x - fb_sym[k]
 +
 +
-+def refit_dfe(wvf, samples_per_symbol: float, taps, info, n_levels: int = 4):
++def refit_dfe(wvf, samples_per_symbol: float, taps, info, n_levels: int = 4,
++              skip_symbols: int = 16):
 +    """Re-solve the DFE for fixed FFE ``taps`` (e.g. after projecting the
 +    FFE into the 802.3dj limits): least squares of the FFE output against
 +    past decisions plus a free ladder, b clamped to its 0..0.3 range.
@@ -422,8 +510,8 @@ index 0000000..ab5c83a
 +    d = np.asarray(info["decisions"])[: s.size]
 +    n_pre = info["n_pre"]
 +    n_taps = len(taps)
-+    k = np.arange(max(16, n_taps - 1 - n_pre, n_dfe), s.size - n_pre)
-+    X = np.stack([s[k - (j - n_pre)] for j in range(n_taps)], axis=1)
++    k = np.arange(max(skip_symbols, n_taps - 1 - n_pre, n_dfe), s.size - n_pre)
++    X, k = _tap_rows(x, sps, info["phase"], k, n_taps, n_pre)
 +    U = _dfe_matrix(d, k, n_dfe, n_levels)
 +    u = d[k] / (n_levels - 1)
 +    # X c = U g + a u + b  (the ladder span a is free: U holds only past
@@ -473,13 +561,12 @@ index 0000000..ab5c83a
 +    c[n_pre] = 1.0
 +    g = np.zeros(n_dfe)
 +    dk0 = d[k] if known else _slice(X[:, n_pre], n_levels)
-+    a0 = _span(X[:, n_pre], dk0, n_levels)
++    a0 = _settled_span(s, d if known else _slice(s, n_levels), n_levels)
 +    b = float(np.mean(X[:, n_pre]) - a0 * np.mean(dk0) / (n_levels - 1))
 +    mse = []
 +    for _ in range(max(1, int(passes))):
 +        if not known:
-+            d = d.copy()
-+            d[k] = _slice(X @ c - _dfe_matrix(d, k, n_dfe, n_levels) @ g,
++            d = _redecide(d, k, X @ c - _dfe_matrix(d, k, n_dfe, n_levels) @ g,
 +                          n_levels)
 +        U = _dfe_matrix(d, k, n_dfe, n_levels)
 +        u = d[k] / (n_levels - 1)
@@ -748,10 +835,10 @@ index d282540..386f672 100644
  	for i in range(n - (nb + na + 1)):
 diff --git a/tests/test_equalization.py b/tests/test_equalization.py
 new file mode 100644
-index 0000000..0faea8b
+index 0000000..f3deb64
 --- /dev/null
 +++ b/tests/test_equalization.py
-@@ -0,0 +1,163 @@
+@@ -0,0 +1,178 @@
 +import numpy as np
 +import pytest
 +
@@ -915,3 +1002,18 @@ index 0000000..0faea8b
 +    assert tap_limit_violations([0, 1, 0], 1, dfe_b=[0.35]) != []
 +    assert tap_limit_violations([-0.05, 1.1, -0.05], 1, dfe_b=[0.2]) == []
 +
++
++
++def test_equalizer_samples_where_tdecq_does():
++    """A flat-topped eye (unfiltered steps) has no single most-open phase;
++    the design phase must be mid-UI, where TDECQ samples, or the DFE -- held
++    over the UI centred on it -- steps inside the eye."""
++    from stateye.equalization import best_sampling_phase, eye_center_phase
++    rng = np.random.default_rng(3)
++    sps, off = 25, 7                      # symbol edges at sample 7 mod 25
++    sym = rng.integers(0, 4, 800)
++    x = np.roll(np.repeat(sym / 3.0, sps), off)
++    x = x + 0.002 * rng.standard_normal(x.size)
++    mid = (off + sps / 2) % sps
++    for ph in (eye_center_phase(x, sps), best_sampling_phase(x, sps)):
++        assert abs((ph - mid + sps / 2) % sps - sps / 2) < 0.15 * sps

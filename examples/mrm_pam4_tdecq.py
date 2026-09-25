@@ -11,8 +11,9 @@ Bessel-Thomson at baud/2) and into `stateye` (``photonflux.tdec.measure_pam4``)
 twice:
 
     unequalized     ffe_taps=0
-    reference FFE   5-tap T-spaced FFE (1 pre-cursor), MMSE-designed on the
-                    known PRBS-13Q, noise enhancement C_eq fed into TDECQ
+    reference EQ    802.3dj D2.1: 15-tap T-spaced FFE (3 pre-cursors) + one
+                    DFE tap, MMSE-designed on the known PRBS-13Q, noise
+                    enhancement C_eq fed into TDECQ
 
 A ring is a Lorentzian, so equal drive steps give unequal optical steps: the
 level-mismatch ratio RLM is reported too, and ``--rlm`` pre-distorts the four
@@ -186,17 +187,20 @@ def main() -> None:
                     help="TDECQ S: O/E + scope noise std [mW]")
     ap.add_argument("--ser", type=float, default=4.8e-4,
                     help="target SER (4.8e-4: 802.3 100G/lane)")
-    ap.add_argument("--ffe-taps", type=int, default=5)
-    ap.add_argument("--dfe", type=int, default=0,
+    ap.add_argument("--ffe-taps", type=int, default=15,
+                    help="802.3dj D2.1 reference FFE: 15")
+    ap.add_argument("--ffe-pre", type=int, default=3,
+                    help="pre-cursor taps (802.3dj: up to 3)")
+    ap.add_argument("--dfe", type=int, default=1,
                     help="DFE taps after the FFE (802.3dj D2.1: 1)")
     ap.add_argument("--adapt", choices=("mmse", "lms", "optimal"),
                     default="mmse", help="how the equalizer taps adapt")
-    ap.add_argument("--max-evals", type=int, default=40,
+    ap.add_argument("--max-evals", type=int, default=60,
                     help="--adapt optimal: TDECQ search budget")
     args = ap.parse_args()
 
     spec = LinkSpec(baud=args.baud, detune_pm=args.detune, spu=args.spu,
-                    gap_nm=args.gap)
+                    gap_nm=args.gap, t_rise=10e-12)
 
     sym = prbs13q()
     levels = (rlm_levels(spec, args.swing) if args.rlm
@@ -220,6 +224,7 @@ def main() -> None:
               flush=True)
 
     eq = tdec.measure_pam4(p, dt, spec.baud, ffe_taps=args.ffe_taps,
+                           ffe_pre=args.ffe_pre,
                            dfe_taps=args.dfe, ffe_method=args.adapt,
                            ffe_max_evals=args.max_evals, symbols=sym,
                            progress=progress, **kw)

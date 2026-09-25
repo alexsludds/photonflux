@@ -125,12 +125,15 @@ def measure(payload: dict) -> dict:
 
         method = str(cfg.get("method", "mmse"))
         manual = floats("manual") if method == "manual" else None
+        if method == "manual" and not manual:
+            return {"ok": False, "error": "manual equalizer: enter the FFE "
+                    "taps (e.g. -0.05, 1.1, -0.05)"}
         dfe_manual = floats("manual_dfe") if method == "manual" else None
-        n_dfe = len(dfe_manual) if method == "manual" else int(cfg.get("dfe", 0))
+        n_dfe = len(dfe_manual) if method == "manual" else int(cfg.get("dfe", 1))
         pam = dict(common, ser=float(cfg.get("ser", 4.8e-4)))
         _status("unequalized eye")
         raw = tdec.measure_pam4(p, dt, baud, ffe_taps=0, **pam)
-        n_taps = len(manual) if manual else int(cfg.get("taps", 5))
+        n_taps = len(manual) if manual else int(cfg.get("taps", 15))
 
         def progress(i, n, v, best):
             this = ("outside 802.3dj limits" if v >= 100.0
@@ -141,11 +144,11 @@ def measure(payload: dict) -> dict:
         _status("adapting the equalizer" if method != "optimal"
                 else "TDECQ search: starting")
         eq = raw if n_taps == 0 and n_dfe == 0 else tdec.measure_pam4(
-            p, dt, baud, ffe_taps=n_taps, ffe_pre=int(cfg.get("pre", 1)),
+            p, dt, baud, ffe_taps=n_taps, ffe_pre=int(cfg.get("pre", 3)),
             ffe_method=method, symbols=symbols,
             ffe_mu=float(cfg.get("mu", 0.05)),
             ffe_passes=int(cfg.get("passes", 5)), ffe_manual=manual,
-            ffe_max_evals=int(cfg.get("max_evals", 40)),
+            ffe_max_evals=int(cfg.get("max_evals", 60)),
             dfe_taps=n_dfe, dfe_manual=dfe_manual,
             ffe_limits="802.3dj" if cfg.get("limits", True) else None,
             oma_reference={"outer": raw.get("oma_outer"),
@@ -162,9 +165,10 @@ def measure(payload: dict) -> dict:
 
     (tq, fam), (tq_raw, _) = pick(eq), pick(raw)
     if fam == "xp":
-        log.append("OMA_outer needs runs of 7 threes and 6 zeros (a full "
-                   "PRBS-13Q); this record lacks them, so TDECQ uses the "
-                   "crossing-point OMA")
+        log.append("OMA_outer needs a run of 7 threes and one of 6 zeros; "
+                   "this record has none, so TDECQ uses the crossing-point "
+                   "OMA. Set the PRBS source's sequence to prbs+oma (runs "
+                   "every 512 UI), or simulate a full rotated PRBS-13Q")
     if symbols is None and (n_taps or n_dfe) and method != "manual":
         log.append("no PRBS source on the canvas: taps adapted "
                    "decision-directed (reliable only on a mostly open eye)")

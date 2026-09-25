@@ -233,8 +233,10 @@ def needs_pam4():
 
 
 def test_measure_pam4_recovers_levels_and_tdecq_grows_with_noise(needs_pam4):
-    quiet = tdec.measure_pam4(_prbs13q(0.002), DT, BAUD, s_noise_mW=0.005)
-    noisy = tdec.measure_pam4(_prbs13q(0.02), DT, BAUD, s_noise_mW=0.005)
+    quiet = tdec.measure_pam4(_prbs13q(0.002), DT, BAUD, s_noise_mW=0.005,
+                              ffe_taps=0)
+    noisy = tdec.measure_pam4(_prbs13q(0.02), DT, BAUD, s_noise_mW=0.005,
+                              ffe_taps=0)
     assert quiet["oma_outer"] == pytest.approx(0.30, abs=3e-3)
     for key, want in (("threshold_lower", 0.15), ("threshold", 0.25),
                       ("threshold_upper", 0.35)):
@@ -252,7 +254,7 @@ def test_measure_pam4_rejects_an_unrotated_prbs13q(needs_pam4):
 
 
 def test_measure_pam4_reference_ffe_recovers_isi(needs_pam4):
-    """A post-cursor of ISI closes the raw eye; the 5-tap reference FFE
+    """A post-cursor of ISI closes the raw eye; the 5-tap 802.3bs/cd FFE
     (designed on the known pattern) reopens it, and TDECQ charges its noise
     enhancement through C_eq > 1."""
     from photonflux.signals import pam4_gray
@@ -264,7 +266,8 @@ def test_measure_pam4_reference_ffe_recovers_isi(needs_pam4):
         isi.size * SPS)
     raw = tdec.measure_pam4(p, DT, BAUD, s_noise_mW=0.005, ffe_taps=0,
                             strict=False)
-    eq = tdec.measure_pam4(p, DT, BAUD, s_noise_mW=0.005, symbols=sym)
+    eq = tdec.measure_pam4(p, DT, BAUD, s_noise_mW=0.005, symbols=sym,
+                           ffe_taps=5, ffe_pre=1, dfe_taps=0)
     assert len(eq["ffe_taps"]) == 5 and sum(eq["ffe_taps"]) == pytest.approx(1)
     assert eq["ceq"] > 1.0
     assert eq["ffe_rms_error_after"] < 0.5 * eq["ffe_rms_error_before"]
@@ -284,3 +287,14 @@ def test_fractional_samples_per_ui_is_resampled(needs_pam4):
         p = np.interp(np.arange(0.0, t[-1], dt), t, sig)
         m = tdec.measure_pam4(p, dt, BAUD, s_noise_mW=0.005, ffe_taps=0)
         assert m["tdecq_outer"] == pytest.approx(ref["tdecq_outer"], abs=0.3)
+
+
+def test_measure_pam4_defaults_to_the_802_3dj_reference_equalizer(needs_pam4):
+    """Default: 15-tap FFE (3 pre-cursors) + one DFE tap; ffe_taps=0 alone
+    is the unequalized eye (no silent DFE-only equalizer)."""
+    p = _prbs13q(0.002)
+    eq = tdec.measure_pam4(p, DT, BAUD, s_noise_mW=0.005)
+    assert len(eq["ffe_taps"]) == 15 and len(eq["dfe_b"]) == 1
+    assert eq["eq_violations"] == []
+    raw = tdec.measure_pam4(p, DT, BAUD, s_noise_mW=0.005, ffe_taps=0)
+    assert "ffe_taps" not in raw.metrics and "dfe_b" not in raw.metrics

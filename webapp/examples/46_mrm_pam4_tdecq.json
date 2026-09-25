@@ -68,10 +68,14 @@
     "rot": 0,
     "settings": {
      "mode": "pam4",
+     "sequence": "prbs+oma",
      "order": 13,
      "v0": 0.0,
      "v1": 1.8,
-     "tr": 7e-12,
+     "tr": 1e-11,
+     "rj_ui": 0.02,
+     "sj_ui": 0.02,
+     "dj_ui": 0.02,
      "seed": 1
     }
    },

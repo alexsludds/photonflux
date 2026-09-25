@@ -52,22 +52,59 @@ def prbs_bits(order: int, n: int, seed: int = 1) -> np.ndarray:
     return out
 
 
+SEQUENCES = ("prbs", "prbs+oma", "square", "staircase")
+OMA_RUNS_EVERY = 512     # symbols between the OMA runs of "prbs+oma"
+OMA_RUNS_START = 16      # first OMA runs after a short runway
+
+
 def _symbols(settings: dict, nsym: int) -> np.ndarray:
-    """Symbol fractions in [0, 1]: NRZ 0/1, PAM4 Gray {0,1/3,2/3,1}."""
+    """Symbol fractions in [0, 1]: NRZ 0/1, PAM4 Gray {0,1/3,2/3,1}.
+
+    ``sequence`` picks the pattern (``run_ui`` symbols per run):
+
+    - ``prbs``: the PRBS (PAM4: PRBS bits Gray-paired, i.e. PRBS13Q at
+      order 13).
+    - ``prbs+oma``: the PRBS with a run of the top level then a run of the
+      bottom level written over it every 512 symbols (from symbol 16) --
+      PAM4 at least 7 threes / 6 zeros, NRZ at least 8 ones / 8 zeros -- so
+      OMA_outer (TDECQ) and OMA_8180 (TDEC) are measurable on a record far
+      shorter than a full PRBS-13Q period.
+    - ``square``: alternating runs of the top and bottom level (OMA,
+      extinction ratio, settled levels).
+    - ``staircase``: PAM4 0,1,2,3,2,1,... runs (level linearity, RLM);
+      NRZ falls back to ``square``.
+    """
     mode = str(settings.get("mode", "nrz"))
     order = int(settings.get("order", 7))
     seed = int(settings.get("seed", 1))
+    seq = str(settings.get("sequence", "prbs"))
+    run = max(int(settings.get("run_ui", 8)), 1)
+    if seq not in SEQUENCES:
+        raise ValueError(f"sequence must be one of {SEQUENCES}")
     if mode == "pulse":
         f = np.zeros(nsym)
         f[min(4, nsym - 1)] = 1.0        # one-UI pulse after a short runway
         return f
-    if mode == "pam4":
+    pam4 = mode == "pam4"
+    k = np.arange(nsym) // run
+    if seq == "square" or (seq == "staircase" and not pam4):
+        return (k % 2 == 0).astype(float)
+    if seq == "staircase":
+        return np.array([0, 1, 2, 3, 2, 1], float)[k % 6] / 3.0
+    if pam4:
         bits = prbs_bits(order, 2 * nsym, seed)
         gray = {(0, 0): 0, (0, 1): 1, (1, 1): 2, (1, 0): 3}
-        sym = np.array([gray[(int(bits[2 * i]), int(bits[2 * i + 1]))]
-                        for i in range(nsym)], dtype=float)
-        return sym / 3.0
-    return prbs_bits(order, nsym, seed).astype(float)   # nrz
+        f = np.array([gray[(int(bits[2 * i]), int(bits[2 * i + 1]))]
+                      for i in range(nsym)], dtype=float) / 3.0
+    else:
+        f = prbs_bits(order, nsym, seed).astype(float)
+    if seq == "prbs+oma":
+        n_top = max(run, 7 if pam4 else 8)
+        n_bot = max(run, 6 if pam4 else 8)
+        for s0 in range(OMA_RUNS_START, nsym, OMA_RUNS_EVERY):
+            f[s0:s0 + n_top] = 1.0
+            f[s0 + n_top:s0 + n_top + n_bot] = 0.0
+    return f
 
 
 def _levels(settings: dict, frac: np.ndarray) -> np.ndarray:

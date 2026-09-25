@@ -3057,7 +3057,7 @@ async function measureEye() {
     method: $("tq-method").value,
     mu: parseFloat($("tq-mu").value) || 0.05,
     passes: parseInt($("tq-passes").value) || 5,
-    max_evals: parseInt($("tq-evals").value) || 40,
+    max_evals: parseInt($("tq-evals").value) || 60,
     manual: $("tq-manual").value,
     use_pattern: $("tq-pattern").checked,
     s_noise: parseFloat($("tq-snoise").value) || 0,

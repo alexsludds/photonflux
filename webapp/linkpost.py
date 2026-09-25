@@ -44,10 +44,11 @@ def _uniform(t, v, ui, osr=16):
 def _tdecq_report(t, values, pattern: dict, ui: float, cfg: dict,
                   log: list) -> dict | None:
     """IEEE TDECQ of a PAM-4 *optical* probe via stateye, raw and through
-    the 5-tap reference FFE designed on the known source pattern.
+    the 802.3dj reference equalizer (15-tap FFE with 3 pre-cursors + one
+    DFE tap) designed on the known source pattern.
 
     TDECQ proper uses OMA_outer, which needs a run of 7 threes and 6 zeros
-    (a full PRBS-13Q). Shorter canvas records fall back to TDECQ on the
+    (a full PRBS-13Q, or the source's sequence=prbs+oma). Shorter canvas records fall back to TDECQ on the
     crossing-point OMA (``tdecq_xp``) and say so.
     """
     try:
@@ -66,7 +67,7 @@ def _tdecq_report(t, values, pattern: dict, ui: float, cfg: dict,
               ser=float(cfg.get("tdecq_ser", 4.8e-4)), strict=False)
     try:
         raw = tdec.measure_pam4(p, dt, 1.0 / ui, ffe_taps=0, **kw)
-        eq = tdec.measure_pam4(p, dt, 1.0 / ui, ffe_taps=5, symbols=sym, **kw)
+        eq = tdec.measure_pam4(p, dt, 1.0 / ui, symbols=sym, **kw)
     except Exception as exc:  # noqa: BLE001 -- an optional report line must
         # never take the transient result down with it
         log.append(f"link report: TDECQ unavailable "
@@ -82,14 +83,19 @@ def _tdecq_report(t, values, pattern: dict, ui: float, cfg: dict,
     if not np.isfinite(v_eq):
         log.append("link report: TDECQ undefined (eye closed)")
         return None
-    log.append(f"link report: TDECQ {v_eq:.3f} dB with the 5-tap reference "
-               f"FFE (C_eq {eq['ceq']:.3f}), {v_raw:.3f} dB unequalized"
+    b = eq.get("dfe_b") or []
+    log.append(f"link report: TDECQ {v_eq:.3f} dB with the 802.3dj reference "
+               f"equalizer (15-tap FFE, C_eq {eq['ceq']:.3f}"
+               + (f", DFE b {b[0]:.3f}" if b else "")
+               + f"), {v_raw:.3f} dB unequalized"
                + ("" if fam == "outer" else
-                  "; OMA_outer needs a full PRBS-13Q record, so this is "
-                  "TDECQ on the crossing-point OMA"))
+                  "; OMA_outer needs runs of 7 threes and 6 zeros (set the "
+                  "PRBS source's sequence to prbs+oma), so this is TDECQ on "
+                  "the crossing-point OMA"))
     return {"tdecq_db": v_eq, "tdecq_raw_db": v_raw, "family": fam,
             "s_noise_mw": s_noise, "ser": kw["ser"],
             "ceq": eq["ceq"], "ffe_taps": eq["ffe_taps"],
+            "dfe_b": eq.get("dfe_b") or [],
             "oma_mw": float(eq.get(f"oma_{fam}", np.nan))}
 
 

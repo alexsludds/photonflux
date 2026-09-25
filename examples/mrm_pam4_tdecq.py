@@ -4,9 +4,8 @@
 A PAM-4 PRBS-13Q drive (Gray-coded, rotated so its OMA_outer runs survive the
 record edges) steps ``models/optical_field/ring_mod.va`` through four
 resonance positions via a driver with source resistance ``--r-drv``. The
-through-port field passes an optical attenuator (``--atten-db``, the link
-loss before the receiver) into a matched termination; TDECQ is an optical
-transmitter metric, so the attenuated optical power is scored directly -- no
+through port ends in a matched optical termination; TDECQ is an optical
+transmitter metric, so the through-port power is scored directly -- no
 photodiode. It goes through the TDECQ reference receiver (4th-order
 Bessel-Thomson at baud/2) and into `stateye` (``photonflux.tdec.measure_pam4``)
 twice:
@@ -79,10 +78,9 @@ def level_source(values, t_sym, t_rise):
     return LevelPattern
 
 
-def build(spec: LinkSpec, drive_v: np.ndarray, r_drv: float,
-          atten_db: float = 3.0):
-    """Laser -> ring -> attenuator -> termination, ring electrode driven
-    through R_drv."""
+def build(spec: LinkSpec, drive_v: np.ndarray, r_drv: float):
+    """Laser -> ring -> matched termination, ring electrode driven through
+    R_drv."""
     inst = {
         "GND": {"component": "ground"},
         "LAS": {"component": "laser",
@@ -91,7 +89,6 @@ def build(spec: LinkSpec, drive_v: np.ndarray, r_drv: float,
         "TAP": {"component": "f2ri"},
         "RING": {"component": "ring", "settings": spec.ring_settings()},
         "JOIN": {"component": "ri2f"},
-        "ATT": {"component": "att", "settings": {"atten_db": atten_db}},
         "TERM": {"component": "term", "settings": {"return_loss_db": 60.0}},
         "VIN": {"component": "pam4"},
         "RDRV": {"component": "res", "settings": {"R": r_drv}},
@@ -99,26 +96,24 @@ def build(spec: LinkSpec, drive_v: np.ndarray, r_drv: float,
     conn = {
         "LAS,p1": "TAP,c", "TAP,re": "RING,in_re", "TAP,im": "RING,in_im",
         "RING,out_re": "JOIN,re", "RING,out_im": "JOIN,im",
-        "JOIN,c": "ATT,p1", "ATT,p2": "TERM,p1",
+        "JOIN,c": "TERM,p1",
         "VIN,p1": "RDRV,p1", "RDRV,p2": "RING,vp",
         "GND,p1": ("LAS,p2", "RING,vn", "RING,gnd", "VIN,p2"),
     }
     mdl = base_models()
     mdl["pam4"] = level_source(drive_v, 1.0 / spec.baud, spec.t_rise)
-    mdl["att"] = cx.attenuator()
     mdl["term"] = cx.terminator()
     net = {"instances": inst, "connections": conn,
-           "ports": {"vring": "RING,vp", "prx": "ATT,p2"}}
+           "ports": {"vring": "RING,vp", "prx": "JOIN,c"}}
     return compile_circuit(net, mdl, backend="dense", is_complex=True,
                            max_steps=300)
 
 
-def simulate(spec: LinkSpec, drive_v: np.ndarray, r_drv: float,
-             atten_db: float):
-    """Transient over the whole pattern -> (dt, attenuated power [mW])."""
+def simulate(spec: LinkSpec, drive_v: np.ndarray, r_drv: float):
+    """Transient over the whole pattern -> (dt, through-port power [mW])."""
     from circulax.solvers.transient import BDF2VectorizedTransientSolver
 
-    c = build(spec, drive_v, r_drv, atten_db)
+    c = build(spec, drive_v, r_drv)
     t_sym = 1.0 / spec.baud
     dt = t_sym / spec.spu
     t_max = len(drive_v) * t_sym
@@ -184,8 +179,6 @@ def main() -> None:
                     help="drive swing, level 0 to level 3 [V]")
     ap.add_argument("--r-drv", type=float, default=50.0,
                     help="driver source resistance [ohm]")
-    ap.add_argument("--atten-db", type=float, default=3.0,
-                    help="optical attenuation before the receiver [dB]")
     ap.add_argument("--rlm", action="store_true",
                     help="pre-distort the drive levels for equal optical steps")
     ap.add_argument("--spu", type=int, default=32, help="samples per symbol")
@@ -210,7 +203,7 @@ def main() -> None:
           + (" (RLM pre-distorted)" if args.rlm else ""))
 
     t0 = time.time()
-    dt, p = simulate(spec, levels[sym], args.r_drv, args.atten_db)
+    dt, p = simulate(spec, levels[sym], args.r_drv)
     print(f"transient: {p.size} points in {time.time() - t0:.0f} s")
 
     kw = dict(s_noise_mW=args.s_noise, ser=args.ser, strict=False)

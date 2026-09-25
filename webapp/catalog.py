@@ -1278,6 +1278,18 @@ CATALOG: dict[str, dict] = {
             _p("il_db", 0.0, "dB", "Excess loss"),
         ],
     },
+    "opt_atten": {
+        "label": "Opt. Attenuator",
+        "category": "Photonic Passives",
+        "doc": "Matched, reflectionless optical attenuator: the field is "
+               "scaled by $10^{-\\text{atten\\_db}/20}$ in both directions, "
+               "so optical power drops by atten_db. Use it for link loss "
+               "or to set the received power level.",
+        "ports": _ports("p1:o p2:o"),
+        "params": [
+            _p("atten_db", 3.0, "dB", "Attenuation"),
+        ],
+    },
     "opt_term": {
         "label": "Opt. Terminator",
         "category": "Photonic Passives",
@@ -2179,25 +2191,6 @@ def _field_to_ri_matched():
     return FieldToRIMatched
 
 
-def _opt_term():
-    """Optical terminator with finite return loss.
-
-    One-port with S11 = r = 10^(-RL/20): the equivalent nodal admittance is
-    Y = (1-r)/(1+r) (r = 0 recovers the matched absorber i = E). Real
-    absorbers reflect a little; 50 dB is a good index-matched load.
-    """
-    import jax.numpy as jnp
-    from circulax.components.base_component import Signals, States, component
-
-    @component(ports=("p1",))
-    def OptTerm(signals: Signals, s: States,
-                return_loss_db: float = 50.0) -> tuple[dict, dict]:
-        r = 10.0 ** (-jnp.abs(return_loss_db) / 20.0)
-        return {"p1": (1.0 - r) / (1.0 + r) * signals.p1}, {}
-
-    return OptTerm
-
-
 def _grating_r():
     """Grating coupler: circulax's Gaussian passband + fiber-side
     back-reflection.
@@ -2883,7 +2876,8 @@ def build_models(sky130_geoms: dict[str, tuple[str, float, float, str]] | None =
         "dir_coupler": DirectionalCoupler,
         "grating": _grating_r(),
         "opt_mirror": _opt_mirror(),
-        "opt_term": _opt_term(),
+        "opt_term": cx.terminator(),
+        "opt_atten": cx.attenuator(),
         "photodiode": _photodiode(),
         "apd": _apd(),
         "iq_modulator": _iq_modulator(),

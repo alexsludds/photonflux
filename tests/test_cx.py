@@ -222,3 +222,26 @@ def test_sky130_inverter_vtc(sky130_available):
     assert np.all(np.diff(vout) <= 1e-9)       # monotone decreasing
     trip = vin[int(np.argmin(np.abs(vout - 0.9)))]
     assert 0.7 < trip < 1.1                    # switches near mid-supply
+
+
+def test_attenuator_and_terminator():
+    """cx.attenuator drops optical power by atten_db into a matched
+    cx.terminator, with (almost) no reflection back to the source."""
+    net = {
+        "instances": {
+            "GND": {"component": "ground"},
+            "L": {"component": "las", "settings": {"power": 1e-3}},
+            "A": {"component": "att", "settings": {"atten_db": 6.0}},
+            "T": {"component": "term", "settings": {"return_loss_db": 80.0}},
+        },
+        "connections": {"GND,p1": "L,p2", "L,p1": "A,p1", "A,p2": "T,p1"},
+        "ports": {"in": "A,p1", "out": "A,p2"},
+    }
+    c = compile_circuit(net, {"ground": lambda: 0, "las": cx.cw_laser(),
+                              "att": cx.attenuator(), "term": cx.terminator()},
+                        backend="dense", is_complex=True)
+    y = c.dc()
+    p_in = float(jnp.abs(c.port(y, "in")) ** 2)
+    p_out = float(jnp.abs(c.port(y, "out")) ** 2)
+    assert p_in == pytest.approx(1e-3, rel=1e-6)
+    assert 10 * np.log10(p_out / p_in) == pytest.approx(-6.0, abs=1e-3)

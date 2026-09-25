@@ -268,6 +268,17 @@ S.opt_mirror = {
     <line class="${OPT}" x1="31" y1="22" x2="39" y2="2" stroke-width="1.1"/>`,
 };
 
+S.opt_atten = {
+  // attenuator: guide through a box with a downward arrow
+  w: 60, h: 24, pins: { p1: [0, 12], p2: [60, 12] }, label: [10, -6],
+  draw: () => `
+    <line class="${OPT}" x1="0" y1="12" x2="18" y2="12"/>
+    <line class="${OPT}" x1="42" y1="12" x2="60" y2="12"/>
+    <rect class="${OPT}" x="18" y="3" width="24" height="18" rx="2" fill="none"/>
+    <path class="${OPT}" d="M30 6 V 17 M26 13 L30 17 L34 13" fill="none"
+      stroke-width="1.2"/>`,
+};
+
 S.opt_term = {
   // matched absorber: line into a filled wedge (like an RF termination)
   w: 40, h: 24, pins: { p1: [0, 12] }, label: [8, -6],
@@ -966,6 +977,7 @@ const HEADLINE_PARAM = {
   phase_shifter: "vpi",
   waveguide: "length_m", splitter: "split_ratio", dir_coupler: "coupling",
   grating: "center_wavelength_nm", opt_filter: "center_nm", opt_mirror: "R",
+  opt_atten: "atten_db",
   circulator: "iso_db",
   photodiode: "R", apd: "M", vdc: "V", vpulse: "v2", vsin: "V", idc: "I",
   resistor: "R", capacitor: "C", inductor: "L", diode: "Is",

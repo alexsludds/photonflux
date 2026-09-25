@@ -1,7 +1,7 @@
 {
  "title": "MRM PAM4 transmitter, TDECQ (53 GBd)",
  "group": "Links & receivers",
- "description": "Microring modulator driven by a PAM4 PRBS source at 53.125 GBd; the Link tab reports IEEE TDECQ (stateye) raw and through the 5-tap reference FFE",
+ "description": "Microring modulator driven by a PAM4 PRBS source at 53.125 GBd through an optical attenuator; the Eye tab scores IEEE TDECQ (stateye) raw and through the reference FFE",
  "schematic": {
   "globals": {
    "baud": 53125000000.0
@@ -15,12 +15,14 @@
      "PRBS1 (mode pam4) drives RING1's electrode through a 50 ohm driver",
      "resistance RD1: four drive levels 0 / 0.6 / 1.2 / 1.8 V step the",
      "resonance by 45 pm/V, and LAS1 parked -33 pm off resonance turns that",
-     "into four optical levels at popt.",
+     "into four optical levels. ATT1 (3 dB) stands in for the link loss before",
+     "the receiver; TDECQ is an optical transmitter metric, so popt -- the",
+     "attenuated optical power -- is what gets scored. No photodiode needed.",
      "",
-     "Run, then open the Link tab: with an optical received probe (popt) and a",
-     "PAM4 source, the report computes IEEE TDECQ through stateye -- the",
-     "reference receiver (BT4 at baud/2) and the 5-tap reference FFE designed",
-     "on the known pattern, raw and equalized, with the FFE taps and C_eq.",
+     "Run, then open the Eye tab (trace popt) and press Measure in the",
+     "stateye row: IEEE TDECQ through the reference receiver and FFE, with",
+     "the simulated eye and stateye's equalized eye side by side. The Link",
+     "tab reports TDECQ too.",
      "",
      "TDECQ proper uses OMA_outer (runs of 7 threes / 6 zeros: a full",
      "PRBS-13Q, 8191 UI). The canvas caps a transient at 20,000 points, so",
@@ -59,25 +61,6 @@
      "cj_ff_um": 0.5
     }
    },
-   "PD1": {
-    "type": "photodiode",
-    "x": 560,
-    "y": 200,
-    "rot": 0,
-    "settings": {
-     "R": 0.8,
-     "Cj": 1e-14
-    }
-   },
-   "RL1": {
-    "type": "resistor",
-    "x": 680,
-    "y": 260,
-    "rot": 0,
-    "settings": {
-     "R": 1000.0
-    }
-   },
    "PRBS1": {
     "type": "prbs",
     "x": 40,
@@ -113,13 +96,6 @@
     "rot": 0,
     "settings": {}
    },
-   "GND4": {
-    "type": "ground",
-    "x": 620,
-    "y": 320,
-    "rot": 0,
-    "settings": {}
-   },
    "RD1": {
     "type": "resistor",
     "x": 170,
@@ -127,6 +103,24 @@
     "rot": 90,
     "settings": {
      "R": 50.0
+    }
+   },
+   "ATT1": {
+    "type": "opt_atten",
+    "x": 520,
+    "y": 188,
+    "rot": 0,
+    "settings": {
+     "atten_db": 3.0
+    }
+   },
+   "OT1": {
+    "type": "opt_term",
+    "x": 660,
+    "y": 188,
+    "rot": 0,
+    "settings": {
+     "return_loss_db": 60.0
     }
    }
   },
@@ -138,26 +132,6 @@
    {
     "from": "LAS1,p2",
     "to": "GND1,p1"
-   },
-   {
-    "from": "RING1,pout",
-    "to": "PD1,po_p"
-   },
-   {
-    "from": "PD1,po_n",
-    "to": "GND4,p1"
-   },
-   {
-    "from": "PD1,an",
-    "to": "GND4,p1"
-   },
-   {
-    "from": "PD1,cat",
-    "to": "RL1,p1"
-   },
-   {
-    "from": "RL1,p2",
-    "to": "GND4,p1"
    },
    {
     "from": "PRBS1,p2",
@@ -178,6 +152,14 @@
    {
     "from": "RD1,p2",
     "to": "RING1,vp"
+   },
+   {
+    "from": "RING1,pout",
+    "to": "ATT1,p1"
+   },
+   {
+    "from": "ATT1,p2",
+    "to": "OT1,p1"
    }
   ],
   "probes": [
@@ -188,13 +170,8 @@
    },
    {
     "name": "popt",
-    "at": "RING1,pout",
+    "at": "ATT1,p2",
     "color": "#e6862c"
-   },
-   {
-    "name": "vout",
-    "at": "PD1,cat",
-    "color": "#a78bfa"
    }
   ],
   "subcircuits": {}

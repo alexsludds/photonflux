@@ -17,7 +17,7 @@ const ID_PREFIX = {
   waveguide: "WG", splitter: "SPL", dir_coupler: "DC", photodiode: "PD",
   apd: "APD",
   vdc: "V", vpulse: "VP", vsin: "VS", idc: "I", resistor: "R",
-  prbs: "PRBS", qam_source: "QAM",
+  prbs: "PRBS", qam_source: "QAM", opt_atten: "ATT",
   capacitor: "C", inductor: "L", diode: "D", nmos: "MN", pmos: "MP",
   sky130_nfet: "XN", sky130_nfet_lvt: "XN", sky130_nfet_5v: "XN",
   sky130_nfet_nvt: "XN", sky130_pfet: "XP", sky130_pfet_lvt: "XP",

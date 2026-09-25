@@ -328,6 +328,16 @@ def measure(
                        waveform=p, dt_sec=dt_sec)
 
 
+def _pam4_eye(stateye, p, dt_sec, baud, nx, ny, s_noise_mW, ser):
+    """Unequalized PAM-4 eye metrics (the equalizer input's OMA)."""
+    eye = stateye.IdealEye(datarate_gbps=baud / 1e9, dt_sec=dt_sec, nx=nx,
+                           ny=ny, format="PAM4", sampling_offset_mode="half_ui")
+    eye.set_tdecq_s_noise(s_noise_mW)
+    eye.set_tdecq_ser(ser)
+    eye.add_data(p, "mW")
+    return eye.get_measurements()
+
+
 def measure_pam4(
     p_thru_mW,
     dt_sec: float,
@@ -343,6 +353,11 @@ def measure_pam4(
     ffe_passes: int = 5,
     ffe_manual=None,
     ffe_max_evals: int = 60,
+    dfe_taps: int = 0,
+    dfe_manual=None,
+    ffe_limits: str | None = "802.3dj",
+    oma_reference=None,
+    progress=None,
     ref_rx_bw_factor: float | None = 0.5,
     ref_rx_order: int = 4,
     ref_rx_bw_hz: float | None = None,
@@ -385,6 +400,23 @@ def measure_pam4(
     TDECQ itself from the MMSE start, ``ffe_max_evals`` eye analyses -- the
     802.3 definition, and slow) or ``"manual"`` (``ffe_manual``, a list of
     taps, normalized to sum to 1; ``ffe_taps`` is then its length).
+
+    ``dfe_taps`` adds a decision-feedback equalizer after the FFE (802.3dj
+    D2.1 uses one tap), designed jointly by the chosen method; with
+    ``"manual"`` its coefficients come from ``dfe_manual`` in the standard's
+    normalization (b referenced to OMA/2 at the FFE input). Decisions are
+    the known ``symbols`` when given (ideal DFE) or the equalizer's own.
+    The DFE adds nothing to C_eq, and TDECQ's OMA is referenced at the
+    equalizer *input* -- ``oma_reference`` ({"outer", "xp"}), measured on the
+    unequalized record when not given -- so a DFE is not charged for the
+    OMA it removes.
+
+    ``ffe_limits="802.3dj"`` applies the P802.3dj D2.1 Table 180-15 limits
+    (main tap 0.9..2.5, per-tap ratios, 0 <= b <= 0.3): the TDECQ-optimal
+    search stays inside them, and MMSE / LMS taps that land outside are
+    projected back in (``metrics["eq_projected"]``); manual taps are left
+    as given, with any violation in ``metrics["eq_violations"]``. ``progress`` is passed to the
+    TDECQ-optimal search (``progress(i, n, tdecq_i, tdecq_best)``).
     MMSE taps are not the TDECQ-minimizing taps the standard asks for, so
     the result is at or slightly above the compliant value.
     """
@@ -396,43 +428,82 @@ def measure_pam4(
                          ref_rx_order, ref_rx_bw_hz, settle_ui)
 
     eq: dict = {}
-    if ffe_taps:
-        if not hasattr(stateye, "ffe_mmse"):
+    if ffe_taps or dfe_taps:
+        if not hasattr(stateye, "tap_limit_violations"):
             raise ImportError(
                 "ffe_taps needs the stateye reference equalizer "
-                "(stateye.ffe_mmse); install stateye with "
+                "(stateye.ffe_mmse, DFE and 802.3dj limits); install stateye with "
                 "docs/patches/stateye-modern-toolchain.patch applied, or pass "
                 "ffe_taps=0.")
         sps = 1.0 / (baud * dt_sec)
-        n, pre = int(ffe_taps), int(ffe_pre)
+        n, pre, nd = max(int(ffe_taps), 1), int(ffe_pre), int(dfe_taps)
+        if int(ffe_taps) == 0:
+            pre = 0                      # DFE only: a 1-tap (identity) FFE
+        if oma_reference is None:        # OMA at the equalizer input
+            m_in = _pam4_eye(stateye, p, dt_sec, baud, nx, ny, s_noise_mW, ser)
+            oma_reference = {"outer": m_in.get("oma_outer"),
+                             "xp": m_in.get("oma_xp")}
+        # the Wiener design charges FFE taps for the receiver noise at the
+        # FFE input; TDECQ's S is that noise (stateye defaults to 2 % of OMA)
+        noise = float(s_noise_mW) if s_noise_mW > 0 else None
         if ffe_method == "mmse":
             taps, info = stateye.ffe_mmse(p, sps, n_taps=n, n_pre=pre,
-                                          symbols=symbols)
+                                          symbols=symbols, n_dfe=nd,
+                                          noise_rms=noise)
         elif ffe_method == "lms":
             taps, info = stateye.ffe_lms(p, sps, n_taps=n, n_pre=pre,
                                          symbols=symbols, mu=float(ffe_mu),
-                                         passes=int(ffe_passes))
+                                         passes=int(ffe_passes), n_dfe=nd)
         elif ffe_method == "optimal":
             taps, info = stateye.ffe_tdecq_optimal(
                 p, dt_sec, baud / 1e9, n_taps=n, n_pre=pre, symbols=symbols,
                 max_evals=int(ffe_max_evals), tdecq_s_noise=s_noise_mW,
-                tdecq_ser=ser, nx=nx, ny=ny)
+                tdecq_ser=ser, nx=nx, ny=ny, n_dfe=nd, limits=ffe_limits,
+                oma_reference=oma_reference, progress=progress,
+                noise_rms=noise)
         elif ffe_method == "manual":
-            taps = np.asarray(ffe_manual, dtype=float)
+            taps = np.asarray(ffe_manual if ffe_manual else [1.0], dtype=float)
             if taps.ndim != 1 or taps.size < 1 or not pre < taps.size \
                     or taps.sum() == 0:
                 raise ValueError("manual FFE taps need a non-empty list with "
                                  "more taps than pre-cursors and a nonzero sum")
             taps = taps / taps.sum()
-            info = {"n_pre": pre, "ceq": stateye.noise_enhancement(taps)}
+            b = [float(x) for x in (dfe_manual or [])]
+            # decisions, sampling phase and OMA scale come from an MMSE pass
+            _, info = stateye.ffe_mmse(p, sps, n_taps=taps.size, n_pre=pre,
+                                       symbols=symbols, n_dfe=len(b),
+                                       noise_rms=noise)
+            info = {**info, "ceq": stateye.noise_enhancement(taps),
+                    "dfe_b": b, "dfe_taps": [x * info["span"] for x in b]}
+            info.pop("rms_error_before", None)
+            info.pop("rms_error_after", None)
         else:
             raise ValueError(f"unknown ffe_method {ffe_method!r}; use mmse, "
                              "lms, optimal or manual")
-        p = stateye.apply_ffe(p, taps, sps, n_pre=info["n_pre"])
-        eq = {"ffe_taps": [float(c) for c in taps], "ceq": info["ceq"],
-              "ffe_method": ffe_method}
+        projected = False
+        if ffe_limits and ffe_method in ("mmse", "lms") and \
+                stateye.tap_limit_violations(taps, info["n_pre"],
+                                             info.get("dfe_b", [])):
+            # MSE-optimal taps can leave the legal reference equalizer
+            # (e.g. main tap < 0.9 with a DFE): pull them back inside
+            taps = stateye.project_to_limits(taps, info["n_pre"])
+            # the DFE was balanced against the unprojected FFE: refit it
+            info = {**stateye.refit_dfe(p, sps, taps, info),
+                    "ceq": stateye.noise_enhancement(taps)}
+            info.pop("rms_error_after", None)
+            projected = True
+        p = stateye.equalize(p, taps, info, sps)
+        eq = {"ffe_taps": [float(c) for c in taps] if int(ffe_taps) else [],
+              "eq_projected": projected,
+              "ceq": info["ceq"], "ffe_method": ffe_method,
+              "dfe_b": [float(x) for x in info.get("dfe_b", [])],
+              "eq_violations": [w for w, _ in stateye.tap_limit_violations(
+                  taps, info["n_pre"], info.get("dfe_b", []))]
+              if ffe_limits else []}
+        # (the optimal search starts from MMSE; its rms figures would be the
+        # start's, not the result's)
         for key in ("rms_error_before", "rms_error_after"):
-            if key in info:
+            if key in info and ffe_method != "optimal":
                 eq[f"ffe_{key}"] = info[key]
         if "evals" in info:
             eq["ffe_evals"] = info["evals"]
@@ -448,6 +519,8 @@ def measure_pam4(
     eye.set_tdecq_s_noise(s_noise_mW)
     eye.set_tdecq_ceq(eq.get("ceq", 1.0))
     eye.set_tdecq_ser(ser)
+    if eq:
+        eye.set_tdecq_oma_reference(oma_reference)
     eye.add_data(p, "mW")
 
     msmts = {k: (float(v) if isinstance(v, np.generic) else v)

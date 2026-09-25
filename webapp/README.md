@@ -128,10 +128,14 @@ container image does this, so production runs exactly one process.
   Its **stateye** row scores whatever eye is shown (`POST /api/eyemeasure`,
   `webapp/eyemeasure.py`): PAM4 -> IEEE TDECQ, raw and through the reference
   FFE; NRZ -> TDEC and OMA - TDEC. Settings: reference-receiver bandwidth
-  (x baud, or off) and order, FFE taps and pre-cursors, how the taps adapt
-  (MMSE block solve, normalized LMS with step mu and passes, TDECQ-optimal
-  Nelder-Mead on TDECQ itself -- the 802.3 definition, slow -- or manual
-  taps), training on the PRBS source's pattern or decision-directed,
+  (x baud, or off) and order, FFE taps and pre-cursors, DFE taps (802.3dj
+  D2.1: one, 0 <= b <= 0.3), how the taps adapt (noise-aware MMSE block
+  solve, normalized LMS with step mu and passes, TDECQ-optimal Nelder-Mead
+  on TDECQ itself -- the 802.3 definition, slow, with live "evaluation i/n"
+  progress -- or manual taps), the P802.3dj D2.1 Table 180-15 reference-
+  equalizer limits (on by default: the search stays inside them, MMSE/LMS
+  taps are projected into them), training on the PRBS source's pattern or
+  decision-directed,
   target SER/BER, scope noise S, and the histogram grid. "show scored eye"
   draws the eye stateye measured (after the reference receiver and FFE,
   time-aligned to the probe).

@@ -66,3 +66,34 @@ def test_bad_input_is_a_clean_error():
     assert not eyemeasure.measure({"t": [0, 1], "values": [0, 1], "ui": UI})["ok"]
     bad = _payload("pam4", {"method": "manual", "manual": ""})
     assert not eyemeasure.measure(bad)["ok"]
+
+
+def test_dfe_and_802_3dj_limits():
+    """A DFE tap comes back in the standard's normalization, inside 0..0.3;
+    with limits on, the reported equalizer is a legal 802.3dj one."""
+    r = eyemeasure.measure(_payload("pam4", {"method": "mmse", "dfe": 1}))
+    assert r["ok"], r.get("error")
+    assert len(r["dfe_b"]) == 1 and 0.0 <= r["dfe_b"][0] <= 0.3
+    assert r["violations"] == []
+    from stateye.equalization import tap_limit_violations
+    assert tap_limit_violations(r["taps"], 1, r["dfe_b"]) == []
+
+
+def test_optimal_search_reports_progress():
+    eyemeasure.STATUS.update(active=False, text="")
+    seen = []
+    orig = eyemeasure._status
+
+    def spy(text, i=0, n=0, active=True):
+        seen.append(text)
+        orig(text, i, n, active)
+
+    eyemeasure._status = spy
+    try:
+        r = eyemeasure.measure(_payload("pam4", {"method": "optimal",
+                                                 "max_evals": 6, "dfe": 1}))
+    finally:
+        eyemeasure._status = orig
+    assert r["ok"], r.get("error")
+    assert any(t.startswith("TDECQ search: evaluation 6/6") for t in seen)
+    assert r["violations"] == [] and not eyemeasure.STATUS["active"]

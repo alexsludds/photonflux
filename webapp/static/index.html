@@ -255,6 +255,8 @@
         <label class="tq-pam" title="Reference equalizer length (T-spaced FFE, taps sum to 1). 802.3bs/cd: 5. 0 = no equalizer.">FFE taps
           <input id="tq-taps" value="5" size="2"></label>
         <label class="tq-pam" title="Pre-cursor taps">pre <input id="tq-pre" value="1" size="2"></label>
+        <label class="tq-pam" title="Decision-feedback taps after the FFE (802.3dj D2.1: one tap, 0 <= b <= 0.3, referenced to OMA/2 at the FFE input). Adds no noise enhancement.">DFE taps
+          <input id="tq-dfe" value="0" size="2"></label>
         <label class="tq-pam" title="How the taps adapt. MMSE: block least squares (fast). LMS: normalized LMS, step mu over several passes (how an adaptive Rx converges). TDECQ-optimal: Nelder-Mead on TDECQ itself from the MMSE start (the 802.3 definition; one eye analysis per evaluation, slow). Manual: your taps.">adapt
           <select id="tq-method">
             <option value="mmse">MMSE (block)</option>
@@ -266,6 +268,8 @@
         <label class="tq-pam tq-lms" hidden title="Sweeps of the record">passes <input id="tq-passes" value="5" size="2"></label>
         <label class="tq-pam tq-opt" hidden title="Maximum eye analyses for the TDECQ search">evals <input id="tq-evals" value="40" size="3"></label>
         <label class="tq-pam tq-manual" hidden title="Tap weights, pre-cursors first; normalized to sum to 1">taps <input id="tq-manual" placeholder="-0.05, 1.1, -0.05" size="16"></label>
+        <label class="tq-pam tq-manual" hidden title="DFE coefficients b(1), b(2), ... in the 802.3dj normalization (OMA/2 at the FFE input); blank = no DFE">DFE b <input id="tq-manual-dfe" placeholder="0.1" size="8"></label>
+        <label class="tq-pam" title="Keep the equalizer inside the IEEE P802.3dj D2.1 reference-equalizer limits (Table 180-15: main tap 0.9-2.5, per-tap ratios, DFE 0-0.3). The TDECQ-optimal search stays inside them; other methods report any violation. Unchecked, the search can 'win' with low-pass taps (C_eq < 1) that close the eye."><input type="checkbox" id="tq-limits" checked> 802.3dj limits</label>
         <label class="tq-pam" title="Adapt against the PRBS source's known pattern (a TDECQ scope knows its test pattern). Off = decision-directed."><input type="checkbox" id="tq-pattern" checked> train on pattern</label>
         <label title="PAM4: target symbol error rate (802.3 100G/lane: 4.8e-4). NRZ: target BER.">target <input id="tq-ser" value="4.8e-4" size="6"></label>
         <label title="S: rms noise of the O/E + scope, in the trace's units">S <input id="tq-snoise" value="0.005" size="5"></label>

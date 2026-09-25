@@ -20,6 +20,14 @@ import wavesrc
 
 _MAX_RETURN_POINTS = 20_000
 
+# live status of the measurement in flight, polled by the Eye tab through
+# GET /api/eyemeasure/progress (the TDECQ-optimal search runs for minutes)
+STATUS = {"active": False, "text": "", "i": 0, "n": 0}
+
+
+def _status(text: str, i: int = 0, n: int = 0, active: bool = True) -> None:
+    STATUS.update(active=active, text=text, i=i, n=n)
+
 
 def _num(v):
     """JSON-safe float: NaN/inf -> None (a bare NaN token breaks JSON.parse)."""
@@ -108,25 +116,45 @@ def measure(payload: dict) -> dict:
 
         symbols = None
         pattern = payload.get("pattern")
-        if cfg.get("method", "mmse") != "manual" and \
-                cfg.get("use_pattern", True) and pattern:
+        if cfg.get("use_pattern", True) and pattern:
             nsym = int(np.ceil((tu[-1] - 0.0) / ui)) + 2
             symbols = np.rint(wavesrc._symbols(pattern, nsym) * 3).astype(int)
-        manual = None
-        if cfg.get("method") == "manual":
-            manual = [float(x) for x in str(cfg.get("manual", "")).replace(
+        def floats(key):
+            return [float(x) for x in str(cfg.get(key, "")).replace(
                 ",", " ").split()]
+
+        method = str(cfg.get("method", "mmse"))
+        manual = floats("manual") if method == "manual" else None
+        dfe_manual = floats("manual_dfe") if method == "manual" else None
+        n_dfe = len(dfe_manual) if method == "manual" else int(cfg.get("dfe", 0))
         pam = dict(common, ser=float(cfg.get("ser", 4.8e-4)))
+        _status("unequalized eye")
         raw = tdec.measure_pam4(p, dt, baud, ffe_taps=0, **pam)
         n_taps = len(manual) if manual else int(cfg.get("taps", 5))
-        eq = raw if n_taps == 0 else tdec.measure_pam4(
+
+        def progress(i, n, v, best):
+            this = ("outside 802.3dj limits" if v >= 100.0
+                    else f"this {v:.3f} dB")
+            _status(f"TDECQ search: evaluation {i}/{n}, {this}, "
+                    f"best {best:.3f} dB", i, n)
+
+        _status("adapting the equalizer" if method != "optimal"
+                else "TDECQ search: starting")
+        eq = raw if n_taps == 0 and n_dfe == 0 else tdec.measure_pam4(
             p, dt, baud, ffe_taps=n_taps, ffe_pre=int(cfg.get("pre", 1)),
-            ffe_method=str(cfg.get("method", "mmse")), symbols=symbols,
+            ffe_method=method, symbols=symbols,
             ffe_mu=float(cfg.get("mu", 0.05)),
             ffe_passes=int(cfg.get("passes", 5)), ffe_manual=manual,
-            ffe_max_evals=int(cfg.get("max_evals", 40)), **pam)
+            ffe_max_evals=int(cfg.get("max_evals", 40)),
+            dfe_taps=n_dfe, dfe_manual=dfe_manual,
+            ffe_limits="802.3dj" if cfg.get("limits", True) else None,
+            oma_reference={"outer": raw.get("oma_outer"),
+                           "xp": raw.get("oma_xp")},
+            progress=progress, **pam)
     except (ValueError, IndexError, ZeroDivisionError, ImportError) as exc:
         return {"ok": False, "error": f"{type(exc).__name__}: {exc}"}
+    finally:
+        _status("", active=False)
 
     def pick(m):
         v = _num(m.get("tdecq_outer"))
@@ -137,15 +165,24 @@ def measure(payload: dict) -> dict:
         log.append("OMA_outer needs runs of 7 threes and 6 zeros (a full "
                    "PRBS-13Q); this record lacks them, so TDECQ uses the "
                    "crossing-point OMA")
-    if symbols is None and n_taps and cfg.get("method") != "manual":
+    if symbols is None and (n_taps or n_dfe) and method != "manual":
         log.append("no PRBS source on the canvas: taps adapted "
                    "decision-directed (reliable only on a mostly open eye)")
+    if eq.get("eq_projected"):
+        log.append("MMSE/LMS taps left the 802.3dj reference-equalizer limits; "
+                   "projected back inside them (use TDECQ-optimal for the "
+                   "best legal equalizer)")
+    for v in eq.get("eq_violations") or []:
+        log.append(f"outside the 802.3dj reference equalizer: {v}")
     levels = [_num(eq.get(f"{n}_level_xp"))
               for n in ("zero", "one", "two", "three")]
     return {"ok": True, "format": "PAM4", "tdecq_db": tq, "tdecq_raw_db": tq_raw,
-            "family": fam, "oma": _num(eq.get(f"oma_{fam}")),
+            # OMA at the equalizer input, as 802.3dj references it
+            "family": fam, "oma": _num(raw.get(f"oma_{fam}")),
             "ceq": _num(eq.get("ceq", 1.0)),
             "taps": eq.get("ffe_taps") or [], "method": eq.get("ffe_method"),
+            "dfe_b": eq.get("dfe_b") or [],
+            "violations": eq.get("eq_violations") or [],
             "evals": eq.get("ffe_evals"),
             "rms_before": _num(eq.get("ffe_rms_error_before")),
             "rms_after": _num(eq.get("ffe_rms_error_after")),

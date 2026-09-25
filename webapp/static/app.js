@@ -3050,6 +3050,9 @@ async function measureEye() {
     rx_bw: rxbw === "auto" ? (nlv === 4 ? 0.5 : 0.75) : (rxbw === "off" ? "off" : parseFloat(rxbw)),
     rx_order: parseInt($("tq-rxorder").value) || 4,
     taps: parseInt($("tq-taps").value) || 0,
+    dfe: parseInt($("tq-dfe").value) || 0,
+    manual_dfe: $("tq-manual-dfe").value,
+    limits: $("tq-limits").checked,
     pre: parseInt($("tq-pre").value) || 0,
     method: $("tq-method").value,
     mu: parseFloat($("tq-mu").value) || 0.05,
@@ -3069,6 +3072,16 @@ async function measureEye() {
   out.innerHTML = `<span class="tq-dim">measuring with stateye${
     cfg.method === "optimal" ? ` (TDECQ search, up to ${cfg.max_evals} eye analyses)` : ""}…</span>`;
   const t0 = performance.now();
+  // poll the server's status while the measurement runs: the TDECQ-optimal
+  // search reports each evaluation (i / n, this and best TDECQ)
+  const poll = setInterval(async () => {
+    try {
+      const st = await (await fetch("/api/eyemeasure/progress")).json();
+      if (st.active && st.text && btn.disabled)
+        out.innerHTML = `<span class="tq-dim">${st.text} &nbsp;(${
+          ((performance.now() - t0) / 1000).toFixed(0)} s)</span>`;
+    } catch {}
+  }, 700);
   let r;
   try {
     r = await (await fetch("/api/eyemeasure", { method: "POST",
@@ -3077,20 +3090,24 @@ async function measureEye() {
   } catch (e) {
     r = { ok: false, error: String(e) };
   }
+  clearInterval(poll);
   btn.disabled = false;
   if (!r.ok) { out.innerHTML = `<span class="tq-err">${r.error}</span>`; return; }
   const secs = ((performance.now() - t0) / 1000).toFixed(1);
   const u = tr.unit ? ` ${tr.unit}` : "";
   const f = (x, d = 2) => (x === null || x === undefined) ? "—" : x.toFixed(d);
-  const notes = (r.log || []).map((l) => `<div class="tq-dim">${l}</div>`).join("");
+  const notes = (r.log || []).map((l) => `<div class="${
+    l.startsWith("outside the 802.3dj") ? "tq-err" : "tq-dim"}">${l}</div>`).join("");
   if (r.format === "NRZ") {
     out.innerHTML = `<span class="tq-big">TDEC ${f(r.tdec_db)} dB</span>
       &nbsp; OMA&minus;TDEC ${f(r.oma_tdec_dbm)} dBm${r.at_floor ? " (at floor)" : ""}
       &nbsp;|&nbsp; OMA<sub>${r.family}</sub> ${fmtSI(r.oma)}${u}
       &nbsp;|&nbsp; ER ${f(r.er_db)} dB <span class="tq-dim">(${secs} s)</span>${notes}`;
   } else {
-    const taps = r.taps.length
-      ? `${r.method} FFE [${r.taps.map((c) => c.toFixed(3)).join(", ")}], C<sub>eq</sub> ${f(r.ceq, 3)}`
+    const taps = (r.taps.length || r.dfe_b.length)
+      ? (r.taps.length ? `${r.method} FFE [${r.taps.map((c) => c.toFixed(3)).join(", ")}]` : `${r.method}`)
+        + (r.dfe_b.length ? ` + DFE b [${r.dfe_b.map((c) => c.toFixed(3)).join(", ")}]` : "")
+        + `, C<sub>eq</sub> ${f(r.ceq, 3)}`
         + (r.evals ? `, ${r.evals} evals` : "")
         + (r.rms_after !== null && r.rms_after !== undefined
           ? `, rms err ${fmtSI(r.rms_before)} &rarr; ${fmtSI(r.rms_after)}${u}` : "")
@@ -3103,8 +3120,10 @@ async function measureEye() {
       <span class="tq-dim">(${secs} s)</span>${notes}`;
   }
   const rxTxt = cfg.rx_bw === "off" ? "no ref Rx" : `BT${cfg.rx_order} ref Rx at ${cfg.rx_bw}×baud`;
-  const eqTxt = r.format === "NRZ" || !r.taps || !r.taps.length ? "no equalizer"
-    : `${r.taps.length}-tap ${r.method} FFE`;
+  const eqTxt = r.format === "NRZ" ? "no equalizer"
+    : [r.taps && r.taps.length ? `${r.taps.length}-tap ${r.method} FFE` : "",
+       r.dfe_b && r.dfe_b.length ? `${r.dfe_b.length}-tap DFE` : ""]
+      .filter(Boolean).join(" + ") || "no equalizer";
   eyeScored = { result: lastResult, trace: sel,
                 t: r.scored.t, values: r.scored.values,
                 caption: `stateye: ${rxTxt} + ${eqTxt} — ` + (r.format === "NRZ"

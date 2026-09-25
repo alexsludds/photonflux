@@ -187,6 +187,12 @@ def main() -> None:
     ap.add_argument("--ser", type=float, default=4.8e-4,
                     help="target SER (4.8e-4: 802.3 100G/lane)")
     ap.add_argument("--ffe-taps", type=int, default=5)
+    ap.add_argument("--dfe", type=int, default=0,
+                    help="DFE taps after the FFE (802.3dj D2.1: 1)")
+    ap.add_argument("--adapt", choices=("mmse", "lms", "optimal"),
+                    default="mmse", help="how the equalizer taps adapt")
+    ap.add_argument("--max-evals", type=int, default=40,
+                    help="--adapt optimal: TDECQ search budget")
     args = ap.parse_args()
 
     spec = LinkSpec(baud=args.baud, detune_pm=args.detune, spu=args.spu,
@@ -208,16 +214,30 @@ def main() -> None:
 
     kw = dict(s_noise_mW=args.s_noise, ser=args.ser, strict=False)
     raw = tdec.measure_pam4(p, dt, spec.baud, ffe_taps=0, **kw)
+    def progress(i, n, v, best):
+        this = "outside 802.3dj limits" if v >= 100 else f"{v:.3f} dB"
+        print(f"  TDECQ search {i:3d}/{n}: {this:>22s}   best {best:.3f} dB",
+              flush=True)
+
     eq = tdec.measure_pam4(p, dt, spec.baud, ffe_taps=args.ffe_taps,
-                           symbols=sym, **kw)
+                           dfe_taps=args.dfe, ffe_method=args.adapt,
+                           ffe_max_evals=args.max_evals, symbols=sym,
+                           progress=progress, **kw)
     print("\nTDECQ (reference Rx: BT4 at baud/2, SER "
           f"{args.ser:g}, S = {args.s_noise} mW)")
     report("unequalized", raw)
-    report(f"{args.ffe_taps}-tap FFE", eq)
-    if "ffe_taps" in eq:
+    report(f"{args.ffe_taps}-tap FFE" + (f"+DFE{args.dfe}" if args.dfe else ""),
+           eq)
+    if eq.get("ffe_taps"):
+        rms = (f"   (rms error {eq['ffe_rms_error_before']:.4f} -> "
+               f"{eq['ffe_rms_error_after']:.4f} mW)"
+               if "ffe_rms_error_after" in eq else "")
         print("  FFE taps      " + "  ".join(f"{c:+.3f}" for c in eq["ffe_taps"])
-              + f"   (rms error {eq['ffe_rms_error_before']:.4f} -> "
-              f"{eq['ffe_rms_error_after']:.4f} mW)")
+              + rms)
+    if eq.get("dfe_b"):
+        print("  DFE b         " + "  ".join(f"{b:+.3f}" for b in eq["dfe_b"]))
+    for v in eq.get("eq_violations") or []:
+        print(f"  outside 802.3dj reference equalizer: {v}")
 
     OUT.mkdir(exist_ok=True)
     try:

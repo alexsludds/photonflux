@@ -181,6 +181,11 @@ class Handler(BaseHTTPRequestHandler):
                 return
             self._sse_events()
             return
+        if path == "/api/eyemeasure/progress":
+            # lock-free status of the Eye tab's stateye measurement
+            import eyemeasure
+            self._json(dict(eyemeasure.STATUS))
+            return
         if path == "/api/progress":
             # Live transient-solve progress, polled by the browser while an
             # /api/run is in flight. Deliberately lock-free (it never touches

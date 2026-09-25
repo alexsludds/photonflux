@@ -17,6 +17,7 @@ const ID_PREFIX = {
   waveguide: "WG", splitter: "SPL", dir_coupler: "DC", photodiode: "PD",
   apd: "APD",
   vdc: "V", vpulse: "VP", vsin: "VS", idc: "I", resistor: "R",
+  prbs: "PRBS", qam_source: "QAM", opt_atten: "ATT",
   capacitor: "C", inductor: "L", diode: "D", nmos: "MN", pmos: "MP",
   sky130_nfet: "XN", sky130_nfet_lvt: "XN", sky130_nfet_5v: "XN",
   sky130_nfet_nvt: "XN", sky130_pfet: "XP", sky130_pfet_lvt: "XP",
@@ -785,13 +786,13 @@ function adoptGlobals(st) {
   if (!(st.globals.baud > 0)) {
     let baud = DEFAULT_BAUD;
     for (const inst of Object.values(st.instances || {})) {
-      const ui = inst.type === "prbs" ? (inst.settings || {}).ui : undefined;
+      const ui = isPatternSrc(inst.type) ? (inst.settings || {}).ui : undefined;
       if (ui > 0) { baud = 1 / ui; break; }
     }
     st.globals.baud = baud;
   }
   for (const inst of Object.values(st.instances || {})) {
-    if (inst.type === "prbs" && inst.settings) delete inst.settings.ui;
+    if (isPatternSrc(inst.type) && inst.settings) delete inst.settings.ui;
   }
 }
 
@@ -921,7 +922,7 @@ function render() {
       let valTxt = "";
       if (inst.type === "port") {
         valTxt = (inst.settings && inst.settings.name) || "?";  // boundary port name
-      } else if (inst.type === "prbs") {
+      } else if (isPatternSrc(inst.type)) {
         valTxt = `${fmtSI(globalUI())}s`;   // UI pulled from the global baud rate
       } else if (hp && cat) {
         const spec = cat.params.find((p) => p.name === hp);
@@ -1612,11 +1613,13 @@ function showVeriloga(type, path) {
 function renderInspector() {
   schedulePushMirror();   // selection is part of the notebook-facing mirror
   const body = $("inspector-body");
+  // an empty inspector shrinks to a one-line hint so the run panel above it
+  // gets the height
+  $("inspector").classList.toggle("empty", !selection && !editingSubDef());
   if (!selection) {
     if (editingSubDef()) { renderSubDefInspector(); return; }
-    body.innerHTML = `<div class="insp-empty">Nothing selected.<br><br>
-      Select a component to edit its parameters, a wire to inspect the net,
-      or a probe to rename it.</div>`;
+    body.innerHTML = `<div class="insp-empty">Select a part, wire or probe
+      to edit it.</div>`;
     return;
   }
   if (selection.kind === "inst") {
@@ -2000,8 +2003,10 @@ function buildPalette() {
 function analysisMode() { return $("sel-analysis").value; }
 
 $("sel-analysis").addEventListener("change", () => {
+  // a group shows for one mode (data-mode) or a list of them (data-modes)
   document.querySelectorAll(".an-group").forEach((g) =>
-    g.hidden = g.dataset.mode !== analysisMode());
+    g.hidden = !(g.dataset.modes || g.dataset.mode || "").split(" ")
+      .includes(analysisMode()));
   updateSweepSelectors();
   if (typeof syncRunCfgDisabled === "function") { syncRunCfgDisabled(); updateRunCount(); }
 });
@@ -2222,8 +2227,6 @@ function restorePaneFromAnalysis(a) {
     } else { $("rc-values2").value = ""; }
   }
   syncRunCfgDisabled(); updateRunCount(); persistRunCfg();
-  // opening a testbench that ships a sweep -> reveal the pane so it's not hidden
-  setRunCfgPanel(shipped);
 }
 
 // translate the pane + current analysis type into the run payload
@@ -2260,17 +2263,7 @@ function withRunCfg(a) {
   return a;
 }
 
-// show/hide the sweep-parameters pane, keeping the caret button in sync
-function setRunCfgPanel(open) {
-  const p = $("runcfg-panel");
-  p.hidden = !open;
-  $("btn-runcfg").classList.toggle("active", open);
-  $("btn-runcfg").setAttribute("aria-expanded", String(open));
-  if (open) { refreshRunCfgSelectors(); syncRunCfgDisabled(); updateRunCount(); }
-}
-$("btn-runcfg").addEventListener("click", () => {
-  setRunCfgPanel($("runcfg-panel").hidden);
-});
+$("rp-open-fx").addEventListener("click", () => $("btn-exprs").click());
 // pane edits also autosave the workspace, so the per-tab runCfg survives a
 // reload without waiting for the next schematic mutation
 $("rc-inst").addEventListener("change", () => {
@@ -2535,7 +2528,7 @@ async function runSim() {
       // UI = 1/baud here so the backend waveform builder, eye and BER post-proc
       // all see one consistent rate.
       instances: Object.fromEntries(Object.entries(state.instances).map(
-        ([id, i]) => [id, { type: i.type, settings: i.type === "prbs"
+        ([id, i]) => [id, { type: i.type, settings: isPatternSrc(i.type)
           ? { ...(i.settings || {}), ui: globalUI() } : (i.settings || {}) }])),
       wires: state.wires.map((w) => [w.from, w.to]),
       probes: state.probes.map((p) => ({ name: p.name, at: p.at,
@@ -2999,6 +2992,146 @@ function eyeTraceOptions() {
 }
 
 let eyeInit = false;
+// ---------------------------------------------------------------------------
+// stateye scoring of the Eye tab's current trace: TDECQ (PAM4) / TDEC (NRZ)
+// ---------------------------------------------------------------------------
+let eyeScored = null;   // {result, trace, t, values}: the eye stateye measured
+
+function eyeSkipSeconds(t) {
+  const tEnd = t[t.length - 1];
+  const raw = $("eye-skip").value.trim();
+  return raw.endsWith("%") ? tEnd * parseFloat(raw) / 100 : (parseSI(raw) || 0);
+}
+
+// the PRBS source's full settings (catalog defaults filled in) + the UI, so
+// the server can regenerate the transmitted symbols for training
+function patternForEye() {
+  const inst = Object.values(state.instances).find((i) => i.type === "prbs");
+  if (!inst) return null;
+  const defs = Object.fromEntries((catEntry("prbs")?.params || [])
+    .map((p) => [p.name, p.default]));
+  return { ...defs, ...(inst.settings || {}), ui: globalUI() };
+}
+
+function syncTdecqControls() {
+  const nlv = $("eye-mod").value === "auto" ? eyeDefaults().mod
+    : parseInt($("eye-mod").value);
+  const m = $("tq-method").value;
+  document.querySelectorAll("#eye-tdecq .tq-pam").forEach((el) => {
+    el.hidden = nlv !== 4
+      || (el.classList.contains("tq-lms") && m !== "lms")
+      || (el.classList.contains("tq-opt") && m !== "optimal")
+      || (el.classList.contains("tq-manual") && m !== "manual");
+  });
+  $("tq-ser").title = nlv === 4
+    ? "Target symbol error rate (802.3 100G/lane: 4.8e-4)"
+    : "Target BER for TDEC";
+  if (nlv !== 4 && $("tq-ser").value === "4.8e-4") $("tq-ser").value = "1e-12";
+  if (nlv === 4 && $("tq-ser").value === "1e-12") $("tq-ser").value = "4.8e-4";
+}
+$("tq-method").addEventListener("change", syncTdecqControls);
+$("eye-mod").addEventListener("change", syncTdecqControls);
+
+async function measureEye() {
+  const out = $("tq-result"), btn = $("tq-run");
+  if (!lastResult) return;
+  const sel = $("eye-trace").value;
+  let fam = visibleTraces(lastResult.traces)
+    .filter((q) => (q.probe || q.name) === sel);
+  const sw = $("eye-sweep");
+  if (!$("eye-sweep-wrap").hidden && sw.value !== "__all__")
+    fam = fam.filter((q) => (q.name || "").endsWith(` @ ${sw.value}`));
+  if (!fam.length) { out.innerHTML = `<span class="tq-err">no trace ${sel}</span>`; return; }
+  const tr = fam[0], t = lastResult.x;
+  const nlv = $("eye-mod").value === "auto" ? eyeDefaults().mod
+    : parseInt($("eye-mod").value);
+  const rxbw = $("tq-rxbw").value.trim().toLowerCase();
+  const cfg = {
+    rx_bw: rxbw === "auto" ? (nlv === 4 ? 0.5 : 0.75) : (rxbw === "off" ? "off" : parseFloat(rxbw)),
+    rx_order: parseInt($("tq-rxorder").value) || 4,
+    taps: parseInt($("tq-taps").value) || 0,
+    dfe: parseInt($("tq-dfe").value) || 0,
+    manual_dfe: $("tq-manual-dfe").value,
+    limits: $("tq-limits").checked,
+    pre: parseInt($("tq-pre").value) || 0,
+    method: $("tq-method").value,
+    mu: parseFloat($("tq-mu").value) || 0.05,
+    passes: parseInt($("tq-passes").value) || 5,
+    max_evals: parseInt($("tq-evals").value) || 40,
+    manual: $("tq-manual").value,
+    use_pattern: $("tq-pattern").checked,
+    s_noise: parseFloat($("tq-snoise").value) || 0,
+    nx: parseInt($("tq-grid").value.split("x")[0]),
+    ny: parseInt($("tq-grid").value.split("x")[1]),
+    [nlv === 4 ? "ser" : "ber"]: parseFloat($("tq-ser").value),
+  };
+  const payload = { t, values: tr.values, unit: tr.unit || "",
+    ui: parseSI($("eye-ui").value), levels: nlv, skip_s: eyeSkipSeconds(t),
+    pattern: patternForEye(), cfg };
+  btn.disabled = true;
+  out.innerHTML = `<span class="tq-dim">measuring with stateye${
+    cfg.method === "optimal" ? ` (TDECQ search, up to ${cfg.max_evals} eye analyses)` : ""}…</span>`;
+  const t0 = performance.now();
+  // poll the server's status while the measurement runs: the TDECQ-optimal
+  // search reports each evaluation (i / n, this and best TDECQ)
+  const poll = setInterval(async () => {
+    try {
+      const st = await (await fetch("/api/eyemeasure/progress")).json();
+      if (st.active && st.text && btn.disabled)
+        out.innerHTML = `<span class="tq-dim">${st.text} &nbsp;(${
+          ((performance.now() - t0) / 1000).toFixed(0)} s)</span>`;
+    } catch {}
+  }, 700);
+  let r;
+  try {
+    r = await (await fetch("/api/eyemeasure", { method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload) })).json();
+  } catch (e) {
+    r = { ok: false, error: String(e) };
+  }
+  clearInterval(poll);
+  btn.disabled = false;
+  if (!r.ok) { out.innerHTML = `<span class="tq-err">${r.error}</span>`; return; }
+  const secs = ((performance.now() - t0) / 1000).toFixed(1);
+  const u = tr.unit ? ` ${tr.unit}` : "";
+  const f = (x, d = 2) => (x === null || x === undefined) ? "—" : x.toFixed(d);
+  const notes = (r.log || []).map((l) => `<div class="${
+    l.startsWith("outside the 802.3dj") ? "tq-err" : "tq-dim"}">${l}</div>`).join("");
+  if (r.format === "NRZ") {
+    out.innerHTML = `<span class="tq-big">TDEC ${f(r.tdec_db)} dB</span>
+      &nbsp; OMA&minus;TDEC ${f(r.oma_tdec_dbm)} dBm${r.at_floor ? " (at floor)" : ""}
+      &nbsp;|&nbsp; OMA<sub>${r.family}</sub> ${fmtSI(r.oma)}${u}
+      &nbsp;|&nbsp; ER ${f(r.er_db)} dB <span class="tq-dim">(${secs} s)</span>${notes}`;
+  } else {
+    const taps = (r.taps.length || r.dfe_b.length)
+      ? (r.taps.length ? `${r.method} FFE [${r.taps.map((c) => c.toFixed(3)).join(", ")}]` : `${r.method}`)
+        + (r.dfe_b.length ? ` + DFE b [${r.dfe_b.map((c) => c.toFixed(3)).join(", ")}]` : "")
+        + `, C<sub>eq</sub> ${f(r.ceq, 3)}`
+        + (r.evals ? `, ${r.evals} evals` : "")
+        + (r.rms_after !== null && r.rms_after !== undefined
+          ? `, rms err ${fmtSI(r.rms_before)} &rarr; ${fmtSI(r.rms_after)}${u}` : "")
+      : "no equalizer";
+    out.innerHTML = `<span class="tq-big">TDECQ ${f(r.tdecq_db)} dB</span>
+      <span class="tq-dim">(${f(r.tdecq_raw_db)} dB unequalized)</span>
+      &nbsp;|&nbsp; OMA<sub>${r.family}</sub> ${fmtSI(r.oma)}${u}
+      &nbsp;|&nbsp; ${taps}
+      &nbsp;|&nbsp; levels ${r.levels.map((x) => x === null ? "—" : fmtSI(x)).join(" / ")}${u}
+      <span class="tq-dim">(${secs} s)</span>${notes}`;
+  }
+  const rxTxt = cfg.rx_bw === "off" ? "no ref Rx" : `BT${cfg.rx_order} ref Rx at ${cfg.rx_bw}×baud`;
+  const eqTxt = r.format === "NRZ" ? "no equalizer"
+    : [r.taps && r.taps.length ? `${r.taps.length}-tap ${r.method} FFE` : "",
+       r.dfe_b && r.dfe_b.length ? `${r.dfe_b.length}-tap DFE` : ""]
+      .filter(Boolean).join(" + ") || "no equalizer";
+  eyeScored = { result: lastResult, trace: sel,
+                t: r.scored.t, values: r.scored.values,
+                caption: `stateye: ${rxTxt} + ${eqTxt} — ` + (r.format === "NRZ"
+                  ? `TDEC ${f(r.tdec_db)} dB` : `TDECQ ${f(r.tdecq_db)} dB`) };
+  renderEye();
+}
+$("tq-run").addEventListener("click", measureEye);
+
 function renderEye() {
   const hint = $("eye-hint"), canvas = $("eye-canvas"),
         ctrls = $("eye-controls"), sel = $("eye-trace"),
@@ -3008,6 +3141,8 @@ function renderEye() {
   hint.hidden = usable;
   canvas.style.display = usable ? "" : "none";
   ctrls.style.display = usable ? "" : "none";
+  $("eye-tdecq").style.display = usable ? "" : "none";
+  syncTdecqControls();   // NRZ/PAM4 follows the loaded pattern source
   if (!usable) {
     hint.textContent = "Run a transient analysis with at least one visible "
       + "probe, then fold it into an eye here.";
@@ -3015,8 +3150,10 @@ function renderEye() {
   }
   if (!eyeInit) {
     eyeInit = true;
-    const d = eyeDefaults();
-    $("eye-ui").value = fmtSI(d.ui);
+    // fmtNum, not fmtSI: the fold needs the exact 1/baud. fmtSI's "18.8p"
+    // for 53.125 GBd is 0.12% short, which drifts a full UI across an
+    // 800-UI record and smears the eye shut.
+    $("eye-ui").value = fmtNum(eyeDefaults().ui);
     $("eye-mod").value = "auto";
     ["eye-ui", "eye-skip"].forEach((id) =>
       $(id).addEventListener("change", renderEye));
@@ -3050,12 +3187,36 @@ function renderEye() {
     swSel.value = (prevSw === "__all__" || labels.includes(prevSw))
       ? prevSw : "__all__";
   }
-  const shown = (isSweep && swSel.value !== "__all__")
+  let shown = (isSweep && swSel.value !== "__all__")
     ? fam.filter((q) => labelOf(q) === swSel.value)
     : fam;
   if (!shown.length) return;
-  const tr = shown[0];
   const t = lastResult.x;
+  const perSweep = isSweep && swSel.value === "__all__";
+  const sc = eyeScored;
+  const paired = !!(sc && sc.result === lastResult && sc.trace === sel.value);
+  // side by side after a stateye measurement: the simulated eye, and the eye
+  // stateye scored (after its reference receiver and equalizer)
+  $("eye-pair").classList.toggle("paired", paired);
+  $("eye-panel-eq").hidden = !paired;
+  $("eye-cap-sim").hidden = !paired;
+  drawEye(canvas, shown, t, perSweep, $("eye-metrics"), paired ? 620 : 900);
+  if (paired) {
+    $("eye-cap-eq").textContent = sc.caption;
+    drawEye($("eye-canvas-eq"),
+            [{ ...shown[0], name: `${sel.value} (stateye)`, values: sc.values }],
+            sc.t, false, $("eye-metrics-eq"), 620);
+  }
+}
+
+// Fold `shown` records (sharing time axis `t`) at the Eye tab's UI and draw a
+// density eye into `canvas`; the level / height / width metrics go to
+// `metricsEl`. `perSweep` tints each record with its sweep colour.
+function drawEye(canvas, shown, t, perSweep, metricsEl, width) {
+  if (canvas.width !== width) canvas.width = width;
+  const swSel = $("eye-sweep");
+  const isSweep = perSweep || (!$("eye-sweep-wrap").hidden);
+  const tr = shown[0];
   const ui = parseSI($("eye-ui").value);
   if (!(ui > 0) || t.length < 8) return;
   const tEnd = t[t.length - 1];
@@ -3069,7 +3230,7 @@ function renderEye() {
   const osr = 64, dt = ui / osr;
   const n = Math.floor((tEnd - tSkip) / dt);
   if (n < 4 * osr) {
-    $("eye-metrics").textContent = "record too short for this UI";
+    metricsEl.textContent = "record too short for this UI";
     return;
   }
   const records = shown.map((q) => {
@@ -3088,7 +3249,7 @@ function renderEye() {
   for (const ys of records) {
     for (const y of ys) { if (y < lo) lo = y; if (y > hi) hi = y; }
   }
-  if (!(hi > lo)) { $("eye-metrics").textContent = "flat trace"; return; }
+  if (!(hi > lo)) { metricsEl.textContent = "flat trace"; return; }
   const pad = 0.08 * (hi - lo);
   lo -= pad; hi += pad;
 
@@ -3107,7 +3268,6 @@ function renderEye() {
   const alpha = Math.max(0.03, 0.10 / Math.sqrt(records.length));
   // overlaying several swept values: tint each eye with its plot colour so the
   // families stay distinguishable; otherwise use the flat per-domain hue.
-  const perSweep = isSweep && swSel.value === "__all__";
   const domHue = tr.domain === "optical"
     ? "rgb(255,183,77)" : "rgb(110,203,245)";
   ctx.lineWidth = 1;
@@ -3186,7 +3346,7 @@ function renderEye() {
   const swNote = isSweep
     ? (perSweep ? `${records.length} eyes overlaid  |  ` : `${swSel.value}  |  `)
     : "";
-  $("eye-metrics").textContent = swNote +
+  metricsEl.textContent = swNote +
     `levels: ${km.levels.map((x) => fmtSI(x)).join(" / ")} ${unit}` +
     `  |  eye height: ${eyes.map((h) => fmtSI(h)).join(" / ")} ${unit}` +
     `  |  width: ${(widthUI * 100).toFixed(0)}% UI` +
@@ -3408,6 +3568,13 @@ function renderLink() {
           <tr><th>Q-fit BER</th><td>${q.ber_est.toExponential(2)}</td></tr>
           <tr><th>levels</th><td>${q.levels.map((x) => fmtSI(x)).join(" / ")}</td></tr>`
           : `<tr><th>Q fit</th><td>${q.reason || "failed"}</td></tr>`}
+          ${rep.tdecq ? `
+          <tr><th>TDECQ</th><td><b>${rep.tdecq.tdecq_db.toFixed(2)} dB</b>
+            <span class="link-hint">(${rep.tdecq.tdecq_raw_db.toFixed(2)} dB unequalized${
+              rep.tdecq.family === "outer" ? "" : "; crossing-point OMA — run a full PRBS-13Q for OMA_outer"})</span></td></tr>
+          <tr><th>TDECQ ref. FFE</th><td>${fmtTaps(rep.tdecq.ffe_taps)}
+            <span class="link-hint">(C<sub>eq</sub> ${rep.tdecq.ceq.toFixed(3)};
+            BT4 ref Rx at baud/2, SER ${rep.tdecq.ser}, S ${fmtSI(rep.tdecq.s_noise_mw * 1e-3)}W)</span></td></tr>` : ""}
           <tr><th>RX FFE taps</th><td>${fmtTaps(rep.ffe_taps)}${eqMode}</td></tr>
           <tr><th>RX DFE taps</th><td>${fmtTaps(rep.dfe_taps)}</td></tr>
         </table>
@@ -3641,6 +3808,7 @@ function zoomToFit() {
     x0 = Math.min(x0, i.x - 20); y0 = Math.min(y0, i.y - 30);
     x1 = Math.max(x1, i.x + sym.w + 20); y1 = Math.max(y1, i.y + sym.h + 30);
   }
+  const circuitBox = [x0, y0, x1, y1];
   for (const note of sheet.notes || []) {
     const rows = (note.title ? 1 : 0) +
       (note.lines || String(note.text || "").split("\n")).length;
@@ -3656,8 +3824,14 @@ function zoomToFit() {
     requestAnimationFrame(() => setTimeout(zoomToFit, 120));
     return;
   }
-  const k = Math.min(1.6, Math.max(0.25,
-    Math.min(r.width / (x1 - x0), r.height / (y1 - y0)) * 0.92));
+  const fit = (bx0, by0, bx1, by1) => Math.min(1.6, Math.max(0.25,
+    Math.min(r.width / (bx1 - bx0), r.height / (by1 - by0)) * 0.92));
+  // Frame the notes too, unless a long note would shrink the circuit itself
+  // to under 3/4 of its own fit -- then the circuit wins and the note is a
+  // pan away.
+  let k = fit(x0, y0, x1, y1);
+  const kCircuit = fit(...circuitBox);
+  if (k < 0.75 * kCircuit) { [x0, y0, x1, y1] = circuitBox; k = kCircuit; }
   view.k = k;
   view.x = (r.width - (x1 + x0) * k) / 2;
   view.y = (r.height - (y1 + y0) * k) / 2;
@@ -3770,6 +3944,30 @@ $("btn-upva").addEventListener("click", () => {
 
 // coerce a persisted schematic into the in-memory shape (missing collections
 // default to empty; wires may be legacy [from, to] pairs)
+// sources whose symbol rate is the global baud rate (UI injected on Run)
+function isPatternSrc(type) { return type === "prbs" || type === "qam_source"; }
+
+// Older schematics: QAM drive was a PRBS-source mode, and SJ was called
+// "periodic jitter" (pj_*). Rewrite them in place to the current parts.
+function migrateInstances(insts) {
+  for (const inst of Object.values(insts || {})) {
+    const st = inst.settings;
+    if (inst.type !== "prbs" || !st) continue;
+    if (st.mode === "qam") {
+      inst.type = "qam_source";
+      // the PRBS default order was 7; keep the old symbol stream rather
+      // than inheriting the QAM Source's default of 15
+      if (!("order" in st)) st.order = 7;
+      for (const k of ["mode", "tr", "ffe_pre_db", "ffe_post_db", "rlm_vpi",
+                       "rj_ui", "pj_ui", "pj_freq", "dcd_ui"]) delete st[k];
+      continue;
+    }
+    if ("pj_ui" in st) { st.sj_ui = st.pj_ui; delete st.pj_ui; }
+    if ("pj_freq" in st) { st.sj_freq = st.pj_freq; delete st.pj_freq; }
+  }
+  return insts;
+}
+
 function normalizeSchematic(s) {
   const wires = (w) => (w || []).map((e) =>
     Array.isArray(e) ? { from: e[0], to: e[1] } : e);
@@ -3786,7 +3984,7 @@ function normalizeSchematic(s) {
         bind: (p.bind || []).map((b) => ({ instance: b.instance, param: b.param })),
       })),
       schematic: {
-        instances: ds.instances || {},
+        instances: migrateInstances(ds.instances || {}),
         wires: wires(ds.wires),
         probes: ds.probes || [],
         notes: ds.notes || [],
@@ -3795,7 +3993,7 @@ function normalizeSchematic(s) {
     };
   }
   return {
-    instances: (s && s.instances) || {},
+    instances: migrateInstances((s && s.instances) || {}),
     wires: wires(s && s.wires),
     probes: (s && s.probes) || [],
     notes: (s && s.notes) || [],

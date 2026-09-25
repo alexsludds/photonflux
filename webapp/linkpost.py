@@ -41,6 +41,58 @@ def _uniform(t, v, ui, osr=16):
     return tu, np.interp(tu, t, v)
 
 
+def _tdecq_report(t, values, pattern: dict, ui: float, cfg: dict,
+                  log: list) -> dict | None:
+    """IEEE TDECQ of a PAM-4 *optical* probe via stateye, raw and through
+    the 5-tap reference FFE designed on the known source pattern.
+
+    TDECQ proper uses OMA_outer, which needs a run of 7 threes and 6 zeros
+    (a full PRBS-13Q). Shorter canvas records fall back to TDECQ on the
+    crossing-point OMA (``tdecq_xp``) and say so.
+    """
+    try:
+        from photonflux import tdec
+    except ImportError as exc:
+        log.append(f"link report: TDECQ needs stateye ({exc})")
+        return None
+    t = np.asarray(t, float)
+    dt = float(np.median(np.diff(t)))
+    tu = np.arange(t[0], t[-1], dt)
+    p = np.interp(tu, t, np.asarray(values, float))
+    nsym = int(np.ceil((tu[-1] - tu[0]) / ui)) + 1
+    sym = np.rint(_tx_fracs(pattern, nsym) * 3).astype(int)
+    s_noise = float(cfg.get("tdecq_s_noise", 0.005))   # as mrm_pam4_tdecq.py
+    kw = dict(s_noise_mW=s_noise,
+              ser=float(cfg.get("tdecq_ser", 4.8e-4)), strict=False)
+    try:
+        raw = tdec.measure_pam4(p, dt, 1.0 / ui, ffe_taps=0, **kw)
+        eq = tdec.measure_pam4(p, dt, 1.0 / ui, ffe_taps=5, symbols=sym, **kw)
+    except Exception as exc:  # noqa: BLE001 -- an optional report line must
+        # never take the transient result down with it
+        log.append(f"link report: TDECQ unavailable "
+                   f"({type(exc).__name__}: {exc})")
+        return None
+
+    def pick(m):
+        v = m.get("tdecq_outer", np.nan)
+        return (float(v), "outer") if np.isfinite(v) else \
+            (float(m.get("tdecq_xp", np.nan)), "xp")
+
+    (v_eq, fam), (v_raw, _) = pick(eq), pick(raw)
+    if not np.isfinite(v_eq):
+        log.append("link report: TDECQ undefined (eye closed)")
+        return None
+    log.append(f"link report: TDECQ {v_eq:.3f} dB with the 5-tap reference "
+               f"FFE (C_eq {eq['ceq']:.3f}), {v_raw:.3f} dB unequalized"
+               + ("" if fam == "outer" else
+                  "; OMA_outer needs a full PRBS-13Q record, so this is "
+                  "TDECQ on the crossing-point OMA"))
+    return {"tdecq_db": v_eq, "tdecq_raw_db": v_raw, "family": fam,
+            "s_noise_mw": s_noise, "ser": kw["ser"],
+            "ceq": eq["ceq"], "ffe_taps": eq["ffe_taps"],
+            "oma_mw": float(eq.get(f"oma_{fam}", np.nan))}
+
+
 def _tx_fracs(pattern: dict, nsym: int) -> np.ndarray:
     return wavesrc._symbols(pattern, nsym)
 
@@ -306,7 +358,11 @@ def link_report(result: dict, meta: dict, cfg: dict, log: list) -> dict | None:
                f"{phase}/{osr}, lag {lag} UI (corr {corr:.3f}); counted BER "
                f"{counted['ber']:.3g}, Q-fit BER "
                f"{qfit.get('ber_est', 0):.3g}{eq_tag}")
+    tdecq = None
+    if nlv == 4 and trs[0].get("unit") == "mW":
+        tdecq = _tdecq_report(t, trs[0]["values"], pattern, ui, cfg, log)
     return {
+        "tdecq": tdecq,
         "pattern": pat_inst, "probe": probe, "ui": ui, "nlv": nlv,
         "sampling_phase_ui": phase / osr, "lag_ui": lag, "corr": corr,
         "seeds": len(trs),

@@ -114,8 +114,10 @@ container image does this, so production runs exactly one process.
 * **PRBS / pattern source**: PRBS7/9/11/15/23/31 (same LFSR taps as the
   companion time-domain serdes codebase), NRZ or Gray-coded PAM4, raised-
   cosine edges, TX FFE pre/post-cursor de-emphasis (dB), RLM predistortion
-  for a quadrature-biased MZM (set `rlm_vpi`), RJ/PJ/DCD jitter on the edge
-  times, and a single-pulse mode. The waveform is precomputed and baked at
+  for a quadrature-biased MZM (set `rlm_vpi`), edge jitter (RJ Gaussian
+  rms, SJ sinusoidal peak at `sj_freq`, DJ dual-Dirac peak-to-peak, DCD),
+  and a single-pulse mode. Coherent QAM drive is a separate **QAM Source**
+  (one per I/Q rail). The waveform is precomputed and baked at
   compile time (parameter edits recompile, seconds). A **PWL source** plays
   arbitrary `t v` breakpoints (paste or Load CSV) — the simplest way to
   replay waveforms from another simulator.
@@ -123,6 +125,20 @@ container image does this, so production runs exactly one process.
   source), scope-style persistence render, with levels (1-D k-means), per-eye
   height, and width (guard-banded clear phase span). Multi-seed noise
   families fold together.
+  Its **stateye** row scores whatever eye is shown (`POST /api/eyemeasure`,
+  `webapp/eyemeasure.py`): PAM4 -> IEEE TDECQ, raw and through the reference
+  FFE; NRZ -> TDEC and OMA - TDEC. Settings: reference-receiver bandwidth
+  (x baud, or off) and order, FFE taps and pre-cursors, DFE taps (802.3dj
+  D2.1: one, 0 <= b <= 0.3), how the taps adapt (noise-aware MMSE block
+  solve, normalized LMS with step mu and passes, TDECQ-optimal Nelder-Mead
+  on TDECQ itself -- the 802.3 definition, slow, with live "evaluation i/n"
+  progress -- or manual taps), the P802.3dj D2.1 Table 180-15 reference-
+  equalizer limits (on by default: the search stays inside them, MMSE/LMS
+  taps are projected into them), training on the PRBS source's pattern or
+  decision-directed,
+  target SER/BER, scope noise S, and the histogram grid. "show scored eye"
+  draws the eye stateye measured (after the reference receiver and FFE,
+  time-aligned to the probe).
 * **Link tab / BER report**: pick a received probe in the Link tab's
   "BER vs" select. Alignment and error counting are data-aided
   against the PRBS source's known sequence: best sampling phase + lag by

@@ -74,6 +74,10 @@ class Measurement:
     counts: dict[str, int] = field(default_factory=dict)
     eye: Any = None
     oma_type: str = "8180"   # which level-estimation family the metrics came from
+    # the waveform stateye scored (after the reference receiver, settling trim
+    # and any equalizer) and its sample period -- for plotting that eye
+    waveform: Any = None
+    dt_sec: float = 0.0
 
     def __getitem__(self, key: str) -> float:
         return self.metrics[key]
@@ -204,11 +208,25 @@ def oma_tdec_dbm(msmts: dict, oma_type: str = "8180") -> float:
 
 def _prepare(p_thru_mW, dt_sec, baud, ref_rx_bw_factor, ref_rx_order,
              ref_rx_bw_hz, settle_ui):
-    """Reference-receiver filter, settling trim and record-length guard
-    shared by the NRZ and PAM-4 measurements."""
+    """Reference-receiver filter, integer-samples/UI resampling, settling
+    trim and record-length guard shared by the NRZ and PAM-4 measurements.
+    Returns ``(p, dt_sec)`` on the resampled grid.
+
+    stateye folds the record assuming a whole number of samples per UI: at
+    24.93 samples/UI a clean PAM-4 eye scored 27.9 dB TDECQ instead of 4.2,
+    and 24.5 crashed its bathtub fit. Any fractional grid -- a transient
+    whose t_stop/points do not divide the UI -- is therefore interpolated
+    onto the nearest integer rate (at least 16 samples/UI) first.
+    """
     p = np.asarray(p_thru_mW, dtype=float)
     if p.ndim != 1:
         raise ValueError(f"expected a 1-D power waveform, got shape {p.shape}")
+    sps = 1.0 / (baud * dt_sec)
+    sps_int = max(16, int(round(sps)))
+    if abs(sps - sps_int) > 1e-9 * sps_int:
+        t = np.arange(p.size) * dt_sec
+        dt_sec = 1.0 / (baud * sps_int)
+        p = np.interp(np.arange(0.0, t[-1], dt_sec), t, p)
 
     p = reference_receiver(p, dt_sec, baud, bw_factor=ref_rx_bw_factor,
                            order=ref_rx_order, bw_hz=ref_rx_bw_hz)
@@ -230,7 +248,7 @@ def _prepare(p_thru_mW, dt_sec, baud, ref_rx_bw_factor, ref_rx_order,
             f"record is only {n_ui:.0f} UI after discarding {settle_ui} UI of "
             f"settling; need >={MIN_RECORD_UI} for stateye to lock and fill "
             "the level filters. Raise the transient's t_stop.")
-    return p
+    return p, dt_sec
 
 
 def measure(
@@ -264,8 +282,8 @@ def measure(
     PRBS-13), and is otherwise a silent NaN.
     """
     stateye = _require_stateye()
-    p = _prepare(p_thru_mW, dt_sec, baud, ref_rx_bw_factor, ref_rx_order,
-                 ref_rx_bw_hz, settle_ui)
+    p, dt_sec = _prepare(p_thru_mW, dt_sec, baud, ref_rx_bw_factor,
+                         ref_rx_order, ref_rx_bw_hz, settle_ui)
 
     # half_ui is mandatory for TDEC: its 0.4/0.6 UI histogram windows are
     # referenced to the eye crossing. (stateye's README says "adaptive" is the
@@ -306,7 +324,18 @@ def measure(
     msmts["at_floor"] = bool(
         np.isfinite(msmts["oma_tdec_dbm"])
         and msmts["oma_tdec_dbm"] <= floor + FLOOR_TOL_DB)
-    return Measurement(metrics=msmts, counts=counts, eye=eye, oma_type=oma_type)
+    return Measurement(metrics=msmts, counts=counts, eye=eye, oma_type=oma_type,
+                       waveform=p, dt_sec=dt_sec)
+
+
+def _pam4_eye(stateye, p, dt_sec, baud, nx, ny, s_noise_mW, ser):
+    """Unequalized PAM-4 eye metrics (the equalizer input's OMA)."""
+    eye = stateye.IdealEye(datarate_gbps=baud / 1e9, dt_sec=dt_sec, nx=nx,
+                           ny=ny, format="PAM4", sampling_offset_mode="half_ui")
+    eye.set_tdecq_s_noise(s_noise_mW)
+    eye.set_tdecq_ser(ser)
+    eye.add_data(p, "mW")
+    return eye.get_measurements()
 
 
 def measure_pam4(
@@ -316,7 +345,19 @@ def measure_pam4(
     *,
     s_noise_mW: float = 0.0,
     ser: float = 4.8e-4,
-    ceq: float = 1.0,
+    ffe_taps: int = 5,
+    ffe_pre: int = 1,
+    symbols=None,
+    ffe_method: str = "mmse",
+    ffe_mu: float = 0.05,
+    ffe_passes: int = 5,
+    ffe_manual=None,
+    ffe_max_evals: int = 60,
+    dfe_taps: int = 0,
+    dfe_manual=None,
+    ffe_limits: str | None = "802.3dj",
+    oma_reference=None,
+    progress=None,
     ref_rx_bw_factor: float | None = 0.5,
     ref_rx_order: int = 4,
     ref_rx_bw_hz: float | None = None,
@@ -342,17 +383,130 @@ def measure_pam4(
     reference receiver defaults to the TDECQ 4th-order Bessel-Thomson at half
     the baud rate.
 
-    stateye does not run the 802.3 reference FFE: the eye is scored as
-    received, and `ceq` (the FFE noise-enhancement coefficient) is taken as
-    given. Treat ``tdecq_outer`` as TDECQ with the equaliser bypassed -- an
-    upper bound on the compliant value.
+    Equalization: TDECQ is defined through the 802.3 reference equalizer, a
+    T-spaced FFE after the reference receiver. ``ffe_taps`` sets its length
+    (5, one pre-cursor via ``ffe_pre``, is the 802.3bs/cd reference; 0
+    scores the eye unequalized). Taps are designed by MMSE with
+    ``stateye.ffe_mmse`` (sum to 1) and their noise enhancement
+    ``C_eq = sqrt(sum c^2)`` feeds TDECQ. Pass the transmitted PAM-4
+    ``symbols`` (any rotation) whenever they are known -- as a TDECQ scope
+    knows its test pattern; without them the design is decision-directed
+    and only reliable while the unequalized eye is still open. The metrics
+    gain ``ffe_taps`` (list), ``ceq`` and ``ffe_rms_error_before/after``.
+
+    ``ffe_method`` picks how the taps adapt: ``"mmse"`` (block least
+    squares, the default), ``"lms"`` (normalized LMS, step ``ffe_mu``,
+    ``ffe_passes`` sweeps of the record), ``"optimal"`` (Nelder-Mead on
+    TDECQ itself from the MMSE start, ``ffe_max_evals`` eye analyses -- the
+    802.3 definition, and slow) or ``"manual"`` (``ffe_manual``, a list of
+    taps, normalized to sum to 1; ``ffe_taps`` is then its length).
+
+    ``dfe_taps`` adds a decision-feedback equalizer after the FFE (802.3dj
+    D2.1 uses one tap), designed jointly by the chosen method; with
+    ``"manual"`` its coefficients come from ``dfe_manual`` in the standard's
+    normalization (b referenced to OMA/2 at the FFE input). Decisions are
+    the known ``symbols`` when given (ideal DFE) or the equalizer's own.
+    The DFE adds nothing to C_eq, and TDECQ's OMA is referenced at the
+    equalizer *input* -- ``oma_reference`` ({"outer", "xp"}), measured on the
+    unequalized record when not given -- so a DFE is not charged for the
+    OMA it removes.
+
+    ``ffe_limits="802.3dj"`` applies the P802.3dj D2.1 Table 180-15 limits
+    (main tap 0.9..2.5, per-tap ratios, 0 <= b <= 0.3): the TDECQ-optimal
+    search stays inside them, and MMSE / LMS taps that land outside are
+    projected back in (``metrics["eq_projected"]``); manual taps are left
+    as given, with any violation in ``metrics["eq_violations"]``. ``progress`` is passed to the
+    TDECQ-optimal search (``progress(i, n, tdecq_i, tdecq_best)``).
+    MMSE taps are not the TDECQ-minimizing taps the standard asks for, so
+    the result is at or slightly above the compliant value.
     """
     stateye = _require_stateye()
     if not hasattr(stateye.IdealEye, "set_tdecq_ser"):
         raise ImportError("measure_pam4 needs stateye >= 1.8; see "
                           "docs/stateye-integration-plan.md for the install.")
-    p = _prepare(p_thru_mW, dt_sec, baud, ref_rx_bw_factor, ref_rx_order,
-                 ref_rx_bw_hz, settle_ui)
+    p, dt_sec = _prepare(p_thru_mW, dt_sec, baud, ref_rx_bw_factor,
+                         ref_rx_order, ref_rx_bw_hz, settle_ui)
+
+    eq: dict = {}
+    if ffe_taps or dfe_taps:
+        if not hasattr(stateye, "tap_limit_violations"):
+            raise ImportError(
+                "ffe_taps needs the stateye reference equalizer "
+                "(stateye.ffe_mmse, DFE and 802.3dj limits); install stateye with "
+                "docs/patches/stateye-modern-toolchain.patch applied, or pass "
+                "ffe_taps=0.")
+        sps = 1.0 / (baud * dt_sec)
+        n, pre, nd = max(int(ffe_taps), 1), int(ffe_pre), int(dfe_taps)
+        if int(ffe_taps) == 0:
+            pre = 0                      # DFE only: a 1-tap (identity) FFE
+        if oma_reference is None:        # OMA at the equalizer input
+            m_in = _pam4_eye(stateye, p, dt_sec, baud, nx, ny, s_noise_mW, ser)
+            oma_reference = {"outer": m_in.get("oma_outer"),
+                             "xp": m_in.get("oma_xp")}
+        # the Wiener design charges FFE taps for the receiver noise at the
+        # FFE input; TDECQ's S is that noise (stateye defaults to 2 % of OMA)
+        noise = float(s_noise_mW) if s_noise_mW > 0 else None
+        if ffe_method == "mmse":
+            taps, info = stateye.ffe_mmse(p, sps, n_taps=n, n_pre=pre,
+                                          symbols=symbols, n_dfe=nd,
+                                          noise_rms=noise)
+        elif ffe_method == "lms":
+            taps, info = stateye.ffe_lms(p, sps, n_taps=n, n_pre=pre,
+                                         symbols=symbols, mu=float(ffe_mu),
+                                         passes=int(ffe_passes), n_dfe=nd)
+        elif ffe_method == "optimal":
+            taps, info = stateye.ffe_tdecq_optimal(
+                p, dt_sec, baud / 1e9, n_taps=n, n_pre=pre, symbols=symbols,
+                max_evals=int(ffe_max_evals), tdecq_s_noise=s_noise_mW,
+                tdecq_ser=ser, nx=nx, ny=ny, n_dfe=nd, limits=ffe_limits,
+                oma_reference=oma_reference, progress=progress,
+                noise_rms=noise)
+        elif ffe_method == "manual":
+            taps = np.asarray(ffe_manual if ffe_manual else [1.0], dtype=float)
+            if taps.ndim != 1 or taps.size < 1 or not pre < taps.size \
+                    or taps.sum() == 0:
+                raise ValueError("manual FFE taps need a non-empty list with "
+                                 "more taps than pre-cursors and a nonzero sum")
+            taps = taps / taps.sum()
+            b = [float(x) for x in (dfe_manual or [])]
+            # decisions, sampling phase and OMA scale come from an MMSE pass
+            _, info = stateye.ffe_mmse(p, sps, n_taps=taps.size, n_pre=pre,
+                                       symbols=symbols, n_dfe=len(b),
+                                       noise_rms=noise)
+            info = {**info, "ceq": stateye.noise_enhancement(taps),
+                    "dfe_b": b, "dfe_taps": [x * info["span"] for x in b]}
+            info.pop("rms_error_before", None)
+            info.pop("rms_error_after", None)
+        else:
+            raise ValueError(f"unknown ffe_method {ffe_method!r}; use mmse, "
+                             "lms, optimal or manual")
+        projected = False
+        if ffe_limits and ffe_method in ("mmse", "lms") and \
+                stateye.tap_limit_violations(taps, info["n_pre"],
+                                             info.get("dfe_b", [])):
+            # MSE-optimal taps can leave the legal reference equalizer
+            # (e.g. main tap < 0.9 with a DFE): pull them back inside
+            taps = stateye.project_to_limits(taps, info["n_pre"])
+            # the DFE was balanced against the unprojected FFE: refit it
+            info = {**stateye.refit_dfe(p, sps, taps, info),
+                    "ceq": stateye.noise_enhancement(taps)}
+            info.pop("rms_error_after", None)
+            projected = True
+        p = stateye.equalize(p, taps, info, sps)
+        eq = {"ffe_taps": [float(c) for c in taps] if int(ffe_taps) else [],
+              "eq_projected": projected,
+              "ceq": info["ceq"], "ffe_method": ffe_method,
+              "dfe_b": [float(x) for x in info.get("dfe_b", [])],
+              "eq_violations": [w for w, _ in stateye.tap_limit_violations(
+                  taps, info["n_pre"], info.get("dfe_b", []))]
+              if ffe_limits else []}
+        # (the optimal search starts from MMSE; its rms figures would be the
+        # start's, not the result's)
+        for key in ("rms_error_before", "rms_error_after"):
+            if key in info and ffe_method != "optimal":
+                eq[f"ffe_{key}"] = info[key]
+        if "evals" in info:
+            eq["ffe_evals"] = info["evals"]
 
     eye = stateye.IdealEye(
         datarate_gbps=baud / 1e9,
@@ -363,17 +517,21 @@ def measure_pam4(
         sampling_offset_mode="half_ui",   # TDECQ's 0.45/0.55 UI windows need it
     )
     eye.set_tdecq_s_noise(s_noise_mW)
-    eye.set_tdecq_ceq(ceq)
+    eye.set_tdecq_ceq(eq.get("ceq", 1.0))
     eye.set_tdecq_ser(ser)
+    if eq:
+        eye.set_tdecq_oma_reference(oma_reference)
     eye.add_data(p, "mW")
 
     msmts = {k: (float(v) if isinstance(v, np.generic) else v)
              for k, v in eye.get_measurements().items()}
     counts = dict(eye.get_measurement_counts())
+    msmts.update(eq)
     if strict and not np.isfinite(msmts.get("tdecq_outer", np.nan)):
         raise ValueError(
             "stateye returned a non-finite TDECQ: OMA_outer needs a run of 7 "
             "threes and a run of 6 zeros away from the record edges. Drive it "
             "with a full PRBS-13Q rotated by a few dozen symbols (its only run "
             "of 6 zeros is the last 6 symbols of the period).")
-    return Measurement(metrics=msmts, counts=counts, eye=eye, oma_type="outer")
+    return Measurement(metrics=msmts, counts=counts, eye=eye, oma_type="outer",
+                       waveform=p, dt_sec=dt_sec)

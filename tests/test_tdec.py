@@ -249,3 +249,38 @@ def test_measure_pam4_rejects_an_unrotated_prbs13q(needs_pam4):
     rotation OMA_outer (and TDECQ) silently come back NaN."""
     with pytest.raises(ValueError, match="rotated"):
         tdec.measure_pam4(_prbs13q(0.002, rotate=0), DT, BAUD, s_noise_mW=0.005)
+
+
+def test_measure_pam4_reference_ffe_recovers_isi(needs_pam4):
+    """A post-cursor of ISI closes the raw eye; the 5-tap reference FFE
+    (designed on the known pattern) reopens it, and TDECQ charges its noise
+    enhancement through C_eq > 1."""
+    from photonflux.signals import pam4_gray
+
+    sym = np.roll(pam4_gray(np.tile(prbs(13), 2)), 64)
+    lv = PAM4_LEVELS[sym]
+    isi = lv + 0.3 * (np.concatenate([[lv[0]], lv[:-1]]) - lv.mean())
+    p = np.repeat(isi, SPS) + 0.002 * np.random.default_rng(1).standard_normal(
+        isi.size * SPS)
+    raw = tdec.measure_pam4(p, DT, BAUD, s_noise_mW=0.005, ffe_taps=0,
+                            strict=False)
+    eq = tdec.measure_pam4(p, DT, BAUD, s_noise_mW=0.005, symbols=sym)
+    assert len(eq["ffe_taps"]) == 5 and sum(eq["ffe_taps"]) == pytest.approx(1)
+    assert eq["ceq"] > 1.0
+    assert eq["ffe_rms_error_after"] < 0.5 * eq["ffe_rms_error_before"]
+    assert np.isfinite(eq["tdecq_outer"])
+    assert not np.isfinite(raw["tdecq_outer"]) or \
+        eq["tdecq_outer"] < raw["tdecq_outer"]
+
+
+def test_fractional_samples_per_ui_is_resampled(needs_pam4):
+    """stateye assumes whole samples/UI; a 24.93-sample grid used to score
+    a clean eye at ~28 dB TDECQ (and 24.5 crashed). The bridge resamples."""
+    sig = _prbs13q(0.002)
+    t = np.arange(sig.size) * DT
+    ref = tdec.measure_pam4(sig, DT, BAUD, s_noise_mW=0.005, ffe_taps=0)
+    for sps in (24.93, 24.5):
+        dt = 1.0 / (BAUD * sps)
+        p = np.interp(np.arange(0.0, t[-1], dt), t, sig)
+        m = tdec.measure_pam4(p, dt, BAUD, s_noise_mW=0.005, ffe_taps=0)
+        assert m["tdecq_outer"] == pytest.approx(ref["tdecq_outer"], abs=0.3)

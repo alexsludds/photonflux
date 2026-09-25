@@ -227,7 +227,7 @@ def run_optimize(payload: dict) -> dict:
     # UI hint for the eye objective: the first PRBS source's UI
     ui_hint = None
     for inst in (sch.get("instances") or {}).values():
-        if inst.get("type") == "prbs":
+        if inst.get("type") in ("prbs", "qam_source"):
             ui_hint = float((inst.get("settings") or {}).get("ui", 100e-12))
             break
 

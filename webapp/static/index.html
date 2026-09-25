@@ -21,10 +21,10 @@
   <span class="sep"></span>
   <button id="btn-undo" title="Undo (Cmd+Z)">&#x21A9;</button>
   <button id="btn-redo" title="Redo (Shift+Cmd+Z)">&#x21AA;</button>
-  <span class="sep"></span>
+  <span class="tb-spacer"></span>
   <label class="an-label"
     title="Global signaling baud rate for the schematic. The PRBS source's unit interval (UI = 1/baud) and the eye-diagram fold both pull from this.">Baud
-    <input id="glob-baud" type="text" value="10G" size="5"> Bd</label>
+    <input id="glob-baud" type="text" value="10G" size="8"> Bd</label>
   <label class="an-label"
     title="SKY130 process corner for every SKY130 FET on the schematic. ss = slow NMOS + PMOS, ff = fast both; the skewed names read PMOS-first in SKY130: sf = fast NMOS / slow PMOS, fs = slow NMOS / fast PMOS. 'all' runs the analysis at all five corners and overlays them; Optimize then scores the worst corner (or the mean). Each new corner extracts its own model cards the first time.">Corner
     <select id="glob-corner">
@@ -36,75 +36,8 @@
       <option value="all">all</option>
     </select></label>
   <span class="sep"></span>
-  <label class="an-label">Analysis
-    <select id="sel-analysis">
-      <option value="transient">Transient</option>
-      <option value="dc">DC operating point</option>
-      <option value="ac">AC (S-parameters)</option>
-      <option value="noise">Noise (small-signal)</option>
-      <option value="pulse">Pulse / COM</option>
-      <option value="optimize">Optimize</option>
-    </select>
-  </label>
-  <span id="analysis-settings">
-    <span class="an-group" data-mode="transient">
-      <label>t_stop <input id="an-tstop" type="text" value="4n" size="5"> s</label>
-      <label>points <input id="an-points" type="text" value="800" size="5"></label>
-      <label>solver
-        <select id="an-solver">
-          <option value="">auto</option>
-          <option value="adaptive">adaptive</option>
-          <option value="bdf2">fixed BDF2</option>
-        </select>
-      </label>
-      <label>max&nbsp;dt <input id="an-dtmax" type="text" value="" size="5" placeholder="auto"> s</label>
-      <label title="Transient noise: photodiode shot noise, laser RIN (set rin_db < 0 on the CW laser) and TIA input noise, band-limited to bw. N seeds re-run the compiled circuit; the eye and BER report pool all seeds.">
-        noise <input id="an-nz-seeds" type="text" value="" size="2"
-          placeholder="off"> seeds</label>
-      <label>bw <input id="an-nz-bw" type="text" value="50G" size="4"> Hz</label>
-    </span>
-    <span class="an-group" data-mode="noise" hidden
-          title="Output-referred voltage noise density at the chosen probe: resistor thermal (incl. PDK), TIA in_noise, diode shot. Electrical circuits only; use transient noise seeds for optical chains.">
-      <label>from <input id="an-nq-fstart" type="text" value="1meg" size="5"> Hz</label>
-      <label>to <input id="an-nq-fstop" type="text" value="100G" size="5"> Hz</label>
-      <label>points <input id="an-nq-points" type="text" value="121" size="4"></label>
-      <label>at <select id="an-nq-probe"></select></label>
-    </span>
-    <span class="an-group" data-mode="optimize" hidden
-          title="Nelder-Mead over up to 4 instance parameters (runtime or compile-time), objective from: expr:<name> (a scalar from the fx panel), eye:<probe> (inner eye opening, needs a PRBS source), ber:<probe> (Q-fit BER, minimized), fom (pulse/COM). The inner run is a transient with the fields here; finite-difference sensitivities are reported at the optimum.">
-      <label>params <input id="an-op-params" type="text" size="26"
-        placeholder="MN1.w_um=0.5:4, R1.R=100:1k"></label>
-      <label>objective <input id="an-op-obj" type="text" size="9"
-        placeholder="eye:vout"></label>
-      <label>iters <input id="an-op-iters" type="text" value="30" size="3"></label>
-      <label title="With Corner = all: score each design by its worst corner (a guarantee) or the corner mean.">corners
-        <select id="an-op-agg">
-          <option value="worst">worst</option>
-          <option value="mean">mean</option>
-        </select></label>
-      <label>t_stop <input id="an-op-tstop" type="text" value="25.6n" size="5"> s</label>
-      <label>points <input id="an-op-points" type="text" value="4000" size="5"></label>
-    </span>
-    <span class="an-group" data-mode="pulse" hidden
-          title="Runs the PRBS source in single-pulse mode, extracts the symbol-spaced pulse response at the probe, designs a Wiener FFE/DFE and reports a COM-style FOM.">
-      <label>t_stop <input id="an-pl-tstop" type="text" value="8n" size="5"> s</label>
-      <label>points <input id="an-pl-points" type="text" value="2000" size="5"></label>
-      <label>probe <select id="an-pl-probe"></select></label>
-      <label>FFE <input id="an-pl-ffe" type="text" value="5" size="2"></label>
-      <label>DFE <input id="an-pl-dfe" type="text" value="1" size="2"></label>
-    </span>
-    <span class="an-group" data-mode="ac" hidden
-          title="Pairs probes by name: in_<x> drives, out_<x> responds. Reports |S21| and |h21| (f_T at 0 dB).">
-      <label>from <input id="an-ac-fstart" type="text" value="1meg" size="5"> Hz</label>
-      <label>to <input id="an-ac-fstop" type="text" value="1T" size="5"> Hz</label>
-      <label>points <input id="an-ac-points" type="text" value="121" size="4"></label>
-      <label>z0 <input id="an-ac-z0" type="text" value="50" size="4"> &#8486;</label>
-    </span>
-  </span>
   <button id="btn-run" title="Run simulation (Cmd+Enter)">&#9654; Run</button>
   <button id="btn-stop" hidden title="Stop the running simulation (Esc)">&#9632; Stop</button>
-  <button id="btn-runcfg" class="caret" aria-expanded="false"
-    title="Run configuration — sweep a parameter and overlay runs">&#9662;</button>
   <span id="run-progress" hidden aria-hidden="true"><span id="run-progress-fill"></span></span>
   <span id="run-progress-label" hidden></span>
   <span id="run-status"></span>
@@ -115,38 +48,6 @@
   <button id="btn-newtab" title="New schematic tab">+</button>
 </div>
 
-<div id="runcfg-panel" hidden>
-  <label class="rc-enable">
-    <input type="checkbox" id="rc-enable"> Sweep a parameter and overlay runs
-  </label>
-  <div id="rc-body">
-    <div class="rc-row">
-      <span class="an-label">sweep</span>
-      <select id="rc-inst"></select>
-      <select id="rc-param"></select>
-      <label>values <input id="rc-values" type="text" size="22"
-        placeholder="0.02, 0.05, 0.1, 0.2   or   0.02:0.2:5"
-        title="Comma-separated values, or start:stop:count"></label>
-    </div>
-    <div class="rc-row">
-      <label class="rc-2nd"><input type="checkbox" id="rc-2nd-on"> then</label>
-      <select id="rc-inst2" disabled></select>
-      <select id="rc-param2" disabled></select>
-      <label>values <input id="rc-values2" type="text" size="16" disabled
-        placeholder="0.01, 0.02"
-        title="Optional 2nd parameter (nested); on DC this is the fast vectorized step"></label>
-    </div>
-    <div class="rc-row">
-      <label>colors
-        <select id="rc-colormode">
-          <option value="shaded">shaded family</option>
-          <option value="distinct">distinct hue / run</option>
-        </select></label>
-      <span id="rc-hint" class="rc-hint">runs the current analysis once per value and overlays the plots</span>
-      <span id="rc-count" class="rc-count">1 run</span>
-    </div>
-  </div>
-</div>
 
 <div id="main">
   <aside id="palette">
@@ -183,11 +84,130 @@
     <div id="canvas-hint"></div>
   </div>
 
-  <aside id="inspector">
-    <div id="inspector-body"><div class="insp-empty">Nothing selected.<br><br>
-      Select a component to edit its parameters, a wire to inspect the net,
-      or a probe to rename it.</div></div>
+<div id="rightcol">
+  <aside id="runpanel">
+    <section class="rp-card">
+      <h3 class="rp-h"><span class="rp-num">1</span>Analysis</h3>
+      <select id="sel-analysis">
+      <option value="transient">Transient</option>
+      <option value="dc">DC operating point</option>
+      <option value="ac">AC (S-parameters)</option>
+      <option value="noise">Noise (small-signal)</option>
+      <option value="pulse">Pulse / COM</option>
+      <option value="optimize">Optimize</option>
+    </select>
+      <div id="analysis-settings">
+    <span class="an-group" data-mode="transient">
+      <label>t_stop <input id="an-tstop" type="text" value="4n" size="5"> s</label>
+      <label>points <input id="an-points" type="text" value="800" size="5"></label>
+      <label>solver
+        <select id="an-solver">
+          <option value="">auto</option>
+          <option value="adaptive">adaptive</option>
+          <option value="bdf2">fixed BDF2</option>
+        </select>
+      </label>
+      <label>max&nbsp;dt <input id="an-dtmax" type="text" value="" size="5" placeholder="auto"> s</label>
+      <label title="Transient noise: photodiode shot noise, laser RIN (set rin_db < 0 on the CW laser) and TIA input noise, band-limited to bw. N seeds re-run the compiled circuit; the eye and BER report pool all seeds.">
+        noise <input id="an-nz-seeds" type="text" value="" size="2"
+          placeholder="off"> seeds</label>
+      <label>bw <input id="an-nz-bw" type="text" value="50G" size="4"> Hz</label>
+    </span>
+    <span class="an-group" data-mode="noise" hidden
+          title="Output-referred voltage noise density at the chosen probe: resistor thermal (incl. PDK), TIA in_noise, diode shot. Electrical circuits only; use transient noise seeds for optical chains.">
+      <label>from <input id="an-nq-fstart" type="text" value="1meg" size="5"> Hz</label>
+      <label>to <input id="an-nq-fstop" type="text" value="100G" size="5"> Hz</label>
+      <label>points <input id="an-nq-points" type="text" value="121" size="4"></label>
+      <label>at <select id="an-nq-probe"></select></label>
+    </span>
+    <span class="an-group" data-mode="optimize" hidden
+          title="Nelder-Mead over up to 4 instance parameters (runtime or compile-time), objective from: expr:<name> (a scalar from the fx panel), eye:<probe> (inner eye opening, needs a PRBS source), ber:<probe> (Q-fit BER, minimized), fom (pulse/COM). The inner run is a transient with the fields here; finite-difference sensitivities are reported at the optimum.">
+      <label>iters <input id="an-op-iters" type="text" value="30" size="3"></label>
+      <label>t_stop <input id="an-op-tstop" type="text" value="25.6n" size="5"> s</label>
+      <label>points <input id="an-op-points" type="text" value="4000" size="5"></label>
+    </span>
+    <span class="an-group" data-mode="pulse" hidden
+          title="Runs the PRBS source in single-pulse mode, extracts the symbol-spaced pulse response at the probe, designs a Wiener FFE/DFE and reports a COM-style FOM.">
+      <label>t_stop <input id="an-pl-tstop" type="text" value="8n" size="5"> s</label>
+      <label>points <input id="an-pl-points" type="text" value="2000" size="5"></label>
+      <label>probe <select id="an-pl-probe"></select></label>
+      <label>FFE <input id="an-pl-ffe" type="text" value="5" size="2"></label>
+      <label>DFE <input id="an-pl-dfe" type="text" value="1" size="2"></label>
+    </span>
+    <span class="an-group" data-mode="ac" hidden
+          title="Pairs probes by name: in_<x> drives, out_<x> responds. Reports |S21| and |h21| (f_T at 0 dB).">
+      <label>from <input id="an-ac-fstart" type="text" value="1meg" size="5"> Hz</label>
+      <label>to <input id="an-ac-fstop" type="text" value="1T" size="5"> Hz</label>
+      <label>points <input id="an-ac-points" type="text" value="121" size="4"></label>
+      <label>z0 <input id="an-ac-z0" type="text" value="50" size="4"> &#8486;</label>
+    </span>
+  </div>
+    </section>
+    <section class="rp-card">
+      <h3 class="rp-h"><span class="rp-num">2</span>Measure</h3>
+      <div class="an-group" data-mode="optimize" hidden>
+      <label>objective <input id="an-op-obj" type="text" size="9"
+        placeholder="eye:vout"></label>
+      <label title="With Corner = all: score each design by its worst corner (a guarantee) or the corner mean.">corners
+        <select id="an-op-agg">
+          <option value="worst">worst</option>
+          <option value="mean">mean</option>
+        </select></label>
+      </div>
+      <div class="an-group rp-note" data-modes="transient dc ac noise pulse">
+        Probes on the canvas are recorded. Add derived traces and scalars
+        (<code>vpp = pk2pk(vout)</code>) in
+        <button type="button" id="rp-open-fx" class="rp-link">&fnof;x expressions</button>;
+        pick a received probe in the Link tab for BER.
+      </div>
+    </section>
+    <section class="rp-card">
+      <h3 class="rp-h"><span class="rp-num">3</span>Vary</h3>
+      <div class="an-group" data-mode="optimize" hidden>
+      <label>params <input id="an-op-params" type="text" size="26"
+        placeholder="MN1.w_um=0.5:4, R1.R=100:1k"></label>
+        <div class="rp-note">Nelder-Mead over these ranges. With Corner = all,
+          every design runs at all five corners.</div>
+      </div>
+      <div id="runcfg-panel" class="an-group" data-modes="transient dc ac noise pulse">
+  <label class="rc-enable">
+    <input type="checkbox" id="rc-enable"> Sweep a parameter and overlay runs
+  </label>
+  <div id="rc-body">
+    <div class="rc-row">
+      <span class="an-label">sweep</span>
+      <select id="rc-inst"></select>
+      <select id="rc-param"></select>
+      <label>values <input id="rc-values" type="text" size="22"
+        placeholder="0.02, 0.05, 0.1, 0.2   or   0.02:0.2:5"
+        title="Comma-separated values, or start:stop:count"></label>
+    </div>
+    <div class="rc-row">
+      <label class="rc-2nd"><input type="checkbox" id="rc-2nd-on"> then</label>
+      <select id="rc-inst2" disabled></select>
+      <select id="rc-param2" disabled></select>
+      <label>values <input id="rc-values2" type="text" size="16" disabled
+        placeholder="0.01, 0.02"
+        title="Optional 2nd parameter (nested); on DC this is the fast vectorized step"></label>
+    </div>
+    <div class="rc-row">
+      <label>colors
+        <select id="rc-colormode">
+          <option value="shaded">shaded family</option>
+          <option value="distinct">distinct hue / run</option>
+        </select></label>
+      <span id="rc-hint" class="rc-hint">runs the current analysis once per value and overlays the plots</span>
+      <span id="rc-count" class="rc-count">1 run</span>
+    </div>
+  </div>
+</div>
+    </section>
   </aside>
+  <aside id="inspector">
+    <div id="inspector-body"><div class="insp-empty">Select a part, wire or probe
+      to edit it.</div></div>
+  </aside>
+  </div>
 </div>
 
 <div id="results" class="collapsed">
@@ -217,7 +237,7 @@
         <label id="eye-sweep-wrap" hidden>sweep
           <select id="eye-sweep"
             title="Overlay all swept eyes, or isolate one parameter value"></select></label>
-        <label>UI <input id="eye-ui" value="100p" size="7"></label>
+        <label title="Fold period. Filled with 1/baud from the top-bar baud rate; edit to override (a baud change resets it).">UI <input id="eye-ui" value="" size="11"></label>
         <label>skip <input id="eye-skip" value="10%" size="5"
           title="Settling time to drop: absolute (2n) or % of the record"></label>
         <label>levels <select id="eye-mod">
@@ -227,7 +247,51 @@
         </select></label>
         <span id="eye-metrics"></span>
       </div>
-      <canvas id="eye-canvas" width="900" height="420"></canvas>
+      <div id="eye-tdecq">
+        <span class="tq-title" title="Score the eye with stateye: PAM4 -> IEEE TDECQ (raw and through the reference FFE), NRZ -> TDEC and OMA - TDEC. Uses the trace, UI, skip and levels above.">stateye</span>
+        <label title="Reference receiver: 4th-order-style Bessel-Thomson -3 dB bandwidth as a multiple of the baud rate. auto = 0.5 (TDECQ) / 0.75 (TDEC); off = no filter.">ref Rx
+          <input id="tq-rxbw" value="auto" size="4"> &times;baud</label>
+        <label title="Bessel-Thomson order">order <input id="tq-rxorder" value="4" size="2"></label>
+        <label class="tq-pam" title="Reference equalizer length (T-spaced FFE, taps sum to 1). 802.3bs/cd: 5. 0 = no equalizer.">FFE taps
+          <input id="tq-taps" value="5" size="2"></label>
+        <label class="tq-pam" title="Pre-cursor taps">pre <input id="tq-pre" value="1" size="2"></label>
+        <label class="tq-pam" title="Decision-feedback taps after the FFE (802.3dj D2.1: one tap, 0 <= b <= 0.3, referenced to OMA/2 at the FFE input). Adds no noise enhancement.">DFE taps
+          <input id="tq-dfe" value="0" size="2"></label>
+        <label class="tq-pam" title="How the taps adapt. MMSE: block least squares (fast). LMS: normalized LMS, step mu over several passes (how an adaptive Rx converges). TDECQ-optimal: Nelder-Mead on TDECQ itself from the MMSE start (the 802.3 definition; one eye analysis per evaluation, slow). Manual: your taps.">adapt
+          <select id="tq-method">
+            <option value="mmse">MMSE (block)</option>
+            <option value="lms">LMS</option>
+            <option value="optimal">TDECQ-optimal (slow)</option>
+            <option value="manual">manual taps</option>
+          </select></label>
+        <label class="tq-pam tq-lms" hidden title="Normalized LMS step (1e-3 slow, 0.3 fast)">&mu; <input id="tq-mu" value="0.05" size="4"></label>
+        <label class="tq-pam tq-lms" hidden title="Sweeps of the record">passes <input id="tq-passes" value="5" size="2"></label>
+        <label class="tq-pam tq-opt" hidden title="Maximum eye analyses for the TDECQ search">evals <input id="tq-evals" value="40" size="3"></label>
+        <label class="tq-pam tq-manual" hidden title="Tap weights, pre-cursors first; normalized to sum to 1">taps <input id="tq-manual" placeholder="-0.05, 1.1, -0.05" size="16"></label>
+        <label class="tq-pam tq-manual" hidden title="DFE coefficients b(1), b(2), ... in the 802.3dj normalization (OMA/2 at the FFE input); blank = no DFE">DFE b <input id="tq-manual-dfe" placeholder="0.1" size="8"></label>
+        <label class="tq-pam" title="Keep the equalizer inside the IEEE P802.3dj D2.1 reference-equalizer limits (Table 180-15: main tap 0.9-2.5, per-tap ratios, DFE 0-0.3). The TDECQ-optimal search stays inside them; other methods report any violation. Unchecked, the search can 'win' with low-pass taps (C_eq < 1) that close the eye."><input type="checkbox" id="tq-limits" checked> 802.3dj limits</label>
+        <label class="tq-pam" title="Adapt against the PRBS source's known pattern (a TDECQ scope knows its test pattern). Off = decision-directed."><input type="checkbox" id="tq-pattern" checked> train on pattern</label>
+        <label title="PAM4: target symbol error rate (802.3 100G/lane: 4.8e-4). NRZ: target BER.">target <input id="tq-ser" value="4.8e-4" size="6"></label>
+        <label title="S: rms noise of the O/E + scope, in the trace's units">S <input id="tq-snoise" value="0.005" size="5"></label>
+        <label title="stateye histogram grid (time x amplitude bins). Fast is ~3x quicker and within ~0.01 dB on typical eyes.">grid
+          <select id="tq-grid">
+            <option value="256x1024">fast</option>
+            <option value="512x2048">fine</option>
+          </select></label>
+        <button id="tq-run">Measure</button>
+        <div id="tq-result"></div>
+      </div>
+      <div id="eye-pair">
+        <div class="eye-panel">
+          <div id="eye-cap-sim" class="eye-cap" hidden>simulation (probe as recorded)</div>
+          <canvas id="eye-canvas" width="900" height="420"></canvas>
+        </div>
+        <div class="eye-panel" id="eye-panel-eq" hidden>
+          <div id="eye-cap-eq" class="eye-cap"></div>
+          <canvas id="eye-canvas-eq" width="620" height="420"></canvas>
+          <div id="eye-metrics-eq"></div>
+        </div>
+      </div>
       <div id="eye-hint" class="insp-empty" hidden></div>
     </div>
     <div id="tab-link" class="rpane">

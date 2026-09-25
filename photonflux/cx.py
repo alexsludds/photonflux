@@ -43,7 +43,8 @@ from typing import Any
 
 from . import toolchain, va_hier
 
-__all__ = ["va", "sky130_fet", "sky130_card", "cw_laser", "mzm",
+__all__ = ["va", "sky130_fet", "sky130_card", "cw_laser", "mzm", "attenuator",
+           "terminator",
            "field_to_ri", "ri_to_field",
            "directional_coupler", "ring_phase_shifter", "cavity_mode",
            "ring_cmt_rates", "ring_modulator", "RingModulatorParts"]
@@ -239,6 +240,49 @@ def mzm():
 
     _COMPONENT_CACHE["mzm"] = MZModulator
     return MZModulator
+
+
+def attenuator():
+    """Matched optical attenuator: ``settings = {"atten_db"}``.
+
+    Reflectionless field 2-port (ports ``p1``/``p2``), S = [[0, a], [a, 0]]
+    with a = 10^(-atten_db/20): optical power drops by ``atten_db`` in either
+    direction.
+    """
+    import jax.numpy as jnp
+    from circulax.components.base_component import Signals, States, component
+    from circulax.s_transforms import s_to_y
+
+    @component(ports=("p1", "p2"))
+    def OptAtten(signals: Signals, s: States,
+                 atten_db: float = 3.0) -> tuple[dict, dict]:
+        a = 10.0 ** (-jnp.abs(atten_db) / 20.0)
+        S = jnp.array([[0j, a + 0j], [a + 0j, 0j]], dtype=jnp.complex128)
+        v = jnp.array([signals.p1, signals.p2], dtype=jnp.complex128)
+        iv = s_to_y(S) @ v
+        return {"p1": iv[0], "p2": iv[1]}, {}
+
+    return OptAtten
+
+
+def terminator():
+    """Optical terminator with finite return loss: ``settings =
+    {"return_loss_db"}``.
+
+    One-port (``p1``) with S11 = r = 10^(-RL/20): nodal admittance
+    Y = (1-r)/(1+r) (r = 0 is the matched absorber, i = E). Terminate every
+    otherwise-open optical port -- an open port reflects like an open line.
+    """
+    from circulax.components.base_component import Signals, States, component
+    import jax.numpy as jnp
+
+    @component(ports=("p1",))
+    def OptTerm(signals: Signals, s: States,
+                return_loss_db: float = 50.0) -> tuple[dict, dict]:
+        r = 10.0 ** (-jnp.abs(return_loss_db) / 20.0)
+        return {"p1": (1.0 - r) / (1.0 + r) * signals.p1}, {}
+
+    return OptTerm
 
 
 def field_to_ri():

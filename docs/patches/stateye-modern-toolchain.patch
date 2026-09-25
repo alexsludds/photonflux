@@ -8,14 +8,15 @@ index 0000000..b9fb549
 +requires = ["setuptools>=68", "wheel", "Cython>=3", "numpy>=2"]
 +build-backend = "setuptools.build_meta"
 diff --git a/stateye/__init__.py b/stateye/__init__.py
-index 2edc94a..58cf7d8 100644
+index 2edc94a..9abbaac 100644
 --- a/stateye/__init__.py
 +++ b/stateye/__init__.py
-@@ -2,3 +2,4 @@ from .version import __version__
+@@ -2,3 +2,5 @@ from .version import __version__
  
  from .ideal_eye import IdealEye
  from .custom_eye import CustomEye
-+from .equalization import apply_ffe, ffe_mmse, noise_enhancement
++from .equalization import (apply_ffe, ffe_lms, ffe_mmse, ffe_tdecq_optimal,
++                           noise_enhancement)
 diff --git a/stateye/custom_eye.py b/stateye/custom_eye.py
 index 093f6b3..8763b71 100644
 --- a/stateye/custom_eye.py
@@ -33,10 +34,10 @@ index 093f6b3..8763b71 100644
  
 diff --git a/stateye/equalization.py b/stateye/equalization.py
 new file mode 100644
-index 0000000..2f14d14
+index 0000000..5935b5b
 --- /dev/null
 +++ b/stateye/equalization.py
-@@ -0,0 +1,184 @@
+@@ -0,0 +1,311 @@
 +"""
 +TDECQ reference equalizer: a T-spaced feed-forward equalizer (FFE).
 +
@@ -183,23 +184,12 @@ index 0000000..2f14d14
 +    slicing, refined ``iterations`` times): fine while the unequalized eye is
 +    still mostly open, but it cannot recover an eye that starts closed.
 +    """
-+    if n_taps < 1 or not 0 <= n_pre < n_taps:
-+        raise ValueError("need n_taps >= 1 and 0 <= n_pre < n_taps")
-+    x = np.asarray(wvf, dtype=float)
-+    sps = float(samples_per_symbol)
-+    phase = best_sampling_phase(x, sps, n_levels)
-+    s = _symbol_samples(x, sps, phase)
-+
-+    n_post = n_taps - 1 - n_pre
-+    k = np.arange(max(skip_symbols, n_post), s.size - n_pre)
-+    # rows: symbol k; columns: tap j sees sample k - (j - n_pre)
-+    X = np.stack([s[k - (j - n_pre)] for j in range(n_taps)], axis=1)
++    s, k, X, d, known, phase = _regression(
++        wvf, samples_per_symbol, n_taps, n_pre, n_levels, symbols, skip_symbols)
 +    # Unknowns z = [c, a, b]: equalized samples X c should sit on the ladder
 +    # a * u + b (u = symbol / (L-1)). The ladder gain and offset are free --
 +    # a unit-DC-gain FFE sets its own span -- so minimize |X c - a u - b|^2
 +    # subject to sum(c) = 1 (KKT system).
-+    known = symbols is not None
-+    d = _align(s, symbols) if known else _slice(s, n_levels)
 +    e = np.concatenate([np.ones(n_taps), [0.0, 0.0]])
 +    for _ in range(1 if known else max(1, iterations)):
 +        u = d[k] / (n_levels - 1)
@@ -213,14 +203,152 @@ index 0000000..2f14d14
 +            d = d.copy()
 +            d[k] = _slice(X @ c, n_levels)
 +
-+    t = a * d[k] / (n_levels - 1) + b
-+    # "before" is the raw main-cursor sample against its own best-fit ladder
-+    raw = np.polyfit(d[k], X[:, n_pre], 1)
-+    info = {"n_pre": n_pre, "phase": phase, "ceq": noise_enhancement(c),
++    return c, _info(c, X, d[k], n_pre, phase, n_levels)
++
++
++def _regression(wvf, sps, n_taps, n_pre, n_levels, symbols, skip_symbols):
++    """Symbol-rate samples, the tap regression matrix and the decisions."""
++    if n_taps < 1 or not 0 <= n_pre < n_taps:
++        raise ValueError("need n_taps >= 1 and 0 <= n_pre < n_taps")
++    x = np.asarray(wvf, dtype=float)
++    sps = float(sps)
++    phase = best_sampling_phase(x, sps, n_levels)
++    s = _symbol_samples(x, sps, phase)
++    n_post = n_taps - 1 - n_pre
++    k = np.arange(max(skip_symbols, n_post), s.size - n_pre)
++    # rows: symbol k; columns: tap j sees sample k - (j - n_pre)
++    X = np.stack([s[k - (j - n_pre)] for j in range(n_taps)], axis=1)
++    known = symbols is not None
++    d = _align(s, symbols) if known else _slice(s, n_levels)
++    return s, k, X, d, known, phase
++
++
++def _ladder(y, dk, n_levels):
++    """Best-fit ladder a * u + b through equalized samples y (u = d/(L-1))."""
++    a, b = np.polyfit(dk / (n_levels - 1), y, 1)
++    return a, b
++
++
++def _info(c, X, dk, n_pre, phase, n_levels, **extra):
++    a, b = _ladder(X @ c, dk, n_levels)
++    ar, br = _ladder(X[:, n_pre], dk, n_levels)
++    u = dk / (n_levels - 1)
++    return {"n_pre": n_pre, "phase": phase, "ceq": noise_enhancement(c),
 +            "rms_error_before": float(np.sqrt(np.mean(
-+                (X[:, n_pre] - np.polyval(raw, d[k])) ** 2))),
-+            "rms_error_after": float(np.sqrt(np.mean((X @ c - t) ** 2)))}
-+    return c, info
++                (X[:, n_pre] - (ar * u + br)) ** 2))),
++            "rms_error_after": float(np.sqrt(np.mean(
++                (X @ c - (a * u + b)) ** 2))), **extra}
++
++
++def ffe_lms(wvf, samples_per_symbol: float, n_taps: int = 5, n_pre: int = 1,
++            n_levels: int = 4, symbols=None, mu: float = 0.05, passes: int = 5,
++            skip_symbols: int = 16):
++    """Adapt an N-tap T-spaced FFE by normalized LMS, sum(taps) held at 1.
++
++    Starts from a single main tap and sweeps the record ``passes`` times.
++    Each symbol takes a normalized gradient step on the taps and on the
++    target ladder's gain and offset together (``mu`` is dimensionless:
++    1e-3 slow and smooth, 0.1 fast and noisy), then re-projects the taps
++    onto sum(c) = 1. Decisions come from ``symbols`` when given (training)
++    or from the equalized samples (decision-directed). This is how an adaptive receiver
++    converges; :func:`ffe_mmse` is the block solution it converges toward.
++    Returns ``(taps, info)`` like :func:`ffe_mmse`, plus ``info["mse"]``,
++    the per-pass mean squared error.
++    """
++    s, k, X, d, known, phase = _regression(
++        wvf, samples_per_symbol, n_taps, n_pre, n_levels, symbols, skip_symbols)
++    # Joint stochastic gradient on z = [c, a, b] -- the same problem
++    # ffe_mmse solves in one block: e = x.c - (a u + b), with the taps
++    # re-projected onto sum(c) = 1 after every update.
++    c = np.zeros(n_taps)
++    c[n_pre] = 1.0
++    dk0 = d[k] if known else _slice(X[:, n_pre], n_levels)
++    a, b = _ladder(X[:, n_pre], dk0, n_levels)
++    mse = []
++    for _ in range(max(1, int(passes))):
++        dk = d[k] if known else _slice(X @ c, n_levels)
++        u = dk / (n_levels - 1)
++        err2 = 0.0
++        for i in range(k.size):
++            r = np.concatenate([X[i], [-u[i], -1.0]])
++            e = X[i] @ c - a * u[i] - b
++            err2 += e * e
++            step = mu * e / (r @ r + 1e-300)
++            c -= step * X[i]
++            a += step * u[i]
++            b += step
++            c += (1.0 - c.sum()) / n_taps
++        mse.append(err2 / k.size)
++    dk = d[k] if known else _slice(X @ c, n_levels)
++    return c, _info(c, X, dk, n_pre, phase, n_levels, mse=mse)
++
++
++def ffe_tdecq_optimal(wvf, dt_sec: float, datarate_gbps: float,
++                      n_taps: int = 5, n_pre: int = 1, symbols=None,
++                      start_taps=None, max_evals: int = 60,
++                      tdecq_s_noise: float = 0.0, tdecq_ser: float = 4.8e-4,
++                      oma: str = "auto", nx: int = 256, ny: int = 1024):
++    """The taps that minimize TDECQ itself -- the 802.3 definition.
++
++    Nelder-Mead over the ``n_taps - 1`` free taps (the main tap closes the
++    sum to 1), started from ``start_taps`` or the MMSE design, scoring each
++    candidate with a full PAM-4 :class:`IdealEye` analysis (``tdecq_<oma>``,
++    C_eq included). ``oma="auto"`` scores ``tdecq_outer`` when the record
++    holds the OMA_outer runs (7 threes, 6 zeros) and ``tdecq_xp`` when it
++    does not -- otherwise every candidate on a short record is undefined
++    and the search cannot move. Costs one eye analysis per evaluation, so it is the slow,
++    exact option; MMSE and LMS are the fast approximations. Returns
++    ``(taps, info)`` with ``info["tdecq"]`` and ``info["evals"]``.
++    """
++    from scipy.optimize import minimize
++
++    from .ideal_eye import IdealEye
++
++    sps = 1.0 / (datarate_gbps * 1e9 * dt_sec)
++    if start_taps is None:
++        start_taps, _ = ffe_mmse(wvf, sps, n_taps, n_pre, symbols=symbols)
++    c0 = np.asarray(start_taps, dtype=float)
++    c0 = c0 / c0.sum()
++    free = [j for j in range(n_taps) if j != n_pre]
++
++    def taps_of(z):
++        c = np.empty(n_taps)
++        c[free] = z
++        c[n_pre] = 1.0 - np.sum(z)
++        return c
++
++    evals = {"n": 0, "best": (np.inf, c0), "oma": oma}
++
++    def tdecq(z):
++        c = taps_of(z)
++        evals["n"] += 1
++        eye = IdealEye(datarate_gbps=datarate_gbps, dt_sec=dt_sec, nx=nx,
++                       ny=ny, format="PAM4", sampling_offset_mode="half_ui")
++        eye.set_tdecq_s_noise(tdecq_s_noise)
++        eye.set_tdecq_ceq(noise_enhancement(c))
++        eye.set_tdecq_ser(tdecq_ser)
++        try:
++            eye.add_data(apply_ffe(wvf, c, sps, n_pre), "mW")
++            m = eye.get_measurements()
++            if evals["oma"] == "auto":
++                evals["oma"] = ("outer" if np.isfinite(m.get("tdecq_outer", np.nan))
++                                else "xp")
++            v = float(m[f"tdecq_{evals['oma']}"])
++        except (ValueError, IndexError, ZeroDivisionError):
++            v = np.nan
++        v = v if np.isfinite(v) else 1e3
++        if v < evals["best"][0]:
++            evals["best"] = (v, c)
++        return v
++
++    minimize(tdecq, c0[free], method="Nelder-Mead",
++             options={"maxfev": int(max_evals), "xatol": 1e-4, "fatol": 1e-3,
++                      "initial_simplex": np.vstack(
++                          [c0[free]] + [c0[free] + 0.01 * np.eye(n_taps - 1)[i]
++                                        for i in range(n_taps - 1)])})
++    best_v, c = evals["best"]
++    return c, {"n_pre": n_pre, "ceq": noise_enhancement(c),
++               "tdecq": best_v, "evals": evals["n"], "oma": evals["oma"]}
 diff --git a/stateye/eye.py b/stateye/eye.py
 index 525bf7c..67b6ec1 100644
 --- a/stateye/eye.py
@@ -287,10 +415,10 @@ index d282540..386f672 100644
  	for i in range(n - (nb + na + 1)):
 diff --git a/tests/test_equalization.py b/tests/test_equalization.py
 new file mode 100644
-index 0000000..e468794
+index 0000000..d690701
 --- /dev/null
 +++ b/tests/test_equalization.py
-@@ -0,0 +1,61 @@
+@@ -0,0 +1,89 @@
 +import numpy as np
 +import pytest
 +
@@ -351,4 +479,32 @@ index 0000000..e468794
 +    w, sym, sps = _isi_pam4(post=0.2)
 +    taps, info = ffe_mmse(-w, sps, n_taps=5, symbols=sym)
 +    assert info["rms_error_after"] < 0.1 * info["rms_error_before"]
++
++
++def test_lms_converges_to_the_mmse_taps():
++    from stateye.equalization import ffe_lms
++
++    w, sym, sps = _isi_pam4(post=0.2)
++    ref, _ = ffe_mmse(w, sps, symbols=sym)
++    taps, info = ffe_lms(w, sps, symbols=sym, mu=0.1, passes=6)
++    assert np.isclose(np.sum(taps), 1.0)
++    assert np.allclose(taps, ref, atol=0.02)
++    assert info["mse"][-1] < info["mse"][0]
++
++
++def test_tdecq_optimal_is_no_worse_than_its_mmse_start():
++    from stateye.equalization import ffe_tdecq_optimal
++
++    w, sym, sps = _isi_pam4(n=2400, post=0.2)
++    rng = np.random.default_rng(1)
++    w = w + 0.01 * rng.standard_normal(w.size)
++    dt = 1e-12
++    gbps = 1.0 / (dt * sps) / 1e9
++    start, _ = ffe_mmse(w, sps, symbols=sym)
++    _, info0 = ffe_tdecq_optimal(w, dt, gbps, symbols=sym, start_taps=start,
++                                 max_evals=1)
++    taps, info = ffe_tdecq_optimal(w, dt, gbps, symbols=sym, start_taps=start,
++                                   max_evals=12)
++    assert np.isclose(np.sum(taps), 1.0)
++    assert info["tdecq"] <= info0["tdecq"] + 1e-9
 +

@@ -74,6 +74,10 @@ class Measurement:
     counts: dict[str, int] = field(default_factory=dict)
     eye: Any = None
     oma_type: str = "8180"   # which level-estimation family the metrics came from
+    # the waveform stateye scored (after the reference receiver, settling trim
+    # and any equalizer) and its sample period -- for plotting that eye
+    waveform: Any = None
+    dt_sec: float = 0.0
 
     def __getitem__(self, key: str) -> float:
         return self.metrics[key]
@@ -320,7 +324,8 @@ def measure(
     msmts["at_floor"] = bool(
         np.isfinite(msmts["oma_tdec_dbm"])
         and msmts["oma_tdec_dbm"] <= floor + FLOOR_TOL_DB)
-    return Measurement(metrics=msmts, counts=counts, eye=eye, oma_type=oma_type)
+    return Measurement(metrics=msmts, counts=counts, eye=eye, oma_type=oma_type,
+                       waveform=p, dt_sec=dt_sec)
 
 
 def measure_pam4(
@@ -333,6 +338,11 @@ def measure_pam4(
     ffe_taps: int = 5,
     ffe_pre: int = 1,
     symbols=None,
+    ffe_method: str = "mmse",
+    ffe_mu: float = 0.05,
+    ffe_passes: int = 5,
+    ffe_manual=None,
+    ffe_max_evals: int = 60,
     ref_rx_bw_factor: float | None = 0.5,
     ref_rx_order: int = 4,
     ref_rx_bw_hz: float | None = None,
@@ -368,6 +378,13 @@ def measure_pam4(
     knows its test pattern; without them the design is decision-directed
     and only reliable while the unequalized eye is still open. The metrics
     gain ``ffe_taps`` (list), ``ceq`` and ``ffe_rms_error_before/after``.
+
+    ``ffe_method`` picks how the taps adapt: ``"mmse"`` (block least
+    squares, the default), ``"lms"`` (normalized LMS, step ``ffe_mu``,
+    ``ffe_passes`` sweeps of the record), ``"optimal"`` (Nelder-Mead on
+    TDECQ itself from the MMSE start, ``ffe_max_evals`` eye analyses -- the
+    802.3 definition, and slow) or ``"manual"`` (``ffe_manual``, a list of
+    taps, normalized to sum to 1; ``ffe_taps`` is then its length).
     MMSE taps are not the TDECQ-minimizing taps the standard asks for, so
     the result is at or slightly above the compliant value.
     """
@@ -387,12 +404,38 @@ def measure_pam4(
                 "docs/patches/stateye-modern-toolchain.patch applied, or pass "
                 "ffe_taps=0.")
         sps = 1.0 / (baud * dt_sec)
-        taps, info = stateye.ffe_mmse(p, sps, n_taps=int(ffe_taps),
-                                      n_pre=int(ffe_pre), symbols=symbols)
+        n, pre = int(ffe_taps), int(ffe_pre)
+        if ffe_method == "mmse":
+            taps, info = stateye.ffe_mmse(p, sps, n_taps=n, n_pre=pre,
+                                          symbols=symbols)
+        elif ffe_method == "lms":
+            taps, info = stateye.ffe_lms(p, sps, n_taps=n, n_pre=pre,
+                                         symbols=symbols, mu=float(ffe_mu),
+                                         passes=int(ffe_passes))
+        elif ffe_method == "optimal":
+            taps, info = stateye.ffe_tdecq_optimal(
+                p, dt_sec, baud / 1e9, n_taps=n, n_pre=pre, symbols=symbols,
+                max_evals=int(ffe_max_evals), tdecq_s_noise=s_noise_mW,
+                tdecq_ser=ser, nx=nx, ny=ny)
+        elif ffe_method == "manual":
+            taps = np.asarray(ffe_manual, dtype=float)
+            if taps.ndim != 1 or taps.size < 1 or not pre < taps.size \
+                    or taps.sum() == 0:
+                raise ValueError("manual FFE taps need a non-empty list with "
+                                 "more taps than pre-cursors and a nonzero sum")
+            taps = taps / taps.sum()
+            info = {"n_pre": pre, "ceq": stateye.noise_enhancement(taps)}
+        else:
+            raise ValueError(f"unknown ffe_method {ffe_method!r}; use mmse, "
+                             "lms, optimal or manual")
         p = stateye.apply_ffe(p, taps, sps, n_pre=info["n_pre"])
         eq = {"ffe_taps": [float(c) for c in taps], "ceq": info["ceq"],
-              "ffe_rms_error_before": info["rms_error_before"],
-              "ffe_rms_error_after": info["rms_error_after"]}
+              "ffe_method": ffe_method}
+        for key in ("rms_error_before", "rms_error_after"):
+            if key in info:
+                eq[f"ffe_{key}"] = info[key]
+        if "evals" in info:
+            eq["ffe_evals"] = info["evals"]
 
     eye = stateye.IdealEye(
         datarate_gbps=baud / 1e9,
@@ -417,4 +460,5 @@ def measure_pam4(
             "threes and a run of 6 zeros away from the record edges. Drive it "
             "with a full PRBS-13Q rotated by a few dozen symbols (its only run "
             "of 6 zeros is the last 6 symbols of the period).")
-    return Measurement(metrics=msmts, counts=counts, eye=eye, oma_type="outer")
+    return Measurement(metrics=msmts, counts=counts, eye=eye, oma_type="outer",
+                       waveform=p, dt_sec=dt_sec)

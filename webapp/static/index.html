@@ -247,6 +247,37 @@
         </select></label>
         <span id="eye-metrics"></span>
       </div>
+      <div id="eye-tdecq">
+        <span class="tq-title" title="Score the eye with stateye: PAM4 -> IEEE TDECQ (raw and through the reference FFE), NRZ -> TDEC and OMA - TDEC. Uses the trace, UI, skip and levels above.">stateye</span>
+        <label title="Reference receiver: 4th-order-style Bessel-Thomson -3 dB bandwidth as a multiple of the baud rate. auto = 0.5 (TDECQ) / 0.75 (TDEC); off = no filter.">ref Rx
+          <input id="tq-rxbw" value="auto" size="4"> &times;baud</label>
+        <label title="Bessel-Thomson order">order <input id="tq-rxorder" value="4" size="2"></label>
+        <label class="tq-pam" title="Reference equalizer length (T-spaced FFE, taps sum to 1). 802.3bs/cd: 5. 0 = no equalizer.">FFE taps
+          <input id="tq-taps" value="5" size="2"></label>
+        <label class="tq-pam" title="Pre-cursor taps">pre <input id="tq-pre" value="1" size="2"></label>
+        <label class="tq-pam" title="How the taps adapt. MMSE: block least squares (fast). LMS: normalized LMS, step mu over several passes (how an adaptive Rx converges). TDECQ-optimal: Nelder-Mead on TDECQ itself from the MMSE start (the 802.3 definition; one eye analysis per evaluation, slow). Manual: your taps.">adapt
+          <select id="tq-method">
+            <option value="mmse">MMSE (block)</option>
+            <option value="lms">LMS</option>
+            <option value="optimal">TDECQ-optimal (slow)</option>
+            <option value="manual">manual taps</option>
+          </select></label>
+        <label class="tq-pam tq-lms" hidden title="Normalized LMS step (1e-3 slow, 0.3 fast)">&mu; <input id="tq-mu" value="0.05" size="4"></label>
+        <label class="tq-pam tq-lms" hidden title="Sweeps of the record">passes <input id="tq-passes" value="5" size="2"></label>
+        <label class="tq-pam tq-opt" hidden title="Maximum eye analyses for the TDECQ search">evals <input id="tq-evals" value="40" size="3"></label>
+        <label class="tq-pam tq-manual" hidden title="Tap weights, pre-cursors first; normalized to sum to 1">taps <input id="tq-manual" placeholder="-0.05, 1.1, -0.05" size="16"></label>
+        <label class="tq-pam" title="Adapt against the PRBS source's known pattern (a TDECQ scope knows its test pattern). Off = decision-directed."><input type="checkbox" id="tq-pattern" checked> train on pattern</label>
+        <label title="PAM4: target symbol error rate (802.3 100G/lane: 4.8e-4). NRZ: target BER.">target <input id="tq-ser" value="4.8e-4" size="6"></label>
+        <label title="S: rms noise of the O/E + scope, in the trace's units">S <input id="tq-snoise" value="0.005" size="5"></label>
+        <label title="stateye histogram grid (time x amplitude bins). Fast is ~3x quicker and within ~0.01 dB on typical eyes.">grid
+          <select id="tq-grid">
+            <option value="256x1024">fast</option>
+            <option value="512x2048">fine</option>
+          </select></label>
+        <button id="tq-run">Measure</button>
+        <label title="Draw the eye stateye scored: after the reference receiver and equalizer"><input type="checkbox" id="tq-show"> show scored eye</label>
+        <div id="tq-result"></div>
+      </div>
       <canvas id="eye-canvas" width="900" height="420"></canvas>
       <div id="eye-hint" class="insp-empty" hidden></div>
     </div>

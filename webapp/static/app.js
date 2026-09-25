@@ -2992,6 +2992,123 @@ function eyeTraceOptions() {
 }
 
 let eyeInit = false;
+// ---------------------------------------------------------------------------
+// stateye scoring of the Eye tab's current trace: TDECQ (PAM4) / TDEC (NRZ)
+// ---------------------------------------------------------------------------
+let eyeScored = null;   // {result, trace, t, values}: the eye stateye measured
+
+function eyeSkipSeconds(t) {
+  const tEnd = t[t.length - 1];
+  const raw = $("eye-skip").value.trim();
+  return raw.endsWith("%") ? tEnd * parseFloat(raw) / 100 : (parseSI(raw) || 0);
+}
+
+// the PRBS source's full settings (catalog defaults filled in) + the UI, so
+// the server can regenerate the transmitted symbols for training
+function patternForEye() {
+  const inst = Object.values(state.instances).find((i) => i.type === "prbs");
+  if (!inst) return null;
+  const defs = Object.fromEntries((catEntry("prbs")?.params || [])
+    .map((p) => [p.name, p.default]));
+  return { ...defs, ...(inst.settings || {}), ui: globalUI() };
+}
+
+function syncTdecqControls() {
+  const nlv = $("eye-mod").value === "auto" ? eyeDefaults().mod
+    : parseInt($("eye-mod").value);
+  const m = $("tq-method").value;
+  document.querySelectorAll("#eye-tdecq .tq-pam").forEach((el) => {
+    el.hidden = nlv !== 4
+      || (el.classList.contains("tq-lms") && m !== "lms")
+      || (el.classList.contains("tq-opt") && m !== "optimal")
+      || (el.classList.contains("tq-manual") && m !== "manual");
+  });
+  $("tq-ser").title = nlv === 4
+    ? "Target symbol error rate (802.3 100G/lane: 4.8e-4)"
+    : "Target BER for TDEC";
+  if (nlv !== 4 && $("tq-ser").value === "4.8e-4") $("tq-ser").value = "1e-12";
+  if (nlv === 4 && $("tq-ser").value === "1e-12") $("tq-ser").value = "4.8e-4";
+}
+$("tq-method").addEventListener("change", syncTdecqControls);
+$("eye-mod").addEventListener("change", syncTdecqControls);
+$("tq-show").addEventListener("change", renderEye);
+
+async function measureEye() {
+  const out = $("tq-result"), btn = $("tq-run");
+  if (!lastResult) return;
+  const sel = $("eye-trace").value;
+  let fam = visibleTraces(lastResult.traces)
+    .filter((q) => (q.probe || q.name) === sel);
+  const sw = $("eye-sweep");
+  if (!$("eye-sweep-wrap").hidden && sw.value !== "__all__")
+    fam = fam.filter((q) => (q.name || "").endsWith(` @ ${sw.value}`));
+  if (!fam.length) { out.innerHTML = `<span class="tq-err">no trace ${sel}</span>`; return; }
+  const tr = fam[0], t = lastResult.x;
+  const nlv = $("eye-mod").value === "auto" ? eyeDefaults().mod
+    : parseInt($("eye-mod").value);
+  const rxbw = $("tq-rxbw").value.trim().toLowerCase();
+  const cfg = {
+    rx_bw: rxbw === "auto" ? (nlv === 4 ? 0.5 : 0.75) : (rxbw === "off" ? "off" : parseFloat(rxbw)),
+    rx_order: parseInt($("tq-rxorder").value) || 4,
+    taps: parseInt($("tq-taps").value) || 0,
+    pre: parseInt($("tq-pre").value) || 0,
+    method: $("tq-method").value,
+    mu: parseFloat($("tq-mu").value) || 0.05,
+    passes: parseInt($("tq-passes").value) || 5,
+    max_evals: parseInt($("tq-evals").value) || 40,
+    manual: $("tq-manual").value,
+    use_pattern: $("tq-pattern").checked,
+    s_noise: parseFloat($("tq-snoise").value) || 0,
+    nx: parseInt($("tq-grid").value.split("x")[0]),
+    ny: parseInt($("tq-grid").value.split("x")[1]),
+    [nlv === 4 ? "ser" : "ber"]: parseFloat($("tq-ser").value),
+  };
+  const payload = { t, values: tr.values, unit: tr.unit || "",
+    ui: parseSI($("eye-ui").value), levels: nlv, skip_s: eyeSkipSeconds(t),
+    pattern: patternForEye(), cfg };
+  btn.disabled = true;
+  out.innerHTML = `<span class="tq-dim">measuring with stateye${
+    cfg.method === "optimal" ? ` (TDECQ search, up to ${cfg.max_evals} eye analyses)` : ""}…</span>`;
+  const t0 = performance.now();
+  let r;
+  try {
+    r = await (await fetch("/api/eyemeasure", { method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload) })).json();
+  } catch (e) {
+    r = { ok: false, error: String(e) };
+  }
+  btn.disabled = false;
+  if (!r.ok) { out.innerHTML = `<span class="tq-err">${r.error}</span>`; return; }
+  const secs = ((performance.now() - t0) / 1000).toFixed(1);
+  const u = tr.unit ? ` ${tr.unit}` : "";
+  const f = (x, d = 2) => (x === null || x === undefined) ? "—" : x.toFixed(d);
+  const notes = (r.log || []).map((l) => `<div class="tq-dim">${l}</div>`).join("");
+  if (r.format === "NRZ") {
+    out.innerHTML = `<span class="tq-big">TDEC ${f(r.tdec_db)} dB</span>
+      &nbsp; OMA&minus;TDEC ${f(r.oma_tdec_dbm)} dBm${r.at_floor ? " (at floor)" : ""}
+      &nbsp;|&nbsp; OMA<sub>${r.family}</sub> ${fmtSI(r.oma)}${u}
+      &nbsp;|&nbsp; ER ${f(r.er_db)} dB <span class="tq-dim">(${secs} s)</span>${notes}`;
+  } else {
+    const taps = r.taps.length
+      ? `${r.method} FFE [${r.taps.map((c) => c.toFixed(3)).join(", ")}], C<sub>eq</sub> ${f(r.ceq, 3)}`
+        + (r.evals ? `, ${r.evals} evals` : "")
+        + (r.rms_after !== null && r.rms_after !== undefined
+          ? `, rms err ${fmtSI(r.rms_before)} &rarr; ${fmtSI(r.rms_after)}${u}` : "")
+      : "no equalizer";
+    out.innerHTML = `<span class="tq-big">TDECQ ${f(r.tdecq_db)} dB</span>
+      <span class="tq-dim">(${f(r.tdecq_raw_db)} dB unequalized)</span>
+      &nbsp;|&nbsp; OMA<sub>${r.family}</sub> ${fmtSI(r.oma)}${u}
+      &nbsp;|&nbsp; ${taps}
+      &nbsp;|&nbsp; levels ${r.levels.map((x) => x === null ? "—" : fmtSI(x)).join(" / ")}${u}
+      <span class="tq-dim">(${secs} s)</span>${notes}`;
+  }
+  eyeScored = { result: lastResult, trace: sel,
+                t: r.scored.t, values: r.scored.values };
+  if ($("tq-show").checked) renderEye();
+}
+$("tq-run").addEventListener("click", measureEye);
+
 function renderEye() {
   const hint = $("eye-hint"), canvas = $("eye-canvas"),
         ctrls = $("eye-controls"), sel = $("eye-trace"),
@@ -3001,6 +3118,8 @@ function renderEye() {
   hint.hidden = usable;
   canvas.style.display = usable ? "" : "none";
   ctrls.style.display = usable ? "" : "none";
+  $("eye-tdecq").style.display = usable ? "" : "none";
+  syncTdecqControls();   // NRZ/PAM4 follows the loaded pattern source
   if (!usable) {
     hint.textContent = "Run a transient analysis with at least one visible "
       + "probe, then fold it into an eye here.";
@@ -3045,12 +3164,20 @@ function renderEye() {
     swSel.value = (prevSw === "__all__" || labels.includes(prevSw))
       ? prevSw : "__all__";
   }
-  const shown = (isSweep && swSel.value !== "__all__")
+  let shown = (isSweep && swSel.value !== "__all__")
     ? fam.filter((q) => labelOf(q) === swSel.value)
     : fam;
   if (!shown.length) return;
+  let t = lastResult.x;
+  // "show scored eye": draw what stateye measured (after its reference
+  // receiver and equalizer) instead of the raw probe
+  const sc = eyeScored;
+  if ($("tq-show").checked && sc && sc.result === lastResult
+      && sc.trace === sel.value) {
+    shown = [{ ...shown[0], name: `${sel.value} (scored)`, values: sc.values }];
+    t = sc.t;
+  }
   const tr = shown[0];
-  const t = lastResult.x;
   const ui = parseSI($("eye-ui").value);
   if (!(ui > 0) || t.length < 8) return;
   const tEnd = t[t.length - 1];

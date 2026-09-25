@@ -279,7 +279,7 @@ class Handler(BaseHTTPRequestHandler):
             self._json({"ok": True})
             return
         if route not in ("/api/run", "/api/upload", "/api/upload_va",
-                         "/api/schematic"):
+                         "/api/schematic", "/api/eyemeasure"):
             self._json({"error": "not found"}, 404)
             return
         try:
@@ -315,6 +315,13 @@ class Handler(BaseHTTPRequestHandler):
             return
         if route == "/api/upload":
             self._json(self._upload(payload))
+            return
+        if route == "/api/eyemeasure":
+            # stateye scoring of an eye the browser already has: CPU-bound
+            # numpy/Cython, no circuit state, so it skips _RUN_LOCK
+            import eyemeasure
+            res = eyemeasure.measure(payload)
+            self._json(res, 200 if res.get("ok") else 422)
             return
         if route == "/api/upload_va":
             if not _ALLOW_VA_UPLOAD:

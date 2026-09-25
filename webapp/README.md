@@ -125,6 +125,16 @@ container image does this, so production runs exactly one process.
   source), scope-style persistence render, with levels (1-D k-means), per-eye
   height, and width (guard-banded clear phase span). Multi-seed noise
   families fold together.
+  Its **stateye** row scores whatever eye is shown (`POST /api/eyemeasure`,
+  `webapp/eyemeasure.py`): PAM4 -> IEEE TDECQ, raw and through the reference
+  FFE; NRZ -> TDEC and OMA - TDEC. Settings: reference-receiver bandwidth
+  (x baud, or off) and order, FFE taps and pre-cursors, how the taps adapt
+  (MMSE block solve, normalized LMS with step mu and passes, TDECQ-optimal
+  Nelder-Mead on TDECQ itself -- the 802.3 definition, slow -- or manual
+  taps), training on the PRBS source's pattern or decision-directed,
+  target SER/BER, scope noise S, and the histogram grid. "show scored eye"
+  draws the eye stateye measured (after the reference receiver and FFE,
+  time-aligned to the probe).
 * **Link tab / BER report**: pick a received probe in the Link tab's
   "BER vs" select. Alignment and error counting are data-aided
   against the PRBS source's known sequence: best sampling phase + lag by

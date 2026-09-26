@@ -1,0 +1,62 @@
+# Builds the static demo (scripts/build_static_demo.py) from the published
+# container image and deploys it to GitHub Pages: the web editor with every
+# example pre-simulated, no server, no sign-in. Runs after each successful
+# `image` build on main. Branch runs (workflow_dispatch --ref <branch>) build
+# against :latest and upload the site as an artifact instead of deploying.
+name: demo-site
+
+on:
+  workflow_dispatch:
+  workflow_run:
+    workflows: [image]
+    types: [completed]
+    branches: [main]
+
+concurrency:
+  group: demo-site-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+jobs:
+  build:
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # the frontend must match the image the runs are captured from
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+      - name: Start the photonflux server (published image)
+        run: |
+          tag=${{ github.event.workflow_run.head_sha || 'latest' }}
+          docker run -d --name pf -p 7860:7860 -e PHOTONFLUX_RUN_TIMEOUT_S=900 \
+            "ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/photonflux:${tag}"
+          for i in $(seq 90); do curl -fs localhost:7860/api/examples >/dev/null && exit 0; sleep 2; done
+          docker logs pf; exit 1
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install playwright && playwright install --with-deps chromium
+      - name: Capture every example
+        run: python scripts/build_static_demo.py --server http://localhost:7860 --out site --timeout 960
+      - if: failure()
+        run: docker logs pf 2>&1 | tail -100
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  deploy:
+    needs: build
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

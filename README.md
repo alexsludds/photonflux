@@ -4,11 +4,14 @@ https://github.com/user-attachments/assets/0dac7b0e-1fee-4d63-bde9-962e2db27d65
 
 <sub>🔊 Sound on. The 65-second trailer, VHS-tape vintage, seagulls included.</sub>
 
-[![Open in GitHub Codespaces](https://github.com/codespaces/badge.svg)](https://codespaces.new/alexsludds/photonflux?quickstart=1)
+**[▶ Try it in your browser](https://alexsludds.github.io/photonflux/)**: the
+schematic editor with every example pre-simulated. There's nothing to install
+and no sign-in; pick an example and press Run.
 
-Try the schematic editor and simulator in your browser with no install: the
-Codespace opens the web app in about a minute, running on your free GitHub
-Codespaces quota.
+To simulate circuits you edit, run the full simulator for free in a Codespace
+(needs a GitHub account; the app opens on port 7860 after about a minute):
+
+[![Open in GitHub Codespaces](https://github.com/codespaces/badge.svg)](https://codespaces.new/alexsludds/photonflux?quickstart=1)
 
 Photonflux simulates **Verilog-A photonic compact models** together with **real
 SKY130 PDK transistors** inside [circulax](https://github.com/gdsfactory/circulax)

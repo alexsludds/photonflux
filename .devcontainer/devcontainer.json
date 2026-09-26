@@ -1,0 +1,14 @@
+{
+  // "Open in Codespaces": runs the prebuilt image from .github/workflows/image.yml
+  // (warmed model caches, SKY130 PDK) and starts the web app on port 7860.
+  // The server runs the image's copy of the code in /app, not this workspace.
+  "name": "photonflux",
+  "image": "ghcr.io/alexsludds/photonflux:latest",
+  "remoteUser": "user",
+  "hostRequirements": { "cpus": 4, "memory": "16gb" },
+  "forwardPorts": [7860],
+  "portsAttributes": {
+    "7860": { "label": "photonflux", "onAutoForward": "openBrowser" }
+  },
+  "postStartCommand": "setsid nohup python /app/webapp/server.py > /tmp/photonflux.log 2>&1 &"
+}

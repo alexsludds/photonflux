@@ -4,6 +4,12 @@ https://github.com/user-attachments/assets/0dac7b0e-1fee-4d63-bde9-962e2db27d65
 
 <sub>🔊 Sound on. The 65-second trailer, VHS-tape vintage, seagulls included.</sub>
 
+[![Open in GitHub Codespaces](https://github.com/codespaces/badge.svg)](https://codespaces.new/alexsludds/photonflux?quickstart=1)
+
+Try the schematic editor and simulator in your browser with no install: the
+Codespace opens the web app in about a minute, running on your free GitHub
+Codespaces quota.
+
 Photonflux simulates **Verilog-A photonic compact models** together with **real
 SKY130 PDK transistors** inside [circulax](https://github.com/gdsfactory/circulax)
 (gdsfactory's differentiable JAX/Diffrax circuit simulator). Optics and
@@ -113,14 +119,17 @@ volts).
 The solver is JAX + native `circulax`, so a pure static / WebAssembly (GitHub
 Pages) build isn't possible — instead **one container serves both** the static
 UI and the `/api/run` solver. The image (repo-root [`Dockerfile`](Dockerfile))
-builds a Linux `openvaf-ir` from source, installs circulax + the SKY130 PDK, and
+downloads a CI-built Linux `openvaf-ir`, installs circulax + the SKY130 PDK, and
 pre-warms every model cache via [`webapp/warmup.py`](webapp/warmup.py). Public
 builds disable Verilog-A upload and cap run time by env var.
 
-The recommended **free** host is **Google Cloud Run** (builds in the cloud,
-scale-to-zero, free tier covers a demo); see
-[docs/README-DEPLOY.md](docs/README-DEPLOY.md) for the full walkthrough (Hugging Face's
-Docker SDK went paid for free accounts in 2026).
+CI publishes the image to `ghcr.io/alexsludds/photonflux`, and the
+**Open in Codespaces** badge above runs it for free on the visitor's own
+Codespaces quota (the Codespace serves the image's copy of the code, not edits
+in the workspace). For a public URL without sign-in, Google Cloud Run costs $0
+at demo traffic but needs billing enabled; see
+[docs/README-DEPLOY.md](docs/README-DEPLOY.md) (Hugging Face's Docker SDK went
+paid for free accounts in 2026).
 
 ## Standalone examples — `examples/` ([examples/README.md](examples/README.md))
 

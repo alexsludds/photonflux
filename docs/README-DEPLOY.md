@@ -19,7 +19,7 @@ Everything is in the repo-root [`Dockerfile`](../Dockerfile) + build-time
 | openvaf-py 0.1.5 | PyPI (manylinux) | Verilog-A front-end binding |
 | **bosdi 0.1.5** | **GitHub release wheel** | *not on PyPI* — installed from `gdsfactory/bosdi` release `v0.1.5` (manylinux_2_28_x86_64) |
 | libngspice0 | apt | SKY130 model-card extraction |
-| **openvaf-ir** | **built from source** | ChipFlow fork `robtaylor/OpenVAF@vajax`, LLVM 18 — no released binary exists |
+| **openvaf-ir** | **`openvaf-ir` release asset** | ChipFlow fork `robtaylor/OpenVAF@vajax`, LLVM 18 — built once by CI ([`openvaf-ir.yml`](../.github/workflows/openvaf-ir.yml)), downloaded via `OPENVAF_IR_URL` |
 | SKY130 PDK | volare | pinned `open_pdks c6d73a35…` |
 | photonic `models/__jax__/*.py` + Linux `*.osdi` | warmup | pre-compiled into the image |
 
@@ -29,12 +29,34 @@ native code, so it is **off**), `PHOTONFLUX_RUN_TIMEOUT_S=600` (10-min ceiling �
 generous enough for the multi-minute Vernier example, bounds runaways),
 `PHOTONFLUX_OPENVAF_IR=/app/bin/openvaf-ir`.
 
-## ⚠️ The one step to watch on the first build
+## GitHub Codespaces (free, recommended)
 
-`openvaf-ir` (the BSIM4-correct OpenVAF fork) has **no prebuilt binary**, so the
-`ovbuild` stage compiles it with Rust + LLVM 18 (per the README "Rebuilding the
-openvaf binaries" recipe). This is the only fragile stage. After the build,
-**read the warmup summary in the build log** — it prints `PASS/FAIL` per model:
+Visitors click **Open in Codespaces** in the README and get the full web app
+(SKY130 included) in about a minute, on *their own* free Codespaces quota
+(120 core-hours/month for any GitHub account) — hosting costs nothing.
+
+* [`.github/workflows/openvaf-ir.yml`](../.github/workflows/openvaf-ir.yml)
+  builds the Linux `openvaf-ir` once and publishes it as the `openvaf-ir`
+  release asset (re-runs when `docker/openvaf-ir.Dockerfile` changes).
+* [`.github/workflows/image.yml`](../.github/workflows/image.yml) builds the
+  repo-root `Dockerfile` on every push to `main` and pushes
+  `ghcr.io/alexsludds/photonflux:latest`.
+* [`.devcontainer/devcontainer.json`](../.devcontainer/devcontainer.json) runs
+  that image, starts `webapp/server.py` and opens port 7860 in the browser.
+
+**One-time:** after the first `image` run, make the package public —
+GitHub → your profile → Packages → `photonflux` → Package settings → Change
+visibility → Public. Codespaces for other users can't pull a private image.
+
+The same image also runs anywhere with Docker:
+`docker run --rm -p 7860:7860 ghcr.io/alexsludds/photonflux`.
+
+## ⚠️ What to watch on the first build
+
+`openvaf-ir` (the BSIM4-correct OpenVAF fork) has **no upstream binary**; CI
+compiles it with Rust + LLVM 18 and the image downloads the result. After the
+image build, **read the warmup summary in the build log** — it prints
+`PASS/FAIL` per model:
 
 ```
 [warmup] summary: 5/5 ok
@@ -42,20 +64,17 @@ openvaf binaries" recipe). This is the only fragile stage. After the build,
 ```
 
 If the FET lines FAIL but the photonic ones pass, the image still ships and all
-photonics works; only SKY130 examples are affected. To ship photonics-only
-deliberately (skip the whole OpenVAF build), comment out the `ovbuild` stage and
-its `COPY --from=ovbuild …` line — the photonic path needs no native toolchain at
-runtime. (`webapp/warmup.py` already tolerates FET failures; set `WARMUP_STRICT=1`
+photonics works; only SKY130 examples are affected. The photonic path needs
+no native toolchain at runtime. (`webapp/warmup.py` already tolerates FET failures; set `WARMUP_STRICT=1`
 to make any failure fail the build instead.)
 
-## Option A — Google Cloud Run (recommended free path)
+## Option A — Google Cloud Run (public URL, $0 but needs billing)
 
 **Free for a low-traffic demo** via Google's Always Free tier (2M requests +
 180k vCPU-sec + 360k GB-sec/month), scale-to-zero, and it **builds the image in
 the cloud** — no local Docker needed. Requires a GCP project with **billing
-enabled** (a card on file; you pay ~$0 at demo traffic). The heavy OpenVAF build
-needs a **two-step** flow — the naive `gcloud run deploy --source .` hits Cloud
-Build's 10-min default timeout.
+enabled** (a card on file; you pay ~$0 at demo traffic). The PDK fetch + warmup
+can exceed Cloud Build's 10-min default timeout, so use a **two-step** flow.
 
 ```bash
 # 0) one-time: install gcloud, log in, pick a project + region
@@ -68,7 +87,7 @@ gcloud artifacts repositories create photonflux \
 
 IMG=$REGION-docker.pkg.dev/$PROJECT/photonflux/app:latest
 
-# 1) build in the cloud — raise the timeout (Rust/LLVM + PDK is slow) and use a
+# 1) build in the cloud — raise the timeout (PDK + warmup is slow) and use a
 #    bigger builder so it finishes; watch the log for the warmup PASS/FAIL summary
 gcloud builds submit --tag "$IMG" --timeout=3600s --machine-type=e2-highcpu-8 .
 
@@ -80,8 +99,8 @@ gcloud run deploy photonflux --image "$IMG" --region $REGION \
 
 `--min-instances 0` → $0 when idle (cold start on the next hit); `--max-instances`
 caps runaway cost; `--memory 4Gi` gives JAX headroom (try 2Gi to trim cost).
-`e2-highcpu-8` is a small paid build cost but keeps the LLVM compile under the
-timeout; drop it to use free build minutes if you don't mind a slower build.
+`e2-highcpu-8` is a small paid build cost but keeps the PDK fetch + warmup under
+the timeout; drop it to use free build minutes if you don't mind a slower build.
 
 ## Option B — Hugging Face Spaces (Docker SDK — now paid)
 
@@ -115,8 +134,8 @@ public URL that sleeps after ~48 h idle.
    ```
 
    The Space builds the image and serves it at
-   `https://<user>-photonflux.hf.space`. First build is long (Rust/LLVM +
-   PDK download); watch the build log for the warmup summary.
+   `https://<user>-photonflux.hf.space`; watch the build log for the warmup
+   summary.
 
 ## Build and run locally (optional pre-flight)
 

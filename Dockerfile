@@ -31,10 +31,12 @@ ARG SKY130_PDK_COMMIT
 ARG OPENVAF_IR_URL
 
 # Native runtime libs: libngspice0 (SKY130 model-card extraction via ctypes);
-# libstdc++/zlib/tinfo/xml2 are the shared libs a statically-LLVM-linked
-# openvaf-ir still resolves at runtime. git is kept for volare's PDK fetch.
+# libstdc++/zlib/zstd/tinfo/xml2 are the shared libs a statically-LLVM-linked
+# openvaf-ir still resolves at runtime, and binutils provides the `ld` it links
+# each .osdi with (without it openvaf-ir exits 0 and writes nothing). git is
+# kept for volare's PDK fetch.
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        libngspice0 git ca-certificates libstdc++6 zlib1g libzstd1 libtinfo6 libxml2 \
+        libngspice0 git ca-certificates libstdc++6 zlib1g libzstd1 libtinfo6 libxml2 binutils \
     && rm -rf /var/lib/apt/lists/*
 
 # Non-root uid 1000 — the Codespaces devcontainer's remoteUser.

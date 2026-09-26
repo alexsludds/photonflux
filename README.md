@@ -1,5 +1,9 @@
 # Photonflux — Verilog-A photonics + SKY130 electronics
 
+https://github.com/user-attachments/assets/0dac7b0e-1fee-4d63-bde9-962e2db27d65
+
+<sub>🔊 Sound on. The 65-second trailer, VHS-tape vintage, seagulls included.</sub>
+
 Photonflux simulates **Verilog-A photonic compact models** together with **real
 SKY130 PDK transistors** inside [circulax](https://github.com/gdsfactory/circulax)
 (gdsfactory's differentiable JAX/Diffrax circuit simulator). Optics and

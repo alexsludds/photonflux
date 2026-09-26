@@ -34,7 +34,7 @@ ARG OPENVAF_IR_URL
 # libstdc++/zlib/tinfo/xml2 are the shared libs a statically-LLVM-linked
 # openvaf-ir still resolves at runtime. git is kept for volare's PDK fetch.
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        libngspice0 git ca-certificates libstdc++6 zlib1g libtinfo6 libxml2 \
+        libngspice0 git ca-certificates libstdc++6 zlib1g libzstd1 libtinfo6 libxml2 \
     && rm -rf /var/lib/apt/lists/*
 
 # Non-root uid 1000 — the Codespaces devcontainer's remoteUser.

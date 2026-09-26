@@ -23,13 +23,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN curl -fsSL https://apt.llvm.org/llvm.sh -o /tmp/llvm.sh \
     && chmod +x /tmp/llvm.sh && /tmp/llvm.sh ${LLVM_VER} \
     && apt-get update && apt-get install -y --no-install-recommends \
-        llvm-${LLVM_VER}-dev libclang-${LLVM_VER}-dev \
+        llvm-${LLVM_VER}-dev libclang-${LLVM_VER}-dev clang-${LLVM_VER} \
     && rm -rf /var/lib/apt/lists/*
+# openvaf/target/build.rs shells out to unversioned `clang` and `llvm-lib`
+# (it builds the Windows UCRT import libs on every host).
+ENV PATH=/usr/lib/llvm-${LLVM_VER}/bin:$PATH
 RUN git clone --depth 1 -b ${OPENVAF_REF} https://github.com/robtaylor/OpenVAF /src/openvaf
 WORKDIR /src/openvaf
 # Static LLVM link (no PREFER_DYNAMIC) so openvaf-ir is self-contained and the
-# runtime image needs no libLLVM. (If it stops on the Windows-only UCRT
-# import-lib step, patch openvaf/target/build.rs to `let check = true;`.)
+# runtime image needs no libLLVM.
 RUN LLVM_SYS_181_PREFIX=/usr/lib/llvm-${LLVM_VER} \
     cargo build --release -p openvaf-driver --bin openvaf-r --features llvm${LLVM_VER} \
     && cp target/release/openvaf-r /openvaf-ir \

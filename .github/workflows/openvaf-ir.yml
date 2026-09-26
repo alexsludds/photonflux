@@ -25,6 +25,8 @@ jobs:
       - name: Build + smoke-test openvaf-ir
         run: docker buildx build -f docker/openvaf-ir.Dockerfile --target out --output type=local,dest=dist .
       - name: Publish release asset
+        # Branch runs (workflow_dispatch --ref <branch>) build and smoke-test only.
+        if: github.ref == 'refs/heads/main'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |

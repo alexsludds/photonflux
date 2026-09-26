@@ -31,10 +31,12 @@ ARG SKY130_PDK_COMMIT
 ARG OPENVAF_IR_URL
 
 # Native runtime libs: libngspice0 (SKY130 model-card extraction via ctypes);
-# libstdc++/zlib/tinfo/xml2 are the shared libs a statically-LLVM-linked
-# openvaf-ir still resolves at runtime. git is kept for volare's PDK fetch.
+# libstdc++/zlib/zstd/tinfo/xml2 are the shared libs a statically-LLVM-linked
+# openvaf-ir still resolves at runtime, and binutils provides the `ld` it links
+# each .osdi with (without it openvaf-ir exits 0 and writes nothing). git is
+# kept for volare's PDK fetch.
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        libngspice0 git ca-certificates libstdc++6 zlib1g libzstd1 libtinfo6 libxml2 \
+        libngspice0 git ca-certificates libstdc++6 zlib1g libzstd1 libtinfo6 libxml2 binutils \
     && rm -rf /var/lib/apt/lists/*
 
 # Non-root uid 1000 — the Codespaces devcontainer's remoteUser.
@@ -76,7 +78,8 @@ RUN python -m volare enable --pdk sky130 ${SKY130_PDK_COMMIT} \
 # build_models() lowers all photonic .va -> models/__jax__/*.py and compiles the
 # SKY130 FET flavors -> Linux .osdi; then a few representative examples JIT-warm
 # the solver and prove the toolchain end to end. Failures are logged, not fatal.
-RUN python /app/webapp/warmup.py
+ARG WARMUP_STRICT=0
+RUN WARMUP_STRICT=${WARMUP_STRICT} python /app/webapp/warmup.py
 
 # --- server config ---------------------------------------------------------
 # PHOTONFLUX_RELOAD=0 keeps this a single plain process: the dev auto-reloader

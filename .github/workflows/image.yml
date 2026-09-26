@@ -41,7 +41,10 @@ jobs:
       - uses: docker/build-push-action@v6
         with:
           context: .
-          push: true
+          # Branch runs (workflow_dispatch --ref <branch>) build and warm only.
+          push: ${{ github.ref == 'refs/heads/main' }}
+          # Fail the build if any warmup example (incl. SKY130 FETs) fails.
+          build-args: WARMUP_STRICT=1
           tags: |
             ${{ steps.img.outputs.name }}:latest
             ${{ steps.img.outputs.name }}:${{ github.sha }}

@@ -793,10 +793,15 @@ def _bsim4_osdi() -> Path:
     out = CACHE_DIR / f"bsim4_{key}.osdi"
     if not out.exists():
         CACHE_DIR.mkdir(parents=True, exist_ok=True)
-        subprocess.run(
+        proc = subprocess.run(
             [str(binary), str(BSIM4_VA), "-o", str(out)],
-            check=True, capture_output=True, text=True,
+            capture_output=True, text=True,
         )
+        if proc.returncode or not out.exists():
+            raise RuntimeError(
+                f"{binary.name} did not produce {out.name} (exit {proc.returncode}):\n"
+                f"{proc.stdout[-2000:]}{proc.stderr[-2000:]}"
+            )
     return out
 
 

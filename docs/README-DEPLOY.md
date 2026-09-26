@@ -29,7 +29,19 @@ native code, so it is **off**), `PHOTONFLUX_RUN_TIMEOUT_S=600` (10-min ceiling â
 generous enough for the multi-minute Vernier example, bounds runaways),
 `PHOTONFLUX_OPENVAF_IR=/app/bin/openvaf-ir`.
 
-## GitHub Codespaces (free, recommended)
+## Static demo on GitHub Pages (free, no sign-in)
+
+[`.github/workflows/demo-site.yml`](../.github/workflows/demo-site.yml) runs
+after each successful `image` build: it starts the image, drives the editor
+headlessly through every example
+([`scripts/build_static_demo.py`](../scripts/build_static_demo.py)), and
+deploys `webapp/static` + [`demo.js`](../webapp/static/demo.js) + the captured
+results to https://alexsludds.github.io/photonflux/. Unedited examples replay
+instantly; edited circuits point to the Codespace. One-time: enable Pages with
+the Actions source:
+`gh api -X POST repos/alexsludds/photonflux/pages -f build_type=workflow`.
+
+## GitHub Codespaces (free, full simulator)
 
 Visitors click **Open in Codespaces** in the README and get the full web app
 (SKY130 included) in about a minute, on *their own* free Codespaces quota

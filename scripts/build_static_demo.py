@@ -99,20 +99,20 @@ def capture_runs(server: str, data: Path, ids: list[str], timeout_s: float) -> d
             ctx = browser.new_context(viewport={"width": 1600, "height": 1000})
             page = ctx.new_page()
             try:
-                page.goto(server + "/", wait_until="networkidle")
+                page.goto(server + "/", wait_until="load")
                 page.wait_for_function(
                     "document.querySelectorAll('#sel-example option').length > 1")
                 if ex is not None:
                     page.select_option("#sel-example", ex)
-                    page.wait_for_load_state("networkidle")
-                    page.wait_for_timeout(500)
+                    page.wait_for_timeout(1500)   # example fetch + loadDocument
                 with page.expect_response(is_run, timeout=timeout_s * 1000) as info:
                     page.evaluate("document.getElementById('btn-run').click()")
                 resp = info.value
                 body = resp.request.post_data or ""
                 text = resp.text()
-                if not json.loads(text).get("ok"):
-                    raise RuntimeError(json.loads(text).get("error", "run failed"))
+                res = json.loads(text)
+                if not res.get("ok"):
+                    raise RuntimeError(res.get("error", "run failed"))
                 name = ex or BOOT_EXAMPLE
                 if ex is not None:
                     (runs / f"{name}.json").write_text(text)
@@ -137,6 +137,8 @@ def main() -> None:
     ap.add_argument("--out", type=Path, default=REPO / "site")
     ap.add_argument("--only", help="comma-separated example ids (default: all)")
     ap.add_argument("--timeout", type=float, default=660, help="per-run timeout, s")
+    ap.add_argument("--max-failures", type=int, default=3,
+                    help="fail the build if more example runs than this fail")
     args = ap.parse_args()
     server = args.server.rstrip("/")
     only = set(args.only.split(",")) if args.only else None
@@ -149,8 +151,8 @@ def main() -> None:
     ok = len(index["examples"])
     print(f"done: {ok}/{len(ids)} examples captured"
           + (f"; failed: {', '.join(index['failed'])}" if index["failed"] else ""))
-    if ok == 0:
-        sys.exit("no example runs captured")
+    if ok == 0 or len(index["failed"]) > args.max_failures:
+        sys.exit(f"{len(index['failed'])} example runs failed (limit {args.max_failures})")
 
 
 if __name__ == "__main__":

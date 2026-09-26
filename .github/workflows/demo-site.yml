@@ -13,7 +13,7 @@ on:
     branches: [main]
 
 concurrency:
-  group: demo-site
+  group: demo-site-${{ github.ref }}
   cancel-in-progress: true
 
 permissions:
@@ -28,6 +28,9 @@ jobs:
     timeout-minutes: 240
     steps:
       - uses: actions/checkout@v4
+        with:
+          # the frontend must match the image the runs are captured from
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
       - name: Start the photonflux server (published image)
         run: |
           tag=${{ github.event.workflow_run.head_sha || 'latest' }}

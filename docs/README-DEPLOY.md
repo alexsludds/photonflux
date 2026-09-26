@@ -99,8 +99,8 @@ gcloud run deploy photonflux --image "$IMG" --region $REGION \
 
 `--min-instances 0` → $0 when idle (cold start on the next hit); `--max-instances`
 caps runaway cost; `--memory 4Gi` gives JAX headroom (try 2Gi to trim cost).
-`e2-highcpu-8` is a small paid build cost but keeps the LLVM compile under the
-timeout; drop it to use free build minutes if you don't mind a slower build.
+`e2-highcpu-8` is a small paid build cost but keeps the PDK fetch + warmup under
+the timeout; drop it to use free build minutes if you don't mind a slower build.
 
 ## Option B — Hugging Face Spaces (Docker SDK — now paid)
 

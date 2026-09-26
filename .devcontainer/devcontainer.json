@@ -10,5 +10,5 @@
   "portsAttributes": {
     "7860": { "label": "photonflux", "onAutoForward": "openBrowser" }
   },
-  "postStartCommand": "nohup bash -c 'python /app/webapp/server.py > /tmp/photonflux.log 2>&1 &'"
+  "postStartCommand": "setsid nohup python /app/webapp/server.py > /tmp/photonflux.log 2>&1 &"
 }

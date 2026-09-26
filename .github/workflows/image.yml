@@ -2,13 +2,17 @@
 # card extraction, warmed model caches) and publishes it to
 # ghcr.io/<owner>/photonflux. The Codespaces devcontainer runs this image, so
 # "Open in Codespaces" starts the web app without rebuilding anything.
-# Needs the `openvaf-ir` release asset (.github/workflows/openvaf-ir.yml).
+# Needs the `openvaf-ir` release asset: it also re-runs after
+# .github/workflows/openvaf-ir.yml succeeds, which covers the very first build.
 name: image
 
 on:
   workflow_dispatch:
   push:
     branches: [main]
+  workflow_run:
+    workflows: [openvaf-ir]
+    types: [completed]
 
 concurrency:
   group: image
@@ -20,6 +24,7 @@ permissions:
 
 jobs:
   build:
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 90
     steps:
@@ -42,4 +47,4 @@ jobs:
             ${{ steps.img.outputs.name }}:${{ github.sha }}
           labels: org.opencontainers.image.source=https://github.com/${{ github.repository }}
           cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-to: type=gha,mode=min

@@ -37,7 +37,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         libngspice0 git ca-certificates libstdc++6 zlib1g libtinfo6 libxml2 \
     && rm -rf /var/lib/apt/lists/*
 
-# HF Spaces (and good hygiene) run the container as a non-root user, uid 1000.
+# Non-root uid 1000 — the Codespaces devcontainer's remoteUser.
 RUN useradd -m -u 1000 user
 ENV HOME=/home/user
 WORKDIR /app

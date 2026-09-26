@@ -1,11 +1,13 @@
 # Builds the Linux openvaf-ir (BSIM4 -> OSDI compiler) once and publishes it as
-# the `openvaf-ir` release asset, so the Hugging Face Space image downloads it
-# instead of compiling Rust + LLVM 18 on every build.
+# the `openvaf-ir` release asset, so the repo-root Dockerfile downloads it
+# instead of compiling Rust + LLVM 18 on every build. Main only: the asset is
+# what main's image uses, so branches must not overwrite it.
 name: openvaf-ir
 
 on:
   workflow_dispatch:
   push:
+    branches: [main]
     paths:
       - docker/openvaf-ir.Dockerfile
       - .github/workflows/openvaf-ir.yml
@@ -33,5 +35,5 @@ jobs:
           else
             gh release create openvaf-ir dist/openvaf-ir-linux-x86_64 \
               --title "openvaf-ir (Linux x86_64 build tool)" --notes "$notes" \
-              --prerelease --latest=false
+              --prerelease
           fi

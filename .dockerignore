@@ -1,6 +1,6 @@
 # Keep the build context small and free of Mac-native artifacts. The image
-# rebuilds every native piece for Linux (openvaf-ir from source, .osdi via
-# warmup) and installs Python deps from wheels — none of the local venv or
+# rebuilds every native piece for Linux (openvaf-ir downloaded from the CI
+# release, .osdi via warmup) and installs Python deps from wheels — none of the local venv or
 # vendored Mac binaries should enter the image.
 .venv-circulax/
 .git/

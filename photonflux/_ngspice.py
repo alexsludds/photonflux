@@ -80,9 +80,6 @@ def _default_library_candidates() -> list[str]:
         "/usr/lib/libngspice.so",
         "/usr/local/lib/libngspice.so",
     ]
-    found = find_library("ngspice")
-    if found:
-        cands.append(found)
     return cands
 
 
@@ -90,6 +87,11 @@ def find_libngspice() -> str:
     for cand in _default_library_candidates():
         if Path(cand).exists():
             return cand
+    # On Linux find_library returns a bare soname (Debian's libngspice0 ships
+    # only /usr/lib/<triple>/libngspice.so.0), which ctypes.CDLL resolves itself.
+    found = find_library("ngspice")
+    if found:
+        return found
     raise FileNotFoundError(
         "libngspice not found. Install it (macOS: `brew install libngspice`) "
         "or point NGSPICE_LIBRARY_PATH at the shared library."

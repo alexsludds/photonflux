@@ -76,7 +76,8 @@ RUN python -m volare enable --pdk sky130 ${SKY130_PDK_COMMIT} \
 # build_models() lowers all photonic .va -> models/__jax__/*.py and compiles the
 # SKY130 FET flavors -> Linux .osdi; then a few representative examples JIT-warm
 # the solver and prove the toolchain end to end. Failures are logged, not fatal.
-RUN python /app/webapp/warmup.py
+ARG WARMUP_STRICT=0
+RUN WARMUP_STRICT=${WARMUP_STRICT} python /app/webapp/warmup.py
 
 # --- server config ---------------------------------------------------------
 # PHOTONFLUX_RELOAD=0 keeps this a single plain process: the dev auto-reloader

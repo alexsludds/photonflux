@@ -3078,9 +3078,9 @@ $("eye-mod").addEventListener("change", syncTdecqControls);
 // "auto" passes through: the server picks the lane rate's 802.3 value
 function stateyeCfg(nlv) {
   const rxbw = $("tq-rxbw").value.trim().toLowerCase();
-  const auto = (id, parse) => {
+  const auto = (id, parse, bad = 0) => {
     const v = $(id).value.trim().toLowerCase();
-    return v === "auto" || v === "" ? "auto" : (parse(v) || 0);
+    return v === "auto" || v === "" ? "auto" : (parse(v) || bad);
   };
   return {
     rx_bw: rxbw === "auto" ? (nlv === 4 ? 0.5 : 0.75) : (rxbw === "off" ? "off" : parseFloat(rxbw)),
@@ -3100,7 +3100,7 @@ function stateyeCfg(nlv) {
     nx: parseInt($("tq-grid").value.split("x")[0]),
     ny: parseInt($("tq-grid").value.split("x")[1]),
     // the field holds "auto" until the eye is NRZ: TDEC's BER then is 1e-12
-    [nlv === 4 ? "ser" : "ber"]: nlv === 4 ? auto("tq-ser", parseFloat)
+    [nlv === 4 ? "ser" : "ber"]: nlv === 4 ? auto("tq-ser", parseFloat, "auto")
       : (parseFloat($("tq-ser").value) || 1e-12),
   };
 }

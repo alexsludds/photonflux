@@ -196,8 +196,9 @@ the flows switched to the 802.3dj reference equalizer and S = 0.)
   Nelder-Mead on TDECQ itself -- the Clause 121 definition, slow, with live
   "evaluation i/n" progress -- or manual taps), the P802.3dj D3.2 Table
   180-16 reference-equalizer limits (w(0) >= 0.9 - b(1), the pre/post
-  difference including the DFE tap, 0 <= b <= 0.33; on by default: the
-  search stays inside them, MMSE/LMS taps are projected into them), training
+  difference including the DFE tap, 0 <= b <= 0.33; on by default at
+  200G/lane -- 802.3cd sets none at 100G/lane -- the search stays inside
+  them, MMSE/LMS taps are projected into them), training
   on the PRBS source's pattern or decision-directed,
   target SER/BER, scope noise S, and the histogram grid. FFE taps,
   pre-cursors, DFE taps and target SER default to "auto": the lane rate's

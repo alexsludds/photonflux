@@ -125,29 +125,24 @@ def measure(payload: dict) -> dict:
             return [float(x) for x in str(cfg.get(key, "")).replace(
                 ",", " ").split()]
 
-        # "auto" (or blank) = the standard's value for this lane rate:
-        # P802.3dj at 200G/lane, 802.3cd at 100G/lane
-        ref = tdec.tdecq_reference(baud)
-
-        def setting(key, ref_key, cast):
-            v = cfg.get(key, "auto")
-            return ref[ref_key] if v in (None, "", "auto") else cast(v)
-
         method = str(cfg.get("method", "mmse"))
         manual = floats("manual") if method == "manual" else None
         if method == "manual" and not manual:
             return {"ok": False, "error": "manual equalizer: enter the FFE "
                     "taps (e.g. -0.05, 1.1, -0.05)"}
         dfe_manual = floats("manual_dfe") if method == "manual" else None
-        n_dfe = (len(dfe_manual) if method == "manual"
-                 else setting("dfe", "dfe_taps", int))
-        pam = dict(common, ser=setting("ser", "ser", float))
+        # "auto" (or blank) = the standard's value for this lane rate:
+        # P802.3dj at 200G/lane, 802.3cd at 100G/lane
+        ref = tdec.resolve_reference(
+            baud, ser=cfg.get("ser"),
+            ffe_taps=len(manual) if manual else cfg.get("taps"),
+            ffe_pre=cfg.get("pre"),
+            dfe_taps=len(dfe_manual) if method == "manual" else cfg.get("dfe"),
+            ffe_limits="auto" if cfg.get("limits", True) else None)
+        n_taps, n_pre, n_dfe = ref["ffe_taps"], ref["ffe_pre"], ref["dfe_taps"]
+        pam = dict(common, ser=ref["ser"])
         _status("unequalized eye")
         raw = tdec.measure_pam4(p, dt, baud, ffe_taps=0, **pam)
-        n_taps = len(manual) if manual else setting("taps", "ffe_taps", int)
-        n_pre = setting("pre", "ffe_pre", int)
-        if n_pre >= max(n_taps, 1):      # e.g. 5 taps with dj's 3 pre-cursors
-            n_pre = (max(n_taps, 1) - 1) // 2
 
         def progress(i, n, v, best):
             this = ("outside 802.3dj limits" if v >= 100.0
@@ -164,7 +159,7 @@ def measure(payload: dict) -> dict:
             ffe_passes=int(cfg.get("passes", 5)), ffe_manual=manual,
             ffe_max_evals=int(cfg.get("max_evals", 40)),
             dfe_taps=n_dfe, dfe_manual=dfe_manual,
-            ffe_limits="auto" if cfg.get("limits", True) else None,
+            ffe_limits=ref["limits"],
             oma_reference={"outer": raw.get("oma_outer"),
                            "xp": raw.get("oma_xp")},
             progress=progress, **pam)

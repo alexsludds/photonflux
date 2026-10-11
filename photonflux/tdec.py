@@ -41,7 +41,8 @@ from typing import Any
 
 import numpy as np
 
-__all__ = ["Measurement", "reference_receiver", "tdecq_reference", "measure",
+__all__ = ["Measurement", "reference_receiver", "tdecq_reference",
+           "resolve_reference", "measure",
            "measure_pam4", "oma_tdec_dbm",
            "oma_tdec_floor_dbm", "q_inv", "MIN_SEGMENT_COUNT", "FLOOR_TOL_DB"]
 
@@ -85,6 +86,32 @@ def tdecq_reference(baud: float) -> dict:
                 "ffe_pre": 3, "dfe_taps": 1, "limits": "802.3dj"}
     return {"standard": "802.3cd", "ser": 4.8e-4, "ffe_taps": 5,
             "ffe_pre": 1, "dfe_taps": 0, "limits": None}
+
+
+def _unset(v) -> bool:
+    return v is None or (isinstance(v, str) and v.strip().lower() in ("", "auto"))
+
+
+def resolve_reference(baud: float, *, ser=None, ffe_taps=None, ffe_pre=None,
+                      dfe_taps=None, ffe_limits="auto") -> dict:
+    """TDECQ settings with every unset one (None, "" or "auto") taken from
+    :func:`tdecq_reference` for the lane rate.
+
+    ``ffe_taps=0`` means unequalized, so an unset DFE is then 0 too (no
+    silent DFE-only equalizer); an unset pre-cursor count is the standard's
+    where it fits, at most half the taps. ``ffe_limits`` "auto" is the
+    rate's limits; None turns them off.
+    """
+    ref = tdecq_reference(baud)
+    taps = ref["ffe_taps"] if _unset(ffe_taps) else int(ffe_taps)
+    pre = (min(ref["ffe_pre"], (max(taps, 1) - 1) // 2) if _unset(ffe_pre)
+           else int(ffe_pre))
+    dfe = ((ref["dfe_taps"] if taps else 0) if _unset(dfe_taps)
+           else int(dfe_taps))
+    return {"standard": ref["standard"],
+            "ser": ref["ser"] if _unset(ser) else float(ser),
+            "ffe_taps": taps, "ffe_pre": pre, "dfe_taps": dfe,
+            "limits": ref["limits"] if ffe_limits == "auto" else ffe_limits}
 
 
 @dataclass
@@ -469,16 +496,12 @@ def measure_pam4(
     p, dt_sec = _prepare(p_thru_mW, dt_sec, baud, ref_rx_bw_factor,
                          ref_rx_order, ref_rx_bw_hz, settle_ui)
 
-    ref = tdecq_reference(baud)
-    ser = ref["ser"] if ser is None else float(ser)
-    if ffe_taps is None:
-        ffe_taps = ref["ffe_taps"]
-    if ffe_pre is None:
-        ffe_pre = min(ref["ffe_pre"], (max(int(ffe_taps), 1) - 1) // 2)
-    if dfe_taps is None:
-        dfe_taps = ref["dfe_taps"] if ffe_taps else 0
-    if ffe_limits == "auto":
-        ffe_limits = ref["limits"]
+    if ffe_method == "manual" and ffe_manual and ffe_taps is None:
+        ffe_taps = len(ffe_manual)       # pre-cursors from the list's length
+    r = resolve_reference(baud, ser=ser, ffe_taps=ffe_taps, ffe_pre=ffe_pre,
+                          dfe_taps=dfe_taps, ffe_limits=ffe_limits)
+    ser, ffe_taps, ffe_pre, dfe_taps, ffe_limits = (
+        r["ser"], r["ffe_taps"], r["ffe_pre"], r["dfe_taps"], r["limits"])
     eq: dict = {}
     if ffe_taps or dfe_taps:
         if not hasattr(stateye, "tap_limit_violations"):

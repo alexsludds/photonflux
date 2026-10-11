@@ -35,7 +35,7 @@ index 093f6b3..8763b71 100644
  
 diff --git a/stateye/equalization.py b/stateye/equalization.py
 new file mode 100644
-index 0000000..3c59538
+index 0000000..2c62c1a
 --- /dev/null
 +++ b/stateye/equalization.py
 @@ -0,0 +1,690 @@
@@ -372,7 +372,7 @@ index 0000000..3c59538
 +        if not known:        # re-decide on the equalized samples
 +            d = _redecide(d, k, y, n_levels)
 +
-+    # DFE limits (802.3dj: 0 <= b <= 0.3 with b = g / OMA): clamp, then
++    # DFE limits (802.3dj: 0 <= b <= 0.33 with b = g / OMA): clamp, then
 +    # re-solve the FFE around the fixed feedback (a few passes converge)
 +    lo, hi = DJ_LIMITS["dfe"]
 +    if n_dfe and np.any((g / a0 < lo) | (g / a0 > hi)):
@@ -521,7 +521,7 @@ index 0000000..3c59538
 +              skip_symbols: int = 16):
 +    """Re-solve the DFE for fixed FFE ``taps`` (e.g. after projecting the
 +    FFE into the 802.3dj limits): least squares of the FFE output against
-+    past decisions plus a free ladder, b clamped to its 0..0.3 range.
++    past decisions plus a free ladder, b clamped to its 0..0.33 range.
 +    Returns ``info`` with new ``dfe_taps`` / ``dfe_b``."""
 +    n_dfe = len(info.get("dfe_taps", ()))
 +    if not n_dfe:
@@ -643,7 +643,7 @@ index 0000000..3c59538
 +    PAM-4 :class:`IdealEye` analysis (``tdecq_<oma>``, C_eq from the FFE).
 +
 +    ``limits="802.3dj"`` (default) confines the search to the legal
-+    reference equalizer of P802.3dj D2.1 Table 180-15 (see
++    reference equalizer of P802.3dj D3.2 Table 180-16 (see
 +    :data:`DJ_LIMITS`): the start is projected into range and any candidate
 +    outside it scores worse than every legal one. Unconstrained
 +    (``limits=None``) the search finds low-pass "equalizers" with a main tap
@@ -857,7 +857,7 @@ index d282540..386f672 100644
  	for i in range(n - (nb + na + 1)):
 diff --git a/tests/test_equalization.py b/tests/test_equalization.py
 new file mode 100644
-index 0000000..39053c6
+index 0000000..3d6330b
 --- /dev/null
 +++ b/tests/test_equalization.py
 @@ -0,0 +1,200 @@
@@ -955,7 +955,7 @@ index 0000000..39053c6
 +    taps, info = ffe_tdecq_optimal(w, dt, gbps, symbols=sym, max_evals=12,
 +                                   n_dfe=1, progress=lambda *a: seen.append(a))
 +    assert np.isclose(np.sum(taps), 1.0) and len(info["dfe_b"]) == 1
-+    assert 0.0 <= info["dfe_b"][0] <= 0.3 and info["violations"] == []
++    assert 0.0 <= info["dfe_b"][0] <= 0.33 and info["violations"] == []
 +    assert info["tdecq"] <= seen[0][2] + 1e-9           # no worse than start
 +    # progress: one callback per evaluation, counting up, best never rising
 +    assert [a[0] for a in seen] == list(range(1, len(seen) + 1))

@@ -165,11 +165,14 @@ Example 48 is the worked case: the coupling-modulated ring of example 47 at
 length and ring length against RLM > 0.95, TDECQ < 1.5 dB, relOMA > -2 dB,
 ER > 3.5 dB. Its device assumptions are flow variables (see the canvas note):
 with lumped junctions driven through 50 Ohm the junction RC caps it well
-short of the spec (relOMA -4.9 dB, TDECQ 2.4 dB). Example 49 runs the same
-flow on traveling-wave PN arms: TDECQ 1.3 dB, RLM 0.95 and ER 4.9 dB pass,
-relOMA -3.1 dB still misses -- the 2 Vpp swing, not bandwidth, now limits.
-(Both TDECQ figures were scored through a 5-tap FFE with S = 0.005 mW, before
-the flows switched to the 802.3dj reference equalizer and S = 0.)
+short of the spec (relOMA -4.9 dB, TDECQ 2.4 dB; scored through a 5-tap FFE
+with S = 0.005 mW, before the flows switched to the 802.3 reference settings
+and S = 0). Example 49 runs the flow on traveling-wave PN arms with real
+optical transit (`transit` = delayed), a 10 um / 0.3 dB/cm feedback delay
+line and both couplers as knobs: relOMA -5.6 dB, TDECQ 2.3 dB, RLM 0.92,
+ER 1.9 dB all miss. The ring's photon lifetime (~6 UI) now limits; with
+quasi-static optics the same design had scored near relOMA -3.6 dB /
+TDECQ 1.4 dB.
 
 ## Serial-link (SERDES) workflow
 

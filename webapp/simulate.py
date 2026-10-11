@@ -76,6 +76,19 @@ class NetlistError(ValueError):
     pass
 
 
+def _transit_note(name: str, length_m: float, n_group, n_st: int,
+                  log: list) -> None:
+    """Log a delayed part whose stage count hit the cap (stages > 0.5 ps)."""
+    import catalog as _cat
+
+    tau = float(length_m) * float(n_group) / 299792458.0 / n_st
+    if tau > _cat.TRANSIT_STAGE_S * 1.001:
+        log.append(f"WARNING {name}: optical transit split into {n_st} "
+                   f"Pade stages of {tau * 1e12:.2f} ps (cap "
+                   f"{_cat.TRANSIT_MAX_STAGES}); group delay accuracy falls "
+                   f"above ~{0.17 / (2 * 3.14159 * tau) / 1e9:.0f} GHz")
+
+
 def _endpoint(ep: str, instances: dict) -> tuple[str, str]:
     """Validate 'INST,port' against the catalog; returns (inst, port)."""
     try:
@@ -282,6 +295,8 @@ def schematic_to_netlist(sch: dict, wave_span: float = DEFAULT_WAVE_SPAN,
                 if _cat.transit_on(settings.pop("transit", "")):
                     m = _cat.transit_stages(
                         length_m, settings.get("n_group", 4.0), n_sec)
+                    _transit_note(name, length_m / n_sec,
+                                  settings.get("n_group", 4.0), m, lti_log)
                 key = f"pn_tw@{n_sec}" + (f"t{m}" if m else "")
                 ltis[key] = {"pn_tw": n_sec, "stages": m}
                 cx_instances[name] = {"component": key}
@@ -296,6 +311,8 @@ def schematic_to_netlist(sch: dict, wave_span: float = DEFAULT_WAVE_SPAN,
                                 else float(settings.get("length_m", 1e-4)))
                     n_st = _cat.transit_stages(length_m,
                                                settings.get("n_group", 4.0))
+                    _transit_note(name, length_m,
+                                  settings.get("n_group", 4.0), n_st, lti_log)
                     key = f"wg_transit@{n_st}"
                     ltis[key] = {"wg_transit": n_st}
                     cx_instances[name] = {"component": key}
@@ -436,9 +453,11 @@ def schematic_to_netlist(sch: dict, wave_span: float = DEFAULT_WAVE_SPAN,
     # user's source delays so the settle can stage a clean bias ramp-up
     hard_dc = any(CATALOG[i["type"]].get("hard_dc") for i in instances.values())
     # (real optical transit adds sub-ps Pade stages: stiff too)
+    import catalog as _cat
+
     stiff = any(CATALOG[i["type"]].get("stiff")
-                or str((i.get("settings") or {}).get("transit", "")).lower()
-                == "delayed" for i in instances.values())
+                or _cat.transit_on((i.get("settings") or {}).get("transit"))
+                for i in instances.values())
     src_delay: dict[str, float] = {}
     if hard_dc:
         for name, inst in instances.items():

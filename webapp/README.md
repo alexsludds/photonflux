@@ -269,9 +269,10 @@ traces a 2001-point spectrum in about a second.
   n_eff, which is the standard trap. `transit` = quasi-static (default)
   applies the transmission instantly; `delayed` adds the real group delay
   L n_g / c in both directions (Pade all-pass stages of <= 0.5 ps, group
-  delay within ~1 % to 60 GHz), so a ring closed by such guides has its
-  round trip and photon lifetime. Identical at DC; about 3x the transient
-  cost in example 49 (`tests/test_transit.py`).
+  delay within ~1 % to 60 GHz; past 64 stages, ~2.4 mm, the stages grow
+  and the run log warns), so a ring closed by such guides has its round
+  trip and photon lifetime (`tests/test_transit.py`). Identical at DC;
+  about 3x the transient cost in example 49.
 * **Y-splitter**: lossless 1x2, `split_ratio` to p2. It is reciprocal —
   wire a second one in reverse (feed p2/p3, take p1) and it is the coherent
   combiner of an MZI; power missing at destructive interference is the

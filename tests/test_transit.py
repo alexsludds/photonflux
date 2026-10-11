@@ -160,3 +160,16 @@ def test_ring_photon_lifetime():
     s = np.array([at(amp["delayed"], n) for n in range(1, 7)])
     d = s[:-1] - s[1:]
     assert d[1:] / d[:-1] == pytest.approx(np.full(4, ta), rel=0.03)
+
+
+def test_long_guide_warns_and_numeric_transit_is_stiff():
+    # past the stage cap the netlister says so; a numeric transit flag (as a
+    # flow `set` writes it) builds the delayed model and picks BDF2 too
+    sch = _launch("delayed", 0.0, L=1e-2)
+    _net, meta = simulate.schematic_to_netlist(sch)
+    assert any("WG" in m and "Pade stages" in m for m in meta["lti_log"])
+    sch = _launch("delayed", 0.0)
+    sch["instances"]["WG"]["settings"]["transit"] = 1.0
+    _net, meta = simulate.schematic_to_netlist(sch)
+    assert meta["stiff"] and any(k.startswith("wg_transit@") for k in meta["ltis"])
+    assert not [m for m in meta["lti_log"] if "Pade stages" in m]

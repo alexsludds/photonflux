@@ -65,7 +65,7 @@ def tw_sections(n_sections, length_m: float) -> int:
 
 
 TRANSIT_STAGE_S = 0.5e-12   # optical transit: longest Pade all-pass stage
-TRANSIT_MAX_STAGES = 64     # per direction
+TRANSIT_MAX_STAGES = 64     # per guide (Waveguide) or per section (TW part)
 
 
 def transit_on(value) -> bool:
@@ -75,7 +75,9 @@ def transit_on(value) -> bool:
 
 def transit_stages(length_m: float, n_group: float, n_div: int = 1) -> int:
     """Pade stages per division of a guide (n_div = 1: the whole guide) so
-    no stage delays more than 0.5 ps: group delay within 1 % to ~60 GHz."""
+    no stage delays more than 0.5 ps: group delay within 1 % to ~60 GHz.
+    Capped at TRANSIT_MAX_STAGES (Waveguide past ~2.4 mm at n_g 4): the
+    stages then grow and the netlister logs the loss of accuracy."""
     import math
 
     tau = float(length_m) * float(n_group) / 299792458.0 / max(1, n_div)

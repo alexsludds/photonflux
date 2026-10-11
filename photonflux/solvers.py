@@ -165,13 +165,13 @@ def _make_bdf2_reuse():
         (a chord, or modified-Newton, iteration): each iteration is one
         residual evaluation and one matrix-vector product.
 
-        The inverse is rebuilt at the predictor when ``alpha/h`` has moved by
-        more than ``coef_rtol`` (the first two steps, any step-size change).
-        If the chord iteration contracts by less than ``max_rate`` per
-        iteration (a strongly nonlinear step: a transistor switching, a laser
-        turning on) or has not converged in ``chord_max_steps``, the step
-        finishes with circulax's full Newton from where the chord left off,
-        and the next step rebuilds the inverse.
+        A step runs circulax's full Newton instead, and stores the inverse of
+        its last Jacobian for the steps after it, when the stored matrix is
+        stale (``alpha/h`` moved by more than ``coef_rtol``: the first two
+        steps, a step-size change) or when the chord iteration fails: it
+        contracts by less than ``max_rate`` per iteration (a strongly
+        nonlinear step: a transistor switching, a laser turning on) or has
+        not converged in ``chord_max_steps``.
 
         Accuracy: both iterations converge to the same root. A chord
         iterate's remaining error is about ``rate * |update|`` rather than
@@ -207,18 +207,6 @@ def _make_bdf2_reuse():
             diag = jnp.arange(n)
             atol, rtol = self.newton_atol, self.newton_rtol
 
-            def system(y):
-                # the matrix DenseSolver._solve_impl builds and solves
-                asm = assemble_system_complex if cplx else assemble_system_real
-                f, q, vals = asm(y, groups, t1, h_n, alpha=alpha,
-                                 hist_t=hist_t, hist_y=hist_y)
-                J = jnp.zeros((n, n), dtype=y.dtype)
-                J = J.at[ls.static_rows, ls.static_cols].add(vals)
-                J = J.at[diag, diag].add(ls.g_leak)
-                for idx in ls.ground_indices:
-                    J = J.at[idx, idx].add(GROUND_STIFFNESS)
-                return residual_of(f, q, y), J
-
             def residual_of(f, q, y):
                 r = make_residual(f, q)
                 for idx in ground:
@@ -231,6 +219,18 @@ def _make_bdf2_reuse():
                 f, q = asm(y, groups, t1, h_n, hist_t=hist_t, hist_y=hist_y)
                 return residual_of(f, q, y)
 
+            def system(y):
+                # the matrix DenseSolver._solve_impl builds and solves
+                asm = assemble_system_complex if cplx else assemble_system_real
+                f, q, vals = asm(y, groups, t1, h_n, alpha=alpha,
+                                 hist_t=hist_t, hist_y=hist_y)
+                J = jnp.zeros((n, n), dtype=y.dtype)
+                J = J.at[ls.static_rows, ls.static_cols].add(vals)
+                J = J.at[diag, diag].add(ls.g_leak)
+                for idx in ls.ground_indices:
+                    J = J.at[idx, idx].add(GROUND_STIFFNESS)
+                return residual_of(f, q, y), J
+
             def update(y, delta):
                 # circulax's damped Newton update and scaled convergence norm
                 damping = jnp.minimum(
@@ -241,11 +241,12 @@ def _make_bdf2_reuse():
                                       / (atol + rtol * jnp.abs(y_new)))
 
             inf = jnp.asarray(jnp.inf, y0.dtype)
+            no = jnp.asarray(False)
 
-            def chord(inv, y_start):
+            def chord(y_start):
                 def body(c):
                     k, y, err_prev, _err, _done, _slow = c
-                    y_new, err = update(y, -(inv @ residual(y)))
+                    y_new, err = update(y, -(inv0 @ residual(y)))
                     done = (k > 0) & (err < self.tight)
                     slow = (k > 0) & (err > self.max_rate * err_prev) & ~done
                     return k + 1, y_new, err, err, done, slow
@@ -255,43 +256,41 @@ def _make_bdf2_reuse():
                     return ~done & ~slow & (k < self.chord_max_steps)
 
                 _k, y, _ep, err, done, _slow = jax.lax.while_loop(
-                    cond, body, (jnp.asarray(0), y_start, inf, inf,
-                                 jnp.asarray(False), jnp.asarray(False)))
+                    cond, body, (jnp.asarray(0), y_start, inf, inf, no, no))
                 return y, err, done
 
             def newton(y_start):
+                # circulax's iteration (to the tighter tolerance), keeping the
+                # last Jacobian: its inverse serves the following steps
                 def body(c):
-                    k, y, _err, _done = c
+                    k, y, _err, _done, _J = c
                     r, J = system(y)
                     y_new, err = update(y, jnp.linalg.solve(J, -r))
-                    return k + 1, y_new, err, err < self.tight
+                    return k + 1, y_new, err, err < self.tight, J
 
                 def cond(c):
-                    k, _y, _err, done = c
+                    k, _y, _err, done, _J = c
                     return ~done & (k < self.newton_max_steps)
 
-                _k, y, err, done = jax.lax.while_loop(
-                    cond, body, (jnp.asarray(0), y_start, inf,
-                                 jnp.asarray(False)))
-                return y, err, done
+                _k, y, err, done, J = jax.lax.while_loop(
+                    cond, body, (jnp.asarray(0), y_start, inf, no,
+                                 jnp.zeros((n, n), y0.dtype)))
+                return y, err, done, jnp.linalg.inv(J)
 
             # t1 - t0 wobbles in its last bits even at a constant step, and a
             # slightly-off matrix only slows the chord (the residual always
             # uses the exact coefficient): rebuild on a real change only
             stale = ~(jnp.abs(coef - coef0) <= self.coef_rtol * jnp.abs(coef))
-            inv = jax.lax.cond(stale, lambda: jnp.linalg.inv(system(y_pred)[1]),
-                               lambda: inv0)
-            y1, err1, done1 = chord(inv, y_pred)
-            y_next, err, done = jax.lax.cond(
-                done1, lambda: (y1, err1, done1), lambda: newton(y1))
+            y1, err1, done1 = jax.lax.cond(
+                stale, lambda: (y_pred, inf, no), lambda: chord(y_pred))
+            y_next, err, done, inv = jax.lax.cond(
+                done1, lambda: (y1, err1, done1, inv0), lambda: newton(y1))
             # Out of iterations: accept on circulax's own criterion (err < 1)
             # rather than fail a step plain Newton would have taken.
             result = jax.lax.cond(
                 done | (err < 1.0), lambda: diffrax.RESULTS.successful,
                 lambda: diffrax.RESULTS.nonlinear_divergence)
-            # a step that needed full Newton leaves the matrix behind it stale
-            state = (*hist_state, inv, jnp.where(done1, coef, jnp.nan))
             return (y_next, y_next - y_pred, {"y0": y0, "y1": y_next},
-                    state, result)
+                    (*hist_state, inv, coef), result)
 
     return BDF2ReuseSolver

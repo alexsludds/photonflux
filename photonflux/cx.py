@@ -1113,7 +1113,9 @@ def _lower_cached(
         cache.write_text(src)
 
     ns: dict[str, Any] = {}
-    code = compile(cache.read_text(), str(cache), "exec")
+    # applied at load time (not baked into the cache) so cached models pick
+    # it up without being re-lowered
+    code = compile(_sparse_jacobians(cache.read_text()), str(cache), "exec")
     exec(code, ns)  # noqa: S102 — our own generated, cached source
     if class_name not in ns:
         raise RuntimeError(f"emitted module {cache} does not define {class_name}")
@@ -1214,6 +1216,104 @@ class _Hardener(ast.NodeTransformer):
 
 def _harden_emitted(src: str) -> str:
     tree = _Hardener().visit(ast.parse(src))
+    return ast.unparse(ast.fix_missing_locations(tree))
+
+
+# ---------------------------------------------------------------------------
+# emitted-source rewrite: device Jacobians as one scatter
+# ---------------------------------------------------------------------------
+#
+# bosdi emits each device's Jacobian as a dense nested list,
+#     j_resist = jnp.array([[0.0, 0.0, v12, ...], ...])
+# mostly literal zeros (21 x 21 = 441 entries for the Kerr ring). Every entry
+# becomes its own constant + conversion in the traced program, which makes
+# tracing, lowering and XLA compilation of each circuit several times slower
+# (JAX 0.7 also hashes those scalar literals into one bucket while lowering,
+# so the cost is quadratic). The rewrite keeps the constants in one numpy
+# array and scatters only the computed entries: the same matrix, element for
+# element.
+
+_SPARSE_HELPER = '''
+import numpy as _pf_np
+
+
+def _pf_matrix(base, rows, cols, vals):
+    """jnp.array(nested list) with the constant entries pre-filled."""
+    base = _pf_np.asarray(base, dtype=float)
+    if not vals:
+        return jnp.asarray(base)
+    v = jnp.stack([jnp.asarray(x) for x in vals])
+    out = jnp.asarray(base, dtype=jnp.result_type(base.dtype, v.dtype))
+    return out.at[_pf_np.asarray(rows), _pf_np.asarray(cols)].set(v)
+'''
+
+
+def _const_value(node: ast.AST) -> float | None:
+    if isinstance(node, ast.Constant) and type(node.value) in (int, float):
+        return float(node.value)
+    if (isinstance(node, ast.UnaryOp) and isinstance(node.op, (ast.USub, ast.UAdd))
+            and isinstance(node.operand, ast.Constant)
+            and type(node.operand.value) in (int, float)):
+        v = float(node.operand.value)
+        return -v if isinstance(node.op, ast.USub) else v
+    return None
+
+
+class _SparseJacobian(ast.NodeTransformer):
+    def __init__(self) -> None:
+        self.changed = False
+
+    def visit_Call(self, node: ast.Call) -> ast.AST:
+        self.generic_visit(node)
+        f = node.func
+        if not (isinstance(f, ast.Attribute) and f.attr == "array"
+                and isinstance(f.value, ast.Name) and f.value.id == "jnp"
+                and len(node.args) == 1 and not node.keywords
+                and isinstance(node.args[0], ast.List) and node.args[0].elts
+                and all(isinstance(r, ast.List) for r in node.args[0].elts)):
+            return node
+        mat = node.args[0].elts
+        width = len(mat[0].elts)
+        if width == 0 or any(len(r.elts) != width for r in mat):
+            return node
+        base, rows, cols, vals = [], [], [], []
+        for i, r in enumerate(mat):
+            line = []
+            for j, e in enumerate(r.elts):
+                c = _const_value(e)
+                if c is None:
+                    rows.append(i)
+                    cols.append(j)
+                    vals.append(e)
+                    c = 0.0
+                line.append(c)
+            base.append(line)
+        self.changed = True
+        lit = ast.parse(repr(base), mode="eval").body
+        out = ast.Call(
+            func=ast.Name(id="_pf_matrix", ctx=ast.Load()),
+            args=[lit, ast.Tuple(elts=[ast.Constant(v) for v in rows],
+                                 ctx=ast.Load()),
+                  ast.Tuple(elts=[ast.Constant(v) for v in cols],
+                            ctx=ast.Load()),
+                  ast.Tuple(elts=vals, ctx=ast.Load())],
+            keywords=[])
+        return ast.copy_location(ast.fix_missing_locations(out), node)
+
+
+def _sparse_jacobians(src: str) -> str:
+    """Rewrite emitted ``jnp.array(<nested list>)`` matrices as a constant
+    array plus one scatter of the computed entries (see above)."""
+    tr = _SparseJacobian()
+    tree = tr.visit(ast.parse(src))
+    if not tr.changed:
+        return src
+    # the helper goes after the module's imports (it uses jnp)
+    body = tree.body
+    at = next((i for i, n in enumerate(body)
+               if not isinstance(n, (ast.Import, ast.ImportFrom, ast.Expr))),
+              len(body))
+    tree.body = body[:at] + ast.parse(_SPARSE_HELPER).body + body[at:]
     return ast.unparse(ast.fix_missing_locations(tree))
 
 

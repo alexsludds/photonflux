@@ -27,7 +27,9 @@ import copy
 import hashlib
 import json
 import math
+import os
 import re
+import threading
 import time
 import traceback
 from typing import Any
@@ -42,6 +44,38 @@ _HIER_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)*$
 
 _CIRCUIT_CACHE: dict[str, Any] = {}   # schematic-hash -> (circuit, meta)
 _MODELS_CACHE: dict[str, Any] = {}    # sky130-geometry-key set -> models_map
+# Netlist + model building may extract SKY130 cards through the libngspice
+# singleton or lower Verilog-A into the on-disk cache; neither is thread-safe,
+# so concurrent runs (see parallel_map) build circuits one at a time.
+_BUILD_LOCK = threading.RLock()
+
+
+def _max_workers() -> int:
+    """Threads for independent solves; PHOTONFLUX_THREADS overrides."""
+    env = os.environ.get("PHOTONFLUX_THREADS", "").strip()
+    if env:
+        return max(1, int(env))
+    return max(1, min(8, (os.cpu_count() or 2) - 2))
+
+
+def parallel_map(fn, items, *, warm_first: bool = True) -> list:
+    """``[fn(x) for x in items]`` with the solves running concurrently.
+
+    A compiled solve releases the GIL, so independent runs (noise seeds,
+    sweep points, process corners) overlap on separate cores. Results come
+    back in input order, each computed exactly as it would be alone.
+    ``warm_first`` runs the first item by itself so the rest find the JIT
+    and model caches filled instead of all compiling the same program."""
+    items = list(items)
+    workers = _max_workers()
+    if len(items) <= 1 or workers <= 1:
+        return [fn(x) for x in items]
+    from concurrent.futures import ThreadPoolExecutor
+
+    head = [fn(items[0])] if warm_first else []
+    rest = items[len(head):]
+    with ThreadPoolExecutor(min(workers, len(rest))) as pool:
+        return head + list(pool.map(fn, rest))
 
 
 _PATTERN_SOURCES = ("prbs", "qam_source")
@@ -552,7 +586,19 @@ def _get_circuit(sch: dict, wave_span: float = DEFAULT_WAVE_SPAN,
         circuit, meta = _CIRCUIT_CACHE[key]
         log.append("compile: cache hit")
         return circuit, meta, log
+    with _BUILD_LOCK:
+        if key in _CIRCUIT_CACHE:          # built by a concurrent run
+            circuit, meta = _CIRCUIT_CACHE[key]
+            log.append("compile: cache hit")
+            return circuit, meta, log
+        circuit, meta = _build_circuit(sch, wave_span, noise_cfg, log)
+        _CIRCUIT_CACHE[key] = (circuit, meta)
+        if len(_CIRCUIT_CACHE) > 16:
+            _CIRCUIT_CACHE.pop(next(iter(_CIRCUIT_CACHE)))
+    return circuit, meta, log
 
+
+def _build_circuit(sch, wave_span, noise_cfg, log):
     t0 = time.perf_counter()
     net, meta = schematic_to_netlist(sch, wave_span, noise_cfg)
     for pname, (kind, val) in meta["extracted"].items():
@@ -587,10 +633,7 @@ def _get_circuit(sch: dict, wave_span: float = DEFAULT_WAVE_SPAN,
         f"compiled in {time.perf_counter() - t0:.2f}s: "
         f"{circuit.sys_size} {kind} unknowns, {len(circuit.groups)} groups"
     )
-    _CIRCUIT_CACHE[key] = (circuit, meta)
-    if len(_CIRCUIT_CACHE) > 16:
-        _CIRCUIT_CACHE.pop(next(iter(_CIRCUIT_CACHE)))
-    return circuit, meta, log
+    return circuit, meta
 
 
 # ---------------------------------------------------------------------------
@@ -888,13 +931,22 @@ def _run_transient(circuit, meta, analysis, log) -> dict:
         )
 
     t0c = time.perf_counter()
-    sols = []
-    for k in range(seeds):
-        PROGRESS.set_seed(k)
+    finished = []
+
+    def seed_run(k):
         seed_params = (
             {f"{i}.seed_idx": float(k) for i in meta.get("noise_insts", [])}
             or None)
-        dt_used, sol = solve_one(seed_params)
+        dt_k, sol = solve_one(seed_params)
+        finished.append(k)
+        PROGRESS.set_seed(len(finished))   # seeds run concurrently: count done
+        return dt_k, sol
+
+    # every seed re-solves the same compiled circuit: run them concurrently
+    runs = parallel_map(seed_run, range(seeds))
+    dt_used = runs[0][0]
+    sols = []
+    for k, (_dt, sol) in enumerate(runs):
         if sol.result != diffrax.RESULTS.successful:
             raise NetlistError(
                 f"transient solver failed (seed {k}): {sol.result}. Try the "
@@ -1748,6 +1800,11 @@ def _finalize_extra_plots(merged, color_mode):
     merged["extra_plots"] = out
 
 
+_OVERLAY_NEEDS_CURVE = (
+    "parameter overlay needs a plot-producing analysis; the DC operating "
+    "point has no curve to overlay — use DC sweep, transient, AC or noise.")
+
+
 def _run_sweep_overlay(payload: dict) -> dict:
     """Fan a plot-producing analysis out over 1-2 swept parameters and overlay
     the results (the generic engine behind the run-configuration pane for
@@ -1780,20 +1837,41 @@ def _run_sweep_overlay(payload: dict) -> dict:
     from progress import PROGRESS
     PROGRESS.set_runs(n)  # spread the web-UI bar across all sweep points
 
-    merged = None
-    t0 = time.perf_counter()
-    for i, point in enumerate(grid):
-        PROGRESS.set_run(i)
-        frac = i / max(1, n - 1)
-        label = ", ".join(f"corner={p[1]}" if p[0] == "*corner"
-                          else f"{p[0]}.{p[1]}={_fmt_si(p[2])}" for p in point)
+    def label_of(point):
+        return ", ".join(f"corner={p[1]}" if p[0] == "*corner"
+                         else f"{p[0]}.{p[1]}={_fmt_si(p[2])}" for p in point)
+
+    finished = []
+
+    def run_point(i):
         sch_i = copy.deepcopy(sch)
-        for p in point:
+        for p in grid[i]:
             if p[0] == "*corner":
                 sch_i["corner"] = p[1]
             else:
                 _patch_point(sch_i, p[0], p[1], float(p[2]))
         res = run({"schematic": sch_i, "analysis": inner})
+        finished.append(i)
+        PROGRESS.set_run(len(finished))  # points run concurrently: count done
+        return res
+
+    def first_ok(res):
+        # fail fast on a misconfigured sweep before fanning out the rest
+        if res.get("ok") and (res.get("kind") == "op"
+                              or not res.get("traces")):
+            raise NetlistError(_OVERLAY_NEEDS_CURVE)
+        return res
+
+    merged = None
+    t0 = time.perf_counter()
+    # the first point fills the compile caches; the rest share them and
+    # solve concurrently
+    results = [first_ok(run_point(0))]
+    if not results[0].get("cancelled"):
+        results += parallel_map(run_point, range(1, n), warm_first=False)
+    for i, (point, res) in enumerate(zip(grid, results)):
+        frac = i / max(1, n - 1)
+        label = label_of(point)
         if res.get("cancelled"):
             # User hit Stop mid-sweep: abort the whole fan-out instead of
             # churning through the remaining points (the cancel flag stays set,
@@ -1804,10 +1882,7 @@ def _run_sweep_overlay(payload: dict) -> dict:
             log.append(f"  [{i + 1}/{n}] {label}: FAILED — {res.get('error')}")
             continue
         if res.get("kind") == "op" or not res.get("traces"):
-            raise NetlistError(
-                "parameter overlay needs a plot-producing analysis; the DC "
-                "operating point has no curve to overlay — use DC sweep, "
-                "transient, AC or noise.")
+            raise NetlistError(_OVERLAY_NEEDS_CURVE)
         merged = _merge_run(merged, res, i, frac, label, color_mode)
         log.append(f"  [{i + 1}/{n}] {label}: "
                    f"{len(res.get('traces') or [])} traces")

@@ -171,15 +171,16 @@ CATALOG: dict[str, dict] = {
                "following the abrupt-junction depletion width: "
                "$\\Delta n \\propto \\sqrt{1 + V_R/V_{bi}} - 1$ (sublinear in "
                "voltage). vpil_vcm is the average efficiency over "
-               "0 -> vref: $\\Delta\\phi(v_{ref}) = \\pi\\,v_{ref} L / V_\\pi L$. "
+               "0 -> vref at center_wavelength_nm: "
+               "$\\Delta\\phi(v_{ref}) = \\pi\\,v_{ref} L / V_\\pi L$. "
                "The electrode is the junction charge "
                "$Q = 2 C_{j0} L V_{bi} (\\sqrt{1 + V_R/V_{bi}} - 1)$, i.e. "
                "$C_j = C_{j0} L/\\sqrt{1 + V_R/V_{bi}}$, plus leakage; add "
                "contact/series resistance as a resistor. Reciprocal like "
                "Waveguide (same neff/n_group/wavelength_nm, so it joins an "
-               "instance \"*\" wavelength sweep). Depletion only: forward "
-               "bias is extrapolated linearly, with no injection or "
-               "conduction.",
+               "instance \"*\" wavelength sweep). Depletion only: no "
+               "injection or forward conduction; past V_R = -0.9 vbi the "
+               "square-root law is continued linearly.",
         "ports": _ports("p1:o p2:o an:e cat:e"),
         "params": [
             _p("length_m", 500e-6, "m", "Length",
@@ -2323,7 +2324,7 @@ def _pn_phase_shifter():
         sq = jnp.where(x > xm, jnp.sqrt(jnp.maximum(x, xm)),
                        jnp.sqrt(xm) + (x - xm) / (2.0 * jnp.sqrt(xm)))
         g = sq - 1.0
-        gn = g / (jnp.sqrt(1.0 + vref / vbi) - 1.0)
+        gn = g / (jnp.sqrt(1.0 + jnp.maximum(vref, 1e-3) / vbi) - 1.0)
         # dphi(vref) = pi*vref*L/VpiL  <=>  dn(vref) = lambda*vref/(2*VpiL)
         dn = center_wavelength_nm * 1e-7 * vref / (2.0 * vpil_vcm) * gn
         n = (neff + (neff - n_group) / center_wavelength_nm

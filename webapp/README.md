@@ -397,7 +397,14 @@ strength in the other.
   the resonance across the laser grows a comb on the through-port spectrum
   probe, spaced by the drive and shaped (bandwidth-limited) by the ring's
   photon lifetime (`examples/eo_comb.py` pins every tooth to the ring CMT and
-  plots the bandwidth-vs-f_RF rolloff).
+  plots the bandwidth-vs-f_RF rolloff); example 47 is a **coupling-modulated
+  ring** built from parts — two 50/50 `dir_coupler`s whose arms carry
+  push-pull `pn_phase_shifter`s (depletion PN junction: sqrt-law n_eff and
+  loss, nonlinear junction charge) form an MZI coupler closed by
+  `waveguide`s. Stepping the series push-pull drive 0..4 V swings the ring
+  from over- through critical to under-coupled (linewidth 39 -> 18 pm)
+  while the resonance moves only ~3 pm — the junctions change the coupling,
+  not the round-trip phase (`tests/test_pn_phase_shifter.py` pins it).
 * **Bring your own .va**: the palette's "Upload .va" button compiles any
   Verilog-A file through openvaf/bosdi into a placeable JAX component
   (ports from the module, parameters with their defaults). Uploads persist

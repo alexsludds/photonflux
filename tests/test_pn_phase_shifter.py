@@ -80,7 +80,7 @@ def test_vpil_sets_phase_at_vref():
     e2 = _out_field("pn_phase_shifter", PN, PN["vref"])
     dphi = -np.angle(e2 / e0)
     expect = np.pi * PN["vref"] * PN["length_um"] * 1e-4 / PN["vpil_vcm"]
-    assert dphi == pytest.approx(expect, rel=1e-2)
+    assert dphi == pytest.approx(expect, rel=1e-6)
     # sublinear: twice the bias gives well under twice the phase
     e4 = _out_field("pn_phase_shifter", PN, 2 * PN["vref"])
     assert -np.angle(e4 / e0) < 1.7 * dphi
@@ -127,5 +127,5 @@ def test_example_47_coupling_modulation():
     assert notch[mid] < -40                      # critical coupling at mid-bias
     assert lres[mid] == pytest.approx(1310.0, abs=5e-4)
     assert np.ptp(lres) < 3.5e-3                 # resonance walks < 3.5 pm
-    assert all(n > -20 for i, n in enumerate(notch) if i in (0, len(notch) - 1))
+    assert notch[0] > -20 and notch[-1] > -20    # drive ends are off-critical
     assert np.all(np.diff(fwhm) < 0)             # over- -> under-coupled

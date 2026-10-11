@@ -1,7 +1,7 @@
 {
   "title": "Coupling-modulated ring (MZI coupler)",
   "group": "Lasers & modulators",
-  "description": "Coupling-modulated silicon microring built from parts: two 50/50 directional couplers and push-pull PN-junction phase shifters form an MZI coupler, so 0-4 V of drive swings the ring from over- to under-coupled (notch -11 dB -> null -> -7 dB, linewidth 39 -> 18 pm) with the resonance fixed to within 3 pm. Waveguides are steady-state S-matrices, so this is a spectral (DC sweep) testbench",
+  "description": "Coupling-modulated silicon microring built from parts: two 50/50 directional couplers and push-pull PN-junction phase shifters form an MZI coupler, so 0-4 V of drive swings the ring from over- to under-coupled (notch -10 dB -> null -> -7 dB, linewidth 39 -> 18 pm) while the resonance moves only ~3 pm. Waveguides are steady-state S-matrices, so this is a spectral (DC sweep) testbench",
   "schematic": {
     "notes": [
       {
@@ -19,9 +19,9 @@
           "heater does this on a real chip).",
           "Series push-pull: PN_A sees V_R = VDRV, PN_B sees",
           "V_R = 4 V - VDRV. Stepping VDRV 0..4 V takes the ring from",
-          "over-coupled (broad, -11 dB) through critical (null) to",
-          "under-coupled (narrow, -7 dB) while the resonance stays",
-          "within 3 pm: the junctions modulate the coupling, not",
+          "over-coupled (broad, -10 dB) through critical (null) to",
+          "under-coupled (narrow, -7 dB) while the resonance moves",
+          "only ~3 pm: the junctions modulate the coupling, not",
           "the round-trip phase. Probe ring (hidden) is the",
           "intracavity power: untick its Hide from plots to see it.",
           "",

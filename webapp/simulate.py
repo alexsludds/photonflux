@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import re
 import time
 import traceback
@@ -85,7 +86,7 @@ def _transit_note(name: str, length_m: float, n_group, n_st: int,
         log.append(f"WARNING {name}: optical transit split into {n_st} "
                    f"Pade stages of {tau * 1e12:.2f} ps (cap "
                    f"{_cat.TRANSIT_MAX_STAGES}); group delay accuracy falls "
-                   f"above ~{0.17 / (2 * 3.14159 * tau) / 1e9:.0f} GHz")
+                   f"above ~{0.17 / (2 * math.pi * tau) / 1e9:.0f} GHz")
 
 
 def _endpoint(ep: str, instances: dict) -> tuple[str, str]:
@@ -1025,8 +1026,6 @@ def _ac_system(circuit):
     the DC path regularizes but the stock AC path does not — so they are
     detected and pinned before factorization.
     """
-    import numpy as np
-
     from circulax.solvers.ac_sweep import _build_index_arrays
     from circulax.solvers.assembly import assemble_gc_real
 
@@ -1037,13 +1036,21 @@ def _ac_system(circuit):
     G_vals, C_vals = assemble_gc_real(y_dc, circuit.groups)
     rows, cols, gnd, _ = _build_index_arrays(
         circuit.groups, circuit.sys_size, is_complex=False)
+    return _dense_gc(rows, cols, gnd, circuit.sys_size, G_vals, C_vals)
+
+
+def _dense_gc(rows, cols, gnd, n, g_vals, c_vals) -> dict:
+    """Scatter (G, C) triplets into dense matrices and pin the all-zero
+    rows/columns of decoupled unknowns (collapsed OSDI nodes, unused field
+    DOFs) to 1 on G's diagonal so the AC solves stay nonsingular."""
+    import numpy as np
+
     rows = np.asarray(rows).reshape(-1)
     cols = np.asarray(cols).reshape(-1)
-    n = circuit.sys_size
     G = np.zeros((n, n))
     C = np.zeros((n, n))
-    np.add.at(G, (rows, cols), np.asarray(G_vals))
-    np.add.at(C, (rows, cols), np.asarray(C_vals))
+    np.add.at(G, (rows, cols), np.asarray(g_vals))
+    np.add.at(C, (rows, cols), np.asarray(c_vals))
     dead = ((~np.abs(G).any(axis=1)) & (~np.abs(C).any(axis=1))
             & (~np.abs(G).any(axis=0)) & (~np.abs(C).any(axis=0)))
     G[dead, dead] = 1.0
@@ -1085,17 +1092,7 @@ def _ac_system_complex(circuit):
 
     rows, cols, gnd, n = _build_index_arrays(
         circuit.groups, circuit.sys_size, is_complex=True)
-    rows = np.asarray(rows).reshape(-1)
-    cols = np.asarray(cols).reshape(-1)
-    G = np.zeros((n, n))
-    C = np.zeros((n, n))
-    np.add.at(G, (rows, cols), g_vals)
-    np.add.at(C, (rows, cols), c_vals)
-    dead = ((~np.abs(G).any(axis=1)) & (~np.abs(C).any(axis=1))
-            & (~np.abs(G).any(axis=0)) & (~np.abs(C).any(axis=0)))
-    G[dead, dead] = 1.0
-    return {"G": G, "C": C, "gnd": np.asarray(gnd).reshape(-1),
-            "n": n, "n_dead": int(dead.sum())}
+    return _dense_gc(rows, cols, gnd, n, g_vals, c_vals)
 
 
 def _ac_Y(sysm, f):
@@ -1498,32 +1495,8 @@ def _run_ac_sweep(sch: dict, analysis: dict) -> dict:
     unit = spec.get("unit", "")
 
     log: list[str] = []
-    sky = entry.get("sky130")
-    if spec.get("rebuild") and sky and sky.get("kind") == "fet" \
-            and param in ("w_um", "l_um"):
-        # Each SKY130 geometry needs its own BSIM4 card, and extracting them one
-        # at a time re-parses the volare library every time (~30-80 s each). Do
-        # them all in a single library parse up front so the per-value compiles
-        # below are cache hits. Best-effort: fall back to the per-value path.
-        base = {p["name"]: float(p["default"]) for p in entry["params"]}
-        base.update({k: float(v) for k, v in
-                     (instances[inst].get("settings") or {}).items()
-                     if k in ("w_um", "l_um")})
-        geoms = [((v, base["l_um"]) if param == "w_um" else (base["w_um"], v))
-                 for v in values]
-        try:
-            import sky130_cards
-            t0 = time.perf_counter()
-            n_new = sky130_cards.prewarm(sky["device"], geoms,
-                                         sch_corners(sch)[0])
-            if n_new:
-                log.append(
-                    f"extracted {n_new} new SKY130 {sky['device']} card(s) in "
-                    f"one library parse ({time.perf_counter() - t0:.1f}s); "
-                    f"{len(values) - n_new} already cached.")
-        except Exception as exc:  # noqa: BLE001 — never block the sweep on this
-            log.append(f"batch card prewarm skipped ({type(exc).__name__}: "
-                       f"{exc}); extracting per value instead.")
+    _prewarm_sky130_for_sweep(
+        sch, [{"instance": inst, "param": param, "values": values}], log)
     if spec.get("rebuild"):
         log.append(
             f"AC sweep of {inst}.{param}: compiling {len(values)} circuits "
@@ -1623,8 +1596,9 @@ def _patch_point(sch: dict, inst: str, param: str, val: float) -> None:
 
 def _prewarm_sky130_for_sweep(sch: dict, axes: list, log: list) -> None:
     """If an axis targets a SKY130 FET geometry (w_um/l_um), extract every card
-    up front in one library parse so the per-point compiles are cache hits
-    (mirrors the _run_ac_sweep prewarm)."""
+    up front in one library parse per corner so the per-point compiles are
+    cache hits (each card is otherwise its own ~30-80 s library parse).
+    Best-effort: on failure the per-point compiles extract cards one by one."""
     insts = sch.get("instances") or {}
     for ax in axes:
         inst, param = ax.get("instance"), ax.get("param")

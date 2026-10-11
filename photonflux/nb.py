@@ -47,7 +47,8 @@ import numpy as np
 
 DEFAULT_URL = os.environ.get("PHOTONFLUX_URL", "http://127.0.0.1:8642")
 
-__all__ = ["Session", "Schematic", "Result", "Builder", "SubcircuitDef",
+__all__ = ["Session", "Schematic", "Result", "FlowResult", "Builder",
+           "SubcircuitDef",
            "SessionError", "RunError", "si"]
 
 
@@ -135,6 +136,11 @@ class Schematic:
     @property
     def analysis(self) -> dict | None:
         return self.doc.get("analysis")
+
+    @property
+    def flow(self) -> dict | None:
+        """The testbench flow (steps sharing variables), if it has one."""
+        return self.doc.get("flow")
 
     @property
     def selection(self) -> dict | None:
@@ -375,6 +381,78 @@ class Result:
                 f"{len(self.traces)} traces: "
                 + ", ".join(self.names[:8])
                 + (", ..." if len(self.names) > 8 else "") + ">")
+
+
+class FlowResult:
+    """A testbench flow run (``Session.flow``)::
+
+        fr.passed                  # every check of every step passed
+        fr.vars["lam_res"]         # flow variables after the last step
+        fr.design                  # [{inst, param, value}] of the final design
+        fr.step("eye")             # that step's analysis as a Result
+        fr.scorecard()             # evaluate steps: {fom: (before, value, ok)}
+        fr.checks                  # [(step id, expr, ok, value), ...]
+    """
+
+    def __init__(self, raw: dict):
+        self.raw = raw
+        self.body = raw.get("flow") or {}
+
+    @property
+    def passed(self) -> bool:
+        return bool(self.body.get("passed"))
+
+    @property
+    def vars(self) -> dict:
+        return dict(self.body.get("vars") or {})
+
+    @property
+    def overrides(self) -> dict:
+        return dict(self.body.get("overrides") or {})
+
+    @property
+    def design(self) -> list[dict]:
+        return list(self.body.get("design") or [])
+
+    @property
+    def steps(self) -> list[dict]:
+        return list(self.body.get("steps") or [])
+
+    @property
+    def log(self) -> list:
+        return self.raw.get("log") or []
+
+    def step(self, sid: str) -> Result:
+        for s in self.steps:
+            if s["id"] == sid:
+                if not s.get("result"):
+                    raise KeyError(f"step {sid!r} has no result "
+                                   f"({s.get('status')}: {s.get('error', '')})")
+                return Result(s["result"])
+        raise KeyError(f"no step {sid!r} (have: {[s['id'] for s in self.steps]})")
+
+    @property
+    def checks(self) -> list[tuple]:
+        return [(s["id"], c["expr"], c["ok"], c.get("value"))
+                for s in self.steps for c in s.get("checks") or []]
+
+    def scorecard(self, sid: str | None = None) -> dict:
+        """Figures of merit of an evaluate step (default: the last one):
+        ``{name: (value measured earlier in the flow, evaluated, passed)}``."""
+        evals = [s for s in self.steps
+                 if s.get("kind") == "evaluate" and s.get("fom")
+                 and (sid is None or s["id"] == sid)]
+        if not evals:
+            raise KeyError("no evaluated step in this flow result")
+        s = evals[-1]
+        ok = {c["expr"].split()[0]: c["ok"] for c in s.get("checks") or []}
+        return {k: ((s.get("before") or {}).get(k), s["fom"].get(k), ok.get(k))
+                for k in (s.get("spec") or s["fom"])}
+
+    def __repr__(self) -> str:
+        parts = [f"{s['id']}:{s.get('status')}" for s in self.steps]
+        return (f"<FlowResult {'PASS' if self.passed else 'FAIL'}: "
+                + ", ".join(parts) + ">")
 
 
 # ---------------------------------------------------------------------------
@@ -651,6 +729,53 @@ class Session:
                            log=raw.get("log"))
         return Result(raw)
 
+    def flow(self, flow: dict | None = None, schematic=None,
+             only: str | None = None, start: str | None = None,
+             prior: FlowResult | None = None,
+             progress: bool | None = None) -> FlowResult:
+        """Run a testbench flow (the browser's Run flow). With no arguments it
+        runs the live canvas's flow; pass a Schematic loaded from a saved
+        testbench, or an explicit ``flow`` dict. ``start``/``only`` re-run
+        from / just one step, reusing the variables of ``prior``."""
+        if schematic is None:
+            live = self.pull()
+            sch, doc_flow = live.schematic, live.flow
+        elif isinstance(schematic, Schematic):
+            sch, doc_flow = schematic.schematic, schematic.flow
+        elif isinstance(schematic, dict):
+            sch, doc_flow = (schematic.get("schematic", schematic),
+                             schematic.get("flow"))
+        else:
+            raise TypeError(f"cannot run a {type(schematic).__name__}")
+        flow = flow or doc_flow
+        if not flow:
+            raise SessionError("no flow: this testbench has none (build one in "
+                               "the Run panel's Flow card, or pass flow=...)")
+        analysis: dict = {"mode": "flow", "flow": flow}
+        if start or only:
+            if prior is None:
+                raise SessionError("start/only need prior= (a FlowResult) for "
+                                   "the variables earlier steps computed")
+            analysis["start" if start else "only"] = start or only
+            analysis["prior"] = {"vars": prior.vars,
+                                 "overrides": prior.overrides,
+                                 "origin": prior.body.get("origin") or {}}
+        show = self.progress if progress is None else progress
+        bar = _ProgressBar(self) if show else None
+        try:
+            raw = self._req("/api/run", {"schematic": sch,
+                                         "analysis": analysis}, timeout=None)
+        except KeyboardInterrupt:
+            self.cancel()
+            raise
+        finally:
+            if bar:
+                bar.stop()
+        if not raw.get("ok"):
+            raise RunError(raw.get("error") or "flow failed",
+                           log=raw.get("log"))
+        return FlowResult(raw)
+
     def transient(self, t_stop="4n", points: int = 800, solver: str = "",
                   dtmax=None, seeds: int = 0, noise_bw="50G",
                   link: str = "", expressions: str = "",
@@ -774,6 +899,8 @@ class _ProgressBar:
             phase = p.get("phase") or "running"
             runs = int(p.get("runs") or 1)
             tag = f" (run {int(p.get('run', 0)) + 1}/{runs})" if runs > 1 else ""
+            if p.get("label"):             # a flow's stage
+                tag += f" — {p['label']}"
             n = int(frac * 30)
             sys.stderr.write(f"\r[{'#' * n}{'-' * (30 - n)}] "
                              f"{frac * 100:3.0f}% {phase}{tag}   ")

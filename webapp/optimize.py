@@ -135,12 +135,22 @@ def nelder_mead(f, x0, lo, hi, iters: int):
     simplex is x0 (clipped) plus a 15%-of-span step along each axis.
 
     Returns the final ``(simplex, fs)``; non-finite values mark points ``f``
-    could not score. Shared by Optimize and the flow Optimize step."""
-    calls = {"n": 0}
+    could not score. Shared by Optimize and the flow Optimize step.
+
+    Clipping to the box makes the simplex propose the same point again (a
+    reflection past a bound lands on it); those repeats are answered from a
+    memo and do not count against ``iters`` -- each evaluation is a full
+    simulation. A cap on proposals keeps a collapsed simplex from looping."""
+    calls = {"n": 0, "proposals": 0}
+    memo: dict = {}
 
     def g(x):
-        calls["n"] += 1
-        return f(x)
+        calls["proposals"] += 1
+        key = tuple(np.round(np.asarray(x, float), 12))
+        if key not in memo:
+            calls["n"] += 1
+            memo[key] = f(x)
+        return memo[key]
 
     x0 = np.clip(np.asarray(x0, float), lo, hi)
     simplex = [x0]
@@ -151,7 +161,7 @@ def nelder_mead(f, x0, lo, hi, iters: int):
         simplex.append(xi)
     fs = [g(x) for x in simplex]
 
-    while calls["n"] < iters:
+    while calls["n"] < iters and calls["proposals"] < 5 * iters:
         order = np.argsort(fs)
         simplex = [simplex[i] for i in order]
         fs = [fs[i] for i in order]

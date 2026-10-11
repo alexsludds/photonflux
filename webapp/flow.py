@@ -346,6 +346,9 @@ def _result_ctx(res: dict, sch: dict, vars_: dict, flow: dict):
             arr = np.asarray(tr["values"], float)
             ctx[name] = arr
             probe_of[id(arr)] = name
+    for row in res.get("rows") or []:          # DC operating point: scalars
+        if _IDENT.fullmatch(row["name"]):
+            ctx.setdefault(row["name"], float(row["value"]))
     for s in res.get("scalars") or []:
         ctx.setdefault(s["name"], float(s["value"]))
 

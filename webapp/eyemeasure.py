@@ -123,14 +123,29 @@ def measure(payload: dict) -> dict:
             return [float(x) for x in str(cfg.get(key, "")).replace(
                 ",", " ").split()]
 
+        # "auto" (or blank) = the standard's value for this lane rate:
+        # P802.3dj at 200G/lane, 802.3cd at 100G/lane
+        ref = tdec.tdecq_reference(baud)
+
+        def setting(key, ref_key, cast):
+            v = cfg.get(key, "auto")
+            return ref[ref_key] if v in (None, "", "auto") else cast(v)
+
         method = str(cfg.get("method", "mmse"))
         manual = floats("manual") if method == "manual" else None
+        if method == "manual" and not manual:
+            return {"ok": False, "error": "manual equalizer: enter the FFE "
+                    "taps (e.g. -0.05, 1.1, -0.05)"}
         dfe_manual = floats("manual_dfe") if method == "manual" else None
-        n_dfe = len(dfe_manual) if method == "manual" else int(cfg.get("dfe", 0))
-        pam = dict(common, ser=float(cfg.get("ser", 4.8e-4)))
+        n_dfe = (len(dfe_manual) if method == "manual"
+                 else setting("dfe", "dfe_taps", int))
+        pam = dict(common, ser=setting("ser", "ser", float))
         _status("unequalized eye")
         raw = tdec.measure_pam4(p, dt, baud, ffe_taps=0, **pam)
-        n_taps = len(manual) if manual else int(cfg.get("taps", 5))
+        n_taps = len(manual) if manual else setting("taps", "ffe_taps", int)
+        n_pre = setting("pre", "ffe_pre", int)
+        if n_pre >= max(n_taps, 1):      # e.g. 5 taps with dj's 3 pre-cursors
+            n_pre = (max(n_taps, 1) - 1) // 2
 
         def progress(i, n, v, best):
             this = ("outside 802.3dj limits" if v >= 100.0
@@ -141,7 +156,7 @@ def measure(payload: dict) -> dict:
         _status("adapting the equalizer" if method != "optimal"
                 else "TDECQ search: starting")
         eq = raw if n_taps == 0 and n_dfe == 0 else tdec.measure_pam4(
-            p, dt, baud, ffe_taps=n_taps, ffe_pre=int(cfg.get("pre", 1)),
+            p, dt, baud, ffe_taps=n_taps, ffe_pre=n_pre,
             ffe_method=method, symbols=symbols,
             ffe_mu=float(cfg.get("mu", 0.05)),
             ffe_passes=int(cfg.get("passes", 5)), ffe_manual=manual,
@@ -195,4 +210,5 @@ def measure(payload: dict) -> dict:
             "rms_before": _num(eq.get("ffe_rms_error_before")),
             "rms_after": _num(eq.get("ffe_rms_error_after")),
             "levels": levels, "ser_target": pam["ser"],
+            "standard": ref["standard"],
             "scored": _scored(eq, t_scored, tu, p, ui), "log": log}

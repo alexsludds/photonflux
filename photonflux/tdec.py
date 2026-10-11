@@ -41,7 +41,8 @@ from typing import Any
 
 import numpy as np
 
-__all__ = ["Measurement", "reference_receiver", "measure", "measure_pam4", "oma_tdec_dbm",
+__all__ = ["Measurement", "reference_receiver", "tdecq_reference", "measure",
+           "measure_pam4", "oma_tdec_dbm",
            "oma_tdec_floor_dbm", "q_inv", "MIN_SEGMENT_COUNT", "FLOOR_TOL_DB"]
 
 # How close to the analytic floor counts as saturated. The histogram-derived
@@ -58,6 +59,30 @@ MIN_SEGMENT_COUNT = 8
 # Measured: ~150 UI of this link fails inside stateye's histogram reductions;
 # ~200 UI is fine. 192 leaves margin without demanding a long transient.
 MIN_RECORD_UI = 192
+
+# Lane rates at or above this are 200G/lane PAM-4 (106.25 / 113.4375 GBd) and
+# take P802.3dj's TDECQ; below it, 100G/lane (53.125 GBd) and 802.3cd/cu/df.
+DJ_MIN_BAUD = 80e9
+
+
+def tdecq_reference(baud: float) -> dict:
+    """The IEEE 802.3 TDECQ reference settings for a PAM-4 lane rate.
+
+    * 200G/lane (``baud >= DJ_MIN_BAUD``): P802.3dj Clause 180 (D3.2) --
+      target SER 4.56e-4 (Qt 3.428, the BER 2.28e-4 allocated to the optical
+      PMD), 15-tap FFE with up to 3 pre-cursors plus one DFE tap.
+    * 100G/lane: 802.3cd/cu/df (Clause 121 method) -- SER 4.8e-4 (Qt
+      3.414), 5-tap FFE with one pre-cursor, no DFE.
+
+    The reference receiver is a 4th-order Bessel-Thomson at baud/2 in both.
+    The 113.4375 GBd clauses with an inner FEC (182/183) may set a different
+    SER target; pass ``ser`` explicitly for those.
+    """
+    if baud >= DJ_MIN_BAUD:
+        return {"standard": "802.3dj", "ser": 4.56e-4, "ffe_taps": 15,
+                "ffe_pre": 3, "dfe_taps": 1}
+    return {"standard": "802.3cd", "ser": 4.8e-4, "ffe_taps": 5,
+            "ffe_pre": 1, "dfe_taps": 0}
 
 
 @dataclass
@@ -344,16 +369,16 @@ def measure_pam4(
     baud: float,
     *,
     s_noise_mW: float = 0.0,
-    ser: float = 4.8e-4,
-    ffe_taps: int = 5,
-    ffe_pre: int = 1,
+    ser: float | None = None,
+    ffe_taps: int | None = None,
+    ffe_pre: int | None = None,
     symbols=None,
     ffe_method: str = "mmse",
     ffe_mu: float = 0.05,
     ffe_passes: int = 5,
     ffe_manual=None,
     ffe_max_evals: int = 60,
-    dfe_taps: int = 0,
+    dfe_taps: int | None = None,
     dfe_manual=None,
     ffe_limits: str | None = "802.3dj",
     oma_reference=None,
@@ -378,15 +403,23 @@ def measure_pam4(
     last 6 symbols of the period -- unrotated it falls off the end of the
     record and every ``_outer`` metric comes back NaN.
 
-    `ser` is the target symbol error rate: 4.8e-4 is the 802.3-2022 value for
-    100G/lane (53.125 GBd) links, 4.56e-4 the 802.3dj 200G/lane one. The
-    reference receiver defaults to the TDECQ 4th-order Bessel-Thomson at half
-    the baud rate.
+    `ser`, `ffe_taps`, `ffe_pre` and `dfe_taps` left as None take the
+    standard's values for the lane rate (:func:`tdecq_reference`): P802.3dj's
+    SER 4.56e-4 and 15-tap FFE (3 pre-cursors) + 1 DFE tap at 200G/lane,
+    802.3cd's SER 4.8e-4 and 5-tap FFE (1 pre-cursor) at 100G/lane. An
+    explicit ``ffe_taps`` of another length keeps the standard's pre-cursor
+    count where it fits (at most half the taps). The reference receiver
+    defaults to the TDECQ 4th-order Bessel-Thomson at half the baud rate.
+
+    `s_noise_mW` is TDECQ's S: the measured O/E + oscilloscope noise, which
+    802.3 credits back to the transmitter (R = sqrt(sigma_G^2 + S^2)). A
+    simulated waveform carries no scope noise, so leave it at 0 unless the
+    record includes a modeled receiver front end; any S > 0 lowers TDECQ,
+    by more the smaller the OMA.
 
     Equalization: TDECQ is defined through the 802.3 reference equalizer, a
-    T-spaced FFE after the reference receiver. ``ffe_taps`` sets its length
-    (5, one pre-cursor via ``ffe_pre``, is the 802.3bs/cd reference; 0
-    scores the eye unequalized). Taps are designed by MMSE with
+    T-spaced FFE after the reference receiver; ``ffe_taps=0`` (with
+    ``dfe_taps`` unset) scores the eye unequalized. Taps are designed by MMSE with
     ``stateye.ffe_mmse`` (sum to 1) and their noise enhancement
     ``C_eq = sqrt(sum c^2)`` feeds TDECQ. Pass the transmitted PAM-4
     ``symbols`` (any rotation) whenever they are known -- as a TDECQ scope
@@ -398,11 +431,12 @@ def measure_pam4(
     squares, the default), ``"lms"`` (normalized LMS, step ``ffe_mu``,
     ``ffe_passes`` sweeps of the record), ``"optimal"`` (Nelder-Mead on
     TDECQ itself from the MMSE start, ``ffe_max_evals`` eye analyses -- the
-    802.3 definition, and slow) or ``"manual"`` (``ffe_manual``, a list of
+    Clause 121 definition, and slow; P802.3dj D3.1+ specifies MMSE instead)
+    or ``"manual"`` (``ffe_manual``, a list of
     taps, normalized to sum to 1; ``ffe_taps`` is then its length).
 
     ``dfe_taps`` adds a decision-feedback equalizer after the FFE (802.3dj
-    D2.1 uses one tap), designed jointly by the chosen method; with
+    uses one tap), designed jointly by the chosen method; with
     ``"manual"`` its coefficients come from ``dfe_manual`` in the standard's
     normalization (b referenced to OMA/2 at the FFE input). Decisions are
     the known ``symbols`` when given (ideal DFE) or the equalizer's own.
@@ -411,14 +445,18 @@ def measure_pam4(
     unequalized record when not given -- so a DFE is not charged for the
     OMA it removes.
 
-    ``ffe_limits="802.3dj"`` applies the P802.3dj D2.1 Table 180-15 limits
-    (main tap 0.9..2.5, per-tap ratios, 0 <= b <= 0.3): the TDECQ-optimal
-    search stays inside them, and MMSE / LMS taps that land outside are
-    projected back in (``metrics["eq_projected"]``); manual taps are left
-    as given, with any violation in ``metrics["eq_violations"]``. ``progress`` is passed to the
+    ``ffe_limits="802.3dj"`` applies the P802.3dj D3.2 Table 180-16 limits
+    (main tap 0.9 - b(1)..2.5, per-tap ratios, |w(1)/w(0) - b(1) -
+    w(-1)/w(0)| <= 0.25, 0 <= b <= 0.33): the TDECQ-optimal search stays
+    inside them, and MMSE / LMS taps that land outside are projected back in
+    (``metrics["eq_projected"]``); manual taps are left as given, with any
+    violation in ``metrics["eq_violations"]``. ``progress`` is passed to the
     TDECQ-optimal search (``progress(i, n, tdecq_i, tdecq_best)``).
-    MMSE taps are not the TDECQ-minimizing taps the standard asks for, so
-    the result is at or slightly above the compliant value.
+
+    Still Clause 121 rather than D3.2 Clause 180 in two places, both of
+    which can only raise TDECQ: the sub-eye thresholds stay at their
+    nominal levels (D3.2 lets them move +-2 % of OMA) and the sampling
+    phase stays at the eye centre (D3.2 minimizes over it).
     """
     stateye = _require_stateye()
     if not hasattr(stateye.IdealEye, "set_tdecq_ser"):
@@ -427,6 +465,14 @@ def measure_pam4(
     p, dt_sec = _prepare(p_thru_mW, dt_sec, baud, ref_rx_bw_factor,
                          ref_rx_order, ref_rx_bw_hz, settle_ui)
 
+    ref = tdecq_reference(baud)
+    ser = ref["ser"] if ser is None else float(ser)
+    if ffe_taps is None:
+        ffe_taps = ref["ffe_taps"]
+    if ffe_pre is None:
+        ffe_pre = min(ref["ffe_pre"], (max(int(ffe_taps), 1) - 1) // 2)
+    if dfe_taps is None:
+        dfe_taps = ref["dfe_taps"] if ffe_taps else 0
     eq: dict = {}
     if ffe_taps or dfe_taps:
         if not hasattr(stateye, "tap_limit_violations"):
@@ -463,6 +509,8 @@ def measure_pam4(
                 noise_rms=noise)
         elif ffe_method == "manual":
             taps = np.asarray(ffe_manual if ffe_manual else [1.0], dtype=float)
+            if taps.ndim == 1 and pre >= taps.size:
+                pre = (taps.size - 1) // 2   # a short manual list: centred main
             if taps.ndim != 1 or taps.size < 1 or not pre < taps.size \
                     or taps.sum() == 0:
                 raise ValueError("manual FFE taps need a non-empty list with "
@@ -485,11 +533,18 @@ def measure_pam4(
                 stateye.tap_limit_violations(taps, info["n_pre"],
                                              info.get("dfe_b", [])):
             # MSE-optimal taps can leave the legal reference equalizer
-            # (e.g. main tap < 0.9 with a DFE): pull them back inside
-            taps = stateye.project_to_limits(taps, info["n_pre"])
-            # the DFE was balanced against the unprojected FFE: refit it
-            info = {**stateye.refit_dfe(p, sps, taps, info),
-                    "ceq": stateye.noise_enhancement(taps)}
+            # (e.g. a pre/post imbalance once the DFE takes the post-cursor):
+            # pull them back inside. The DFE was balanced against the
+            # unprojected FFE, so refit it -- and since b(1) moves two FFE
+            # limits, project again
+            for _ in range(3):
+                taps = stateye.project_to_limits(taps, info["n_pre"],
+                                                 info.get("dfe_b", []))
+                info = {**stateye.refit_dfe(p, sps, taps, info),
+                        "ceq": stateye.noise_enhancement(taps)}
+                if not stateye.tap_limit_violations(
+                        taps, info["n_pre"], info.get("dfe_b", [])):
+                    break
             info.pop("rms_error_after", None)
             projected = True
         p = stateye.equalize(p, taps, info, sps)
@@ -527,6 +582,7 @@ def measure_pam4(
              for k, v in eye.get_measurements().items()}
     counts = dict(eye.get_measurement_counts())
     msmts.update(eq)
+    msmts["tdecq_ser"] = ser
     if strict and not np.isfinite(msmts.get("tdecq_outer", np.nan)):
         raise ValueError(
             "stateye returned a non-finite TDECQ: OMA_outer needs a run of 7 "

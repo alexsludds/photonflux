@@ -53,11 +53,12 @@ SAMPLES_PER_UI = 16    # evaluate: save points per UI of the full-period record
 SETTLE_UI = 16         # figures of merit: start-up dropped before scoring
 _PENALTY = 100.0       # optimize: objective units per 100 % constraint violation
 
-# the Eye tab's stateye defaults (static/index.html tq-* fields)
-STATEYE_DEFAULTS = {"rx_bw": "auto", "rx_order": 4, "taps": 5, "pre": 1,
-                    "dfe": 0, "method": "mmse", "limits": True,
-                    "use_pattern": True, "s_noise": 0.005, "nx": 256,
-                    "ny": 1024}
+# the Eye tab's stateye defaults (static/index.html tq-* fields); "auto"
+# takes the lane rate's 802.3 reference (photonflux.tdec.tdecq_reference)
+STATEYE_DEFAULTS = {"rx_bw": "auto", "rx_order": 4, "taps": "auto",
+                    "pre": "auto", "dfe": "auto", "method": "mmse",
+                    "limits": True, "use_pattern": True, "s_noise": 0.0,
+                    "ser": "auto", "nx": 256, "ny": 1024}
 
 # evaluate: figures of merit it can score (NRZ swaps tdecq_db for tdec_db)
 FOM_KEYS = ("rel_oma", "rel_oma_db", "oma_dbm", "il_db", "er_db", "tdecq_db",
@@ -311,7 +312,8 @@ def score_eye(t, values, pattern: dict, cfg: dict | None) -> dict:
     ui = float(pattern["ui"])
     pam4 = str(pattern.get("mode")) == "pam4"
     c = {**STATEYE_DEFAULTS, **(cfg or {})}
-    c.setdefault("ser" if pam4 else "ber", 4.8e-4 if pam4 else 1e-12)
+    if not pam4:
+        c.setdefault("ber", 1e-12)
     m = eyemeasure.measure({"t": list(t), "values": list(values),
                             "unit": "mW", "ui": ui, "levels": 4 if pam4 else 2,
                             "skip_s": SETTLE_UI * ui, "pattern": pattern,

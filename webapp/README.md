@@ -163,7 +163,11 @@ or `Session().flow()` in a notebook (a `FlowResult` with `.vars`,
 Example 48 is the worked case: the coupling-modulated ring of example 47 at
 106.25 GBd PAM4, optimized over laser detuning, drive bias, arm imbalance, PN
 length and ring length against RLM > 0.95, TDECQ < 1.5 dB, relOMA > -2 dB,
-ER > 3.5 dB. Its device assumptions are flow variables (see the canvas note).
+ER > 3.5 dB. Its device assumptions are flow variables (see the canvas note):
+with lumped junctions driven through 50 Ohm the junction RC caps it well
+short of the spec (relOMA -4.9 dB, TDECQ 2.4 dB). Example 49 runs the same
+flow on traveling-wave PN arms: TDECQ 1.3 dB, RLM 0.95 and ER 4.9 dB pass,
+relOMA -3.1 dB still misses -- the 2 Vpp swing, not bandwidth, now limits.
 
 ## Serial-link (SERDES) workflow
 
@@ -465,6 +469,21 @@ strength in the other.
   drift. The optics are quasi-static (steady-state waveguides), so the eye
   shows level placement, not photon-lifetime bandwidth
   (`tests/test_pn_phase_shifter.py` pins it).
+* **PN phase shifter, traveling-wave** (`pn_phase_shifter_tw`, its own
+  long symbol with the electrode strip): the lumped part's junction physics
+  distributed under a transmission-line electrode. Drive `e_in` (at the `p1`
+  end), terminate `e_out` into the bias, connect `ref` to the junction's
+  other side (`polarity` +1: the electrode is the n side). The electrode is
+  an RLC ladder (unloaded `z0_ohm`, `n_rf`, flat conductor loss) loaded
+  section by section by the junction -- `rs_ohm_mm / length` in series with
+  the depletion charge -- so the loaded impedance (~40 Ohm for the defaults
+  at 2 V), the RF slow-down (n ~ 3.6) and the junction-RC line loss come out
+  of the physics. Each section's optical phase reaches `p2` after its optical
+  transit (a Pade all-pass chain at `n_group`), so RF/optical walk-off is
+  modelled rather than approximated by a pole. `n_sections` 0 picks one
+  section per <= 100 um (accurate to ~60 GHz). At DC it equals the lumped
+  part; `tests/test_pn_phase_shifter_tw.py` pins the line impedance and delay
+  and the walk-off. Example 49 is example 48 with traveling-wave arms.
 * **Bring your own .va**: the palette's "Upload .va" button compiles any
   Verilog-A file through openvaf/bosdi into a placeable JAX component
   (ports from the module, parameters with their defaults). Uploads persist

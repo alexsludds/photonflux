@@ -34,7 +34,7 @@ jobs:
       - name: Start the photonflux server (published image)
         run: |
           tag=${{ github.event.workflow_run.head_sha || 'latest' }}
-          docker run -d --name pf -p 7860:7860 -e PHOTONFLUX_RUN_TIMEOUT_S=900 \
+          docker run -d --name pf -p 7860:7860 -e PHOTONFLUX_RUN_TIMEOUT_S=4800 \
             "ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/photonflux:${tag}"
           for i in $(seq 90); do curl -fs localhost:7860/api/examples >/dev/null && exit 0; sleep 2; done
           docker logs pf; exit 1
@@ -42,8 +42,10 @@ jobs:
         with:
           python-version: "3.12"
       - run: pip install playwright && playwright install --with-deps chromium
+      # Examples with a testbench flow record the whole flow; example 49's
+      # 60-evaluation optimize runs for most of an hour, hence the limits.
       - name: Capture every example
-        run: python scripts/build_static_demo.py --server http://localhost:7860 --out site --timeout 960
+        run: python scripts/build_static_demo.py --server http://localhost:7860 --out site --timeout 4860
       - if: failure()
         run: docker logs pf 2>&1 | tail -100
       - uses: actions/upload-pages-artifact@v3

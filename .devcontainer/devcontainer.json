@@ -2,6 +2,9 @@
   // "Open in Codespaces": runs the prebuilt image from .github/workflows/image.yml
   // (warmed model caches, SKY130 PDK) and starts the web app on port 7860.
   // The server runs the image's copy of the code in /app, not this workspace.
+  // A Codespace is one user's machine, so it drops the image's per-run time
+  // limit (meant for a shared public host): testbench flows such as example
+  // 49's 60-evaluation optimize run for most of an hour.
   "name": "photonflux",
   "image": "ghcr.io/alexsludds/photonflux:latest",
   "remoteUser": "user",
@@ -10,5 +13,5 @@
   "portsAttributes": {
     "7860": { "label": "photonflux", "onAutoForward": "openBrowser" }
   },
-  "postStartCommand": "setsid nohup python /app/webapp/server.py > /tmp/photonflux.log 2>&1 &"
+  "postStartCommand": "PHOTONFLUX_RUN_TIMEOUT_S=0 setsid nohup python /app/webapp/server.py > /tmp/photonflux.log 2>&1 &"
 }

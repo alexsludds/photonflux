@@ -26,6 +26,25 @@ ARG SKY130_PDK_COMMIT=c6d73a35f524070e85faff4a6a9eef49553ebc2b
 # 0.2.4's delay-history argument). Unreleased, so it is built from source
 # below; switch back to a PyPI "bosdi==" pin once a release includes it.
 ARG BOSDI_REF=0327afb0855715a670165cdbc871ddd290226250
+# stateye pin: DerekK44/stateye (v1.8, PAM-4 + TDECQ). Flows and the Eye tab
+# score TDECQ with it (photonflux.tdec); without it every eye step that asks
+# for tdecq() fails. It does not build on NumPy 2 as published, so the stage
+# below applies docs/patches/stateye-modern-toolchain.patch.
+ARG STATEYE_REF=be599f15d92badc3277c3d6db5c66445c6a23622
+
+# ===========================================================================
+# stateye wheel: the fork + the repo's toolchain patch (Cython extensions)
+# ===========================================================================
+FROM python:${PY_VER}-slim AS stateye-wheel
+ARG STATEYE_REF
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        build-essential git ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+COPY docs/patches/stateye-modern-toolchain.patch /tmp/stateye.patch
+RUN git init -q /src/stateye && cd /src/stateye \
+    && git fetch -q --depth 1 https://github.com/DerekK44/stateye ${STATEYE_REF} \
+    && git checkout -q FETCH_HEAD && git apply /tmp/stateye.patch \
+    && pip wheel --no-cache-dir --no-deps -w /wheels .
 
 # ===========================================================================
 # bosdi wheel: Rust static lib + nanobind C++ shim, built from BOSDI_REF
@@ -67,10 +86,14 @@ WORKDIR /app
 # --- Python deps -----------------------------------------------------------
 # circulax (pure-python) pulls jax/jaxlib/diffrax/klujax (all manylinux) from
 # PyPI; bosdi comes from the wheel stage above (it no longer needs the
-# openvaf-py binding).
+# openvaf-py binding). stateye goes in --no-deps: its requirements.txt lists
+# black/pre-commit/pytest as runtime deps, so its real runtime needs (h5py,
+# Pint, tqdm, colorama, scipy) are named here instead.
 COPY --from=bosdi-wheel /wheels /tmp/wheels
+COPY --from=stateye-wheel /wheels /tmp/wheels
 RUN pip install --no-cache-dir /tmp/wheels/bosdi-*.whl \
-      "circulax==0.2.4" volare numpy matplotlib \
+      "circulax==0.2.4" volare numpy matplotlib scipy h5py Pint tqdm colorama \
+    && pip install --no-cache-dir --no-deps /tmp/wheels/stateye-*.whl \
     && rm -rf /tmp/wheels
 
 # --- app source + Linux openvaf-ir (overwrites the vendored Mac binary) -----

@@ -122,8 +122,10 @@ def _qpsk_over_fiber(length_km, linewidth, snr_db, seed=2):
     tx = w.qam_symbols({"qam": "qpsk", "order": 15, "seed": 1}, 60_000)
     sig = co.upsample_shape(tx, sps, beta)
     fs = symrate * sps
-    b2L = co.beta2_of(17.0, lam) * length_km * 1e3
-    sig = co.apply_cd(sig, fs, b2L)                      # chromatic dispersion
+    from ssfm import beta23
+
+    b2, b3 = beta23(lam * 1e-9, 17.0, 0.0)               # fiber_cd's dispersion
+    sig = co.apply_cd(sig, fs, b2 * length_km * 1e3, b3 * length_km * 1e3)
     sig = sig * np.exp(1j * co.phase_noise(len(sig), linewidth, symrate, sps,
                                            rng=rng))     # laser linewidth
     sig = co.awgn(sig, snr_db, sps=sps, rng=rng)

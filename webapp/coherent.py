@@ -23,6 +23,7 @@ from __future__ import annotations
 import numpy as np
 
 import wavesrc
+from ssfm import beta23
 
 
 def _erfc(x):
@@ -102,10 +103,7 @@ def apply_cd(sig: np.ndarray, fs: float, beta2_L: float,
 
 def beta2_of(D_ps: float, lam_nm: float) -> float:
     """beta2 [s^2/m] from dispersion D [ps/nm/km] at wavelength [nm]."""
-    c = 299792458.0
-    lam = lam_nm * 1e-9
-    D = D_ps * 1e-6                      # ps/nm/km -> s/m/m
-    return -D * lam ** 2 / (2.0 * np.pi * c)
+    return beta23(lam_nm * 1e-9, D_ps, 0.0)[0]
 
 
 # ---------------------------------------------------------------------------
@@ -133,17 +131,14 @@ def matched_filter(sig: np.ndarray, sps: int, beta: float,
 
 def cd_compensate(sig: np.ndarray, fs: float, D_ps: float, length_km: float,
                   lam_nm: float = 1550.0, S_ps: float = 0.0) -> np.ndarray:
-    """Frequency-domain bulk CD compensation (inverse all-pass)."""
-    beta2 = beta2_of(D_ps, lam_nm)
-    beta2_L = beta2 * length_km * 1e3
-    # dispersion slope -> beta3 (small third-order term; 0 when S not given)
-    c = 299792458.0
-    lam = lam_nm * 1e-9
-    beta3 = (S_ps * 1e3) * (lam ** 2 / (2 * np.pi * c)) ** 2 if S_ps else 0.0
-    beta3_L = beta3 * length_km * 1e3
+    """Frequency-domain bulk CD compensation: the exact inverse of the
+    fiber_cd / fiber_nl all-pass for the same D, S and wavelength (shared
+    :func:`ssfm.beta23`, so beta3 carries its 2D/lambda term even at S = 0)."""
+    beta2, beta3 = beta23(lam_nm * 1e-9, D_ps, S_ps)
+    L = length_km * 1e3
     nf = len(sig)
-    return np.fft.ifft(np.fft.fft(sig)
-                       * cd_filter(nf, fs, beta2_L, beta3_L, inverse=True))
+    return np.fft.ifft(np.fft.fft(sig) * cd_filter(nf, fs, beta2 * L, beta3 * L,
+                                                   inverse=True))
 
 
 def cma_equalize(sig: np.ndarray, ntaps: int, mu: float, sps: int = 2,
@@ -561,5 +556,12 @@ def _assemble_complex(result: dict, cfg: dict, log: list):
         log.append("coherent report: set probe_i/probe_q (balanced I/Q) or a "
                    "complex probe")
         return None
-    v = tr.get("complex", tr["values"])
-    return np.asarray(v, complex)
+    v = np.asarray(tr.get("complex", tr["values"]))
+    if not np.iscomplexobj(v):
+        # simulate's traces carry |E|^2 (mW) for optical probes and volts for
+        # electrical ones -- neither is the complex baseband the DSP needs
+        log.append(f"coherent report: probe {probe!r} is a real trace "
+                   f"({tr.get('unit') or '?'}); probe the coherent receiver's "
+                   "I and Q outputs (probe_i / probe_q)")
+        return None
+    return v.astype(complex)

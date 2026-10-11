@@ -216,16 +216,6 @@ def _split_key(key: str) -> tuple[str, str]:
     return inst, param
 
 
-def _inject_ui(sch: dict) -> None:
-    """Pattern sources take their UI from the schematic's global baud rate
-    (the editor injects it before a run; saved testbenches carry
-    ``globals.baud`` instead)."""
-    baud = float((sch.get("globals") or {}).get("baud") or 0.0)
-    for inst in (sch.get("instances") or {}).values():
-        if inst.get("type") in ("prbs", "qam_source") and baud > 0:
-            inst.setdefault("settings", {}).setdefault("ui", 1.0 / baud)
-
-
 def _assignments(flow: dict, overrides: dict, step_set: dict | None,
                  vars_: dict) -> list[tuple[str, str, float]]:
     """Resolved (inst, param, value) in apply order: the flow's design
@@ -247,8 +237,7 @@ def _prepare(base: dict, flow: dict, overrides: dict, step_set: dict | None,
              vars_: dict) -> dict:
     import simulate
 
-    sch = copy.deepcopy(base)
-    _inject_ui(sch)
+    sch = copy.deepcopy(simulate.with_global_ui(base))
     for inst, param, val in _assignments(flow, overrides, step_set, vars_):
         try:
             simulate._patch_point(sch, inst, param, val)

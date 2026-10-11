@@ -27,7 +27,6 @@ first use) are automatic.
 
 | model | what it is |
 |---|---|
-| `laser_cw.va` | CW source emitting an E-field with thermally-driven phase |
 | `ring_mod.va` | Si microring modulator: coupled-mode-theory all-pass ring from the physical device (radius, group index, junction dB/m, bus κ², pm/V, fF/µm) — coupling condition + photon-lifetime bandwidth. **Hierarchical**: instantiates `directional_coupler.va` + `ring_phase_shifter.va` + `ring_waveguide.va` on a shared cavity node (flattened source-level by `cx.va`, see below) |
 | `directional_coupler.va` | bus↔ring point coupler (CMT sub-component): couples the bus field into the shared cavity node at rate 1/τ_e and taps the through port `s_out = s_in + j·A` |
 | `ring_phase_shifter.va` | intracavity EO phase shifter (CMT sub-component): electrode voltage sets the cavity detuning δ(V) — the *cavity-detuning* element, distinct from the memoryless field rotator `phase_shifter.va` — plus the junction cap + leakage load the driver sees |

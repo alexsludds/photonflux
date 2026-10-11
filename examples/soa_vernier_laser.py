@@ -186,8 +186,9 @@ def build_loop(v_heat_levels, v_heat_tstep, v_levels, t_step):
     staircase too, so the wavelength can be STEPPED while the laser runs."""
     n = int(np.ceil(T_STOP / DT_NOISE)) + 4
     rng = np.random.default_rng(NOISE_SEED)
-    sigma = float(np.sqrt(s_ase() / (4.0 * DT_NOISE)))
-    bank = rng.standard_normal((2, n)) * sigma * 1.22474487
+    # complex white noise of optical PSD S: each quadrature S/(2 dt)
+    sigma = float(np.sqrt(s_ase() / (2.0 * DT_NOISE)))
+    bank = rng.standard_normal((2, n)) * sigma
     # the initial DC solve freezes n(t=0) as an eternal constant, which
     # would pre-charge the rings' m = 0 modes with a coherent envelope-DC
     # seed ~40 dB above the fair broadband floor and rig the competition —

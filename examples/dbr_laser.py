@@ -104,7 +104,8 @@ def _noise_src(stream, tn):
 def build(v_dbr_levels):
     n = int(np.ceil(N_STEP * T_STEP / DT_NOISE)) + 4
     rng = np.random.default_rng(NOISE_SEED)
-    sigma = float(np.sqrt(s_ase() / (4.0 * DT_NOISE)))
+    # complex white noise of optical PSD S: each quadrature S/(2 dt)
+    sigma = float(np.sqrt(s_ase() / (2.0 * DT_NOISE)))
     bank = rng.standard_normal((4, n)) * sigma
     bank[:, 0] = 0.0
     tn = jnp.arange(n) * DT_NOISE

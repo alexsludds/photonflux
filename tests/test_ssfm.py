@@ -190,16 +190,34 @@ def test_fwm_needs_kerr():
 
 
 # ===========================================================================
-# parameter conversions match lti.py's fiber path (so the linear limit lines up)
+# parameter conversions (shared by fiber_cd, fiber_nl, the SSFM and coherent)
 # ===========================================================================
-def test_fiber_params_match_lti_beta():
+def test_fiber_params_beta_closed_form():
+    # SSMF at 1550 nm: D = 17 ps/nm/km -> beta2 = -21.7 ps^2/km; beta3 from
+    # S = 0.06 ps/nm^2/km plus the 2D/lambda term
     p = ssfm.fiber_params(length_km=10.0, D_ps=17.0, S_ps=0.06,
                           lambda_nm=1550.0, atten_db_km=0.2)
-    d_ps, s_ps = lti._resolve_dispersion(1550e-9, 17.0, 0.06, 0.0)
-    b2, b3 = lti._beta23(1550e-9, d_ps, s_ps)
-    assert p.beta2 == pytest.approx(b2, rel=1e-12)
-    assert p.beta3 == pytest.approx(b3, rel=1e-12)
+    lam, c = 1550e-9, 299792458.0
+    assert p.beta2 * 1e27 == pytest.approx(-21.68, rel=1e-3)        # ps^2/km
+    w = lam ** 2 / (2 * np.pi * c)
+    assert p.beta3 == pytest.approx(w ** 2 * (60.0 + 2 * 17e-6 / lam),
+                                    rel=1e-12)
     assert p.alpha == pytest.approx(0.2 * np.log(10) / 10 / 1e3, rel=1e-12)
+
+
+def test_coherent_cd_compensation_inverts_the_fiber():
+    # the receiver's compensator must undo fiber_cd's all-pass exactly,
+    # third-order term included (it once dropped beta3's 2D/lambda part)
+    import coherent as co
+
+    rng = np.random.default_rng(0)
+    sig = rng.standard_normal(4096) + 1j * rng.standard_normal(4096)
+    fs, L_km, lam_nm = 256e9, 80.0, 1550.0
+    p = ssfm.fiber_params(length_km=L_km, D_ps=17.0, S_ps=0.06,
+                          lambda_nm=lam_nm, atten_db_km=0.0)
+    rx = co.apply_cd(sig, fs, p.beta2 * p.length, p.beta3 * p.length)
+    back = co.cd_compensate(rx, fs, 17.0, L_km, lam_nm, S_ps=0.06)
+    assert np.max(np.abs(back - sig)) < 1e-9
 
 
 def test_fiber_params_lambda0_profile():

@@ -13,6 +13,7 @@ from pathlib import Path
 import numpy as np
 
 import vf
+from ssfm import beta23, resolve_dispersion
 
 UPLOADS = Path(__file__).resolve().parent / "uploads"
 _C0 = 299792458.0
@@ -63,31 +64,6 @@ def parse_touchstone(text: str):
     S[:, 0, 0], S[:, 1, 0] = S4[:, 0], S4[:, 1]
     S[:, 0, 1], S[:, 1, 1] = S4[:, 2], S4[:, 3]
     return f, S
-
-
-def _resolve_dispersion(lam: float, D_ps: float, S_ps: float,
-                        lambda0_nm: float) -> tuple[float, float]:
-    """(D_ps, S_ps) at wavelength ``lam`` [m], honouring a G.652 lambda0 profile.
-
-    When ``lambda0_nm > 0`` the O-band-correct profile around the zero-dispersion
-    wavelength is used (``S_ps`` read as S0); otherwise the flat C-band D/S pair
-    is returned unchanged. Shared by the linear ``fiber`` and nonlinear
-    ``fiber_nl`` builders so both derive identical beta2/beta3."""
-    if lambda0_nm > 0.0:
-        S0 = S_ps if S_ps > 0.0 else 0.092
-        lnm, l0 = lam * 1e9, lambda0_nm
-        D_ps = S0 / 4.0 * (lnm - l0 ** 4 / lnm ** 3)
-        S_ps = S0 / 4.0 * (1.0 + 3.0 * l0 ** 4 / lnm ** 4)
-    return D_ps, S_ps
-
-
-def _beta23(lam: float, D_ps: float, S_ps: float) -> tuple[float, float]:
-    """beta2 [s^2/m], beta3 [s^3/m] from D [ps/nm/km], S [ps/nm^2/km]."""
-    D_si = D_ps * 1e-6                       # ps/nm/km  -> s/m^2
-    S_si = S_ps * 1e3                        # ps/nm^2/km -> s/m^3
-    beta2 = -D_si * lam ** 2 / (2.0 * np.pi * _C0)
-    beta3 = lam ** 3 * (S_si * lam + 2.0 * D_si) / (2.0 * np.pi * _C0) ** 2
-    return beta2, beta3
 
 
 def _fit_dispersion(b2L: float, b3L: float, amp: float, bw: float,
@@ -176,9 +152,9 @@ def build(kind: str, settings: dict, log: list) -> tuple[str, dict]:
         n_poles = int(settings.get("n_poles", 28))
         lam0_nm = float(settings.get("lambda0_nm", 0.0))
         S_ps = float(settings.get("S_ps", 0.0))       # slope, ps/nm^2/km
-        D_ps, S_ps = _resolve_dispersion(lam, float(settings.get("D_ps", 17.0)),
-                                         S_ps, lam0_nm)
-        beta2, beta3 = _beta23(lam, D_ps, S_ps)
+        D_ps, S_ps = resolve_dispersion(lam, float(settings.get("D_ps", 17.0)),
+                                        S_ps, lam0_nm)
+        beta2, beta3 = beta23(lam, D_ps, S_ps)
         b2L, b3L = beta2 * L, beta3 * L
         amp = 10.0 ** (-att * L / 1e3 / 20.0)
         poles, res, d, Td, err = _fit_dispersion(b2L, b3L, amp, bw, n_poles)
@@ -208,10 +184,10 @@ def build(kind: str, settings: dict, log: list) -> tuple[str, dict]:
         n_seg = max(1, int(settings.get("n_seg", 20)))
         lam0_nm = float(settings.get("lambda0_nm", 0.0))
         gamma = float(settings.get("gamma_per_W_km", 1.3)) / 1e3   # 1/(W*m)
-        D_ps, S_ps = _resolve_dispersion(lam, float(settings.get("D_ps", 17.0)),
-                                         float(settings.get("S_ps", 0.0)),
-                                         lam0_nm)
-        beta2, beta3 = _beta23(lam, D_ps, S_ps)
+        D_ps, S_ps = resolve_dispersion(lam, float(settings.get("D_ps", 17.0)),
+                                        float(settings.get("S_ps", 0.0)),
+                                        lam0_nm)
+        beta2, beta3 = beta23(lam, D_ps, S_ps)
         dz = L / n_seg
         b2dz, b3dz = beta2 * dz, beta3 * dz
         amp_dz = 10.0 ** (-att * dz / 1e3 / 20.0)      # per-segment attenuation

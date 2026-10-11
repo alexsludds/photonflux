@@ -221,21 +221,23 @@ TDECQ 1.4 dB.
   **bathtub** curve. Multi-seed noise runs pool their statistics.
 * **Pulse / COM analysis**: reruns the PRBS source in single-pulse mode,
   extracts the symbol-spaced pulse response at a probe, designs a Wiener
-  FFE(+DFE) and reports a COM-style FOM = 20 log10(cursor / sigma_ISI) with
-  the tap sets and the equalized pulse — a "best achievable EQ" oracle for
+  FFE(+DFE) and reports an ISI-limited FOM = 20 log10(half eye / sigma_ISI)
+  (half eye = cursor/(2(L-1)), sigma_ISI the RMS residual ISI of random NRZ or
+  PAM4 data) with the tap sets and the equalized pulse — a "best achievable EQ" oracle for
   any schematic link.
 * **Transient noise**: set `noise seeds` (+ bandwidth) in the transient
   toolbar to enable photodiode **shot noise** (2qI on the instantaneous
   current), laser **RIN** (set `rin_db` < 0 on a CW laser, dB/Hz), and TIA
   input-referred noise. N seeds re-run the compiled circuit (one compile,
-  N solves); the eye and BER report pool all seeds. Band-limited white
-  noise, variance-exact.
+  N solves); the eye and BER report pool all seeds. The noise PSD equals the
+  set density at low frequency and rolls off as sinc^4 (-1.8 dB at half the
+  noise bandwidth), so set the bandwidth to at least twice the receiver's.
 * **Noise analysis (small-signal)**: output-referred V/sqrt(Hz) at a probe
   via one adjoint solve per frequency; sources are resistor thermal 4kT/R
   (incl. PDK resistors), TIA `in_noise`, and diode shot at the operating
   point, with a per-source breakdown and integrated Vrms. (SKY130 FET
   channel noise is not modelled yet; optical chains: use transient seeds.)
-* **Optimize**: Nelder-Mead over up to 4 instance parameters
+* **Optimize**: Nelder-Mead over up to 8 instance parameters
   (`INST.param=min:max, ...`), objective `expr:<name>` (a scalar from the
   fx panel), `eye:<probe>`, `ber:<probe>` (minimized) or `fom`; runs the
   inner transient per evaluation (compile-time parameters recompile through
@@ -350,7 +352,7 @@ pin`. Three views per run:
   (`vout1..4`), so all four channels' received eyes come out of the single
   solve side by side.
 
-`python webapp/wdm_spectrum.py` runs the example once and renders the bus
+`python webapp/tools/wdm_spectrum.py` runs the example once and renders the bus
 spectrum plus each channel's drop spectrum and received waveform.
 
 A note on the modelling: coherent-field envelopes are baseband, so putting

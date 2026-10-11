@@ -3,16 +3,19 @@
 Everything here is data-aided: the PRBS source's settings regenerate the
 exact transmitted symbol sequence (`wavesrc._symbols`), so alignment,
 equalizer design and error counting use the known data — no CDR, no blind
-adaptation. Conventions follow the user's serdes codebase:
+adaptation. Conventions:
 
   * decision samples: best phase picked by correlation, symbol-spaced
   * RX FFE/DFE designed by data-aided least squares (the Wiener solution
     computed from the record itself); the DFE feeds back known symbols
-  * Q-fit BER: per-eye Q = (mu2 - mu1)/(sigma1 + sigma2),
-    BER = 0.5*erfc(Q/sqrt(2)); PAM4 sums the three Gray-coded eyes / 2
+  * Q-fit BER: per-eye Q = (mu2 - mu1)/(sigma1 + sigma2), each eye's error
+    rate 0.5*erfc(Q/sqrt(2)); PAM4 (Gray) BER = sum over the three eyes / 4
+    (each eye is crossed by two of the four equiprobable levels, and a
+    symbol slip there costs one of the symbol's two bits)
   * bathtub: Q(phase) across the UI from per-phase Gaussian fits
-  * COM-style figure of merit (pulse mode): equalized cursor vs the RSS of
-    residual ISI, FOM = 20*log10(cursor / sigma_isi)
+  * ISI-limited figure of merit (pulse mode): half the equalized eye
+    (cursor / (2 (L-1)) for L levels) over the RMS residual ISI of random
+    equiprobable data, FOM = 20*log10(half-eye / sigma_isi)
 """
 from __future__ import annotations
 
@@ -219,8 +222,9 @@ def _qfit(eq: np.ndarray, tx: np.ndarray, nlv: int) -> dict:
         q = (mus[e + 1] - mus[e]) / (sigmas[e] + sigmas[e + 1])
         qs.append(float(q))
         bers.append(float(0.5 * _erfc(max(q, 0.0) / np.sqrt(2.0))))
-    # PAM4 Gray: each symbol error across one eye is one bit error in two bits
-    ber = float(np.sum(bers) / 2.0) if nlv == 4 else float(bers[0])
+    # PAM4 Gray: an eye's slips come from its two adjacent levels (1/4 each),
+    # and each costs one bit of the symbol's two
+    ber = float(np.sum(bers) / 4.0) if nlv == 4 else float(bers[0])
     return {"ok": True, "levels": mus, "sigmas": sigmas, "counts": counts,
             "q": qs, "ber_est": ber}
 
@@ -278,7 +282,7 @@ def _bathtub(samples: np.ndarray, tx: np.ndarray, osr: int, phase: int,
             bers.append(0.5 * float(_erfc(max(q, 0.0) / np.sqrt(2.0))))
         if not okay:
             continue
-        tot = float(np.sum(bers) / (2.0 if nlv == 4 else 1.0))
+        tot = float(np.sum(bers) / (4.0 if nlv == 4 else 1.0))
         phases.append(((ph - phase) % osr) / osr - 0.5)
         log_ber.append(float(np.log10(max(tot, 1e-30))))
     order = np.argsort(phases)
@@ -454,7 +458,10 @@ def _wiener_ffe_dfe(h: np.ndarray, cursor: int, n_ffe: int, n_dfe: int,
 
 
 def pulse_report(result: dict, meta: dict, cfg: dict, log: list) -> dict | None:
-    """Pulse-response extraction + Wiener EQ + COM-style FOM."""
+    """Pulse-response extraction + Wiener EQ + ISI-limited FOM.
+
+    ``cfg["levels"]`` is the source's modulation (2 = NRZ, 4 = PAM4; the
+    pulse run itself always emits a single 0 -> 1 pulse)."""
     patterns = meta.get("patterns") or {}
     pat_inst = cfg.get("pattern") or next(iter(patterns), None)
     pattern = patterns.get(pat_inst) if pat_inst else None
@@ -499,8 +506,14 @@ def pulse_report(result: dict, meta: dict, cfg: dict, log: list) -> dict | None:
     isi[cur_row] = 0.0
     if n_dfe:
         isi[cur_row + 1: cur_row + 1 + n_dfe] = 0.0
-    sigma_isi = float(np.sqrt(np.sum(isi ** 2) / 3.0))   # ~uniform data power
-    fom_db = float(20.0 * np.log10(max(cursor_amp, 1e-30) /
+    # data are the source's level fractions a in {0, 1/(L-1), ..., 1}: the
+    # eye between adjacent levels is cursor/(L-1) tall, and equiprobable
+    # levels have Var(a) = (L+1)/(12 (L-1)) (1/4 for NRZ, 5/36 for PAM4)
+    nlv = 4 if int(cfg.get("levels", 2)) == 4 else 2
+    var_a = (nlv + 1) / (12.0 * (nlv - 1))
+    sigma_isi = float(np.sqrt(var_a * np.sum(isi ** 2)))
+    half_eye = cursor_amp / (2.0 * (nlv - 1))
+    fom_db = float(20.0 * np.log10(max(half_eye, 1e-30) /
                                    max(sigma_isi, 1e-30)))
     log.append(f"pulse report: cursor {scale:.4g} at symbol {cur}, "
                f"FOM {fom_db:.1f} dB with {n_ffe}-tap FFE + {n_dfe}-tap DFE")
@@ -511,5 +524,5 @@ def pulse_report(result: dict, meta: dict, cfg: dict, log: list) -> dict | None:
         "ffe_taps": [float(v) for v in w],
         "dfe_taps": [float(v) for v in dfe],
         "eq_pulse": [float(v) for v in Hc], "eq_cursor": cur_row,
-        "sigma_isi": sigma_isi, "fom_db": fom_db,
+        "sigma_isi": sigma_isi, "fom_db": fom_db, "levels": nlv,
     }

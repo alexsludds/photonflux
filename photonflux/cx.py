@@ -288,7 +288,7 @@ def terminator():
 def field_to_ri():
     """Adapter: complex field node -> (re, im) real node pair.
 
-    The repo's coherent Verilog-A models (``laser_cw.va``, ``ring_mod.va``)
+    The repo's coherent Verilog-A models (``ring_mod.va``, ``soa.va``, ...)
     carry complex fields as Ereal/Eimag node *pairs*, while circulax's optical
     nodes are single complex unknowns. This tap enforces ``V(re) = Re(V(c))``
     and ``V(im) = Im(V(c))`` (drawing nothing from ``c``), so a VA model's
@@ -607,25 +607,18 @@ def ring_modulator(settings: dict | None = None, *,
 # SKY130 FETs
 # ---------------------------------------------------------------------------
 
-def _showmod_card(netlist: str, device_ref: str, cache_name: str) -> dict[str, float]:
-    """Load ``netlist``, ``showmod device_ref : all``, parse to a dict (cached).
+_SHOWMOD_RE = re.compile(r"^\s*([a-z0-9_]+)\s+(-?[0-9][0-9.eE+-]*)\s*$")
+
+
+def parse_showmod(lines: list[str], device_ref: str) -> dict[str, float]:
+    """``showmod <ref> : all`` output -> BSIM4 card dict.
 
     ngspice reports ``tnom`` in Kelvin; the Verilog-A parameter is Celsius, so
     it is converted here. Values carry showmod's 6 significant digits.
     """
-    cache = CACHE_DIR / cache_name
-    if cache.exists():
-        return json.loads(cache.read_text())
-
-    from ._ngspice import NgSpice
-
-    ng = NgSpice.get()
-    ng.load_netlist(netlist)
-    ng.cmd("op")
-    lines = ng.cmd(f"showmod {device_ref} : all", check=False)
     card: dict[str, float] = {}
     for line in lines:
-        m = re.match(r"^\s*([a-z0-9_]+)\s+(-?[0-9][0-9.eE+-]*)\s*$", line)
+        m = _SHOWMOD_RE.match(line)
         if not m:
             continue
         try:
@@ -639,9 +632,32 @@ def _showmod_card(netlist: str, device_ref: str, cache_name: str) -> dict[str, f
         )
     if "tnom" in card:
         card["tnom"] -= 273.15
+    return card
+
+
+def _showmod_card(netlist: str, device_ref: str, cache_name: str) -> dict[str, float]:
+    """Load ``netlist``, ``showmod device_ref : all``, parse to a dict (cached)."""
+    cache = CACHE_DIR / cache_name
+    if cache.exists():
+        return json.loads(cache.read_text())
+
+    from ._ngspice import NgSpice
+
+    ng = NgSpice.get()
+    ng.load_netlist(netlist)
+    ng.cmd("op")
+    card = parse_showmod(ng.cmd(f"showmod {device_ref} : all", check=False),
+                         device_ref)
     CACHE_DIR.mkdir(parents=True, exist_ok=True)
     cache.write_text(json.dumps(card, indent=0))
     return card
+
+
+def sky130_card_cache(device: str, w: float, l: float,  # noqa: E741
+                      corner: str = "tt") -> Path:
+    """Cache file :func:`sky130_card` reads and writes for this geometry."""
+    key = _hash(str(toolchain.sky130_lib()), device, corner, f"{w:.6g}", f"{l:.6g}")
+    return CACHE_DIR / f"card_{device}_{corner}_{key}.json"
 
 
 def sky130_card(device: str, w: float, l: float, corner: str = "tt") -> dict[str, float]:  # noqa: E741
@@ -658,7 +674,6 @@ def sky130_card(device: str, w: float, l: float, corner: str = "tt") -> dict[str
     from .corners import check_corner
 
     check_corner(corner)
-    key = _hash(str(toolchain.sky130_lib()), device, corner, f"{w:.6g}", f"{l:.6g}")
     return _showmod_card(
         f""".title sky130 card extraction
 .lib {toolchain.sky130_lib()} {corner}
@@ -668,7 +683,7 @@ Vg g 0 0
 .end
 """,
         f"m.xm1.msky130_fd_pr__{device}",
-        f"card_{device}_{corner}_{key}.json",
+        sky130_card_cache(device, w, l, corner).name,
     )
 
 

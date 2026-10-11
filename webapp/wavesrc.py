@@ -5,9 +5,10 @@ arrays — a transient-friendly piecewise-linear waveform evaluated with
 ``jnp.interp`` (clamped at both ends). Everything here is plain numpy at
 netlist-build time; nothing is traced.
 
-PRBS conventions follow the user's serdes codebase (signaling.py):
-  * LFSR tap pairs {7:[7,6], 9:[9,5], 11:[11,9], 15:[15,14], 23:[23,18],
-    31:[31,28]}, x^k feedback, seed != 0.
+PRBS conventions:
+  * Fibonacci LFSR taps PRBS_TAPS below (IEEE 802.3 PRBS-13 for order 13),
+    seed != 0. Same sequences as photonflux.signals.prbs, started at a
+    different phase.
   * PAM4 is Gray-coded: bit pairs 00,01,11,10 -> symbol levels 0,1,2,3.
   * TX FFE is a symbol-spaced 3-tap FIR [pre, main, post]; pre/post are
     given in dB as in TxFFE.from_emphasis (0 dB = tap off).
@@ -325,9 +326,11 @@ def noise_bank(inst: str, seeds: int, span: float, bw: float,
 
     Each instance gets an independent, reproducible stream (seeded from the
     master seed + a stable hash of the instance name). Samples are spaced
-    dt_n = 1/(2*bw) and linearly interpolated by the components, so the
-    realised noise is white to ~bw with unit variance; scale by
-    sqrt(PSD/(2*dt_n)) for a target one-sided density.
+    dt_n = 1/(2*bw) and linearly interpolated by the components; scaled by
+    sqrt(PSD/(2*dt_n)) the process has exactly the target one-sided PSD at
+    low frequency, shaped by the interpolation kernel as sinc^4(f*dt_n):
+    -0.45 dB at bw/4, -1.8 dB at bw/2, -7.8 dB at bw. Pick bw at least twice
+    the receiver bandwidth so the band it integrates is flat.
     """
     dt_n = 1.0 / (2.0 * max(bw, 1e6))
     n = max(int(np.ceil(span / dt_n)) + 4, 16)

@@ -2566,6 +2566,9 @@ async function runSim(runKind) {
       // instances of them (namespaced refdes, spliced ports, baked params)
       ...(state.subcircuits && Object.keys(state.subcircuits).length
         ? { subcircuits: state.subcircuits } : {}),
+      // the server fills the same UI into pattern sources inside subcircuit
+      // bodies (simulate.with_global_ui), which the map above never reaches
+      globals: { baud: globalBaud() },
       corner: globalCorner(),
     },
     analysis,
@@ -3667,8 +3670,8 @@ function renderLink() {
         <tr><th>probe</th><td>${pul.probe} (UI ${fmtSI(pul.ui)}s)</td></tr>
         <tr><th>raw cursor</th><td>${fmtSI(pul.h_raw_peak)} at symbol
           ${pul.cursor}</td></tr>
-        <tr><th>COM-style FOM</th><td><b>${pul.fom_db.toFixed(1)} dB</b>
-          (cursor / &sigma;<sub>ISI</sub>)</td></tr>
+        <tr><th>ISI-limited FOM</th><td><b>${pul.fom_db.toFixed(1)} dB</b>
+          (half eye / &sigma;<sub>ISI</sub>, ${pul.levels === 4 ? "PAM4" : "NRZ"})</td></tr>
         <tr><th>&sigma;_ISI (residual)</th><td>${pul.sigma_isi.toExponential(3)}</td></tr>
         <tr><th>Wiener FFE taps</th><td>${fmtTaps(pul.ffe_taps)}</td></tr>
         <tr><th>DFE taps</th><td>${fmtTaps(pul.dfe_taps)}</td></tr>

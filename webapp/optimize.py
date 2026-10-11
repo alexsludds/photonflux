@@ -303,20 +303,26 @@ def run_optimize(payload: dict) -> dict:
         sch_c["corner"] = corner
         return sch_c
 
+    def corner_objective(x, c):
+        res = simulate.run({"schematic": at_corner(x, c), "analysis": inner})
+        try:
+            return _objective(res, spec, ui_hint, tdec_cfg)
+        except ValueError as exc:
+            # a misconfigured objective (wrong probe domain, no UI) fails
+            # the same way at every point, so surface it instead of
+            # returning inf forever and reporting a meaningless "optimum"
+            raise RuntimeError(f"optimize: {exc}") from None
+
     def f(x):
         x = np.clip(x, lo, hi)
+        # the corners of one design point are independent runs: solve them
+        # concurrently
+        objs = simulate.parallel_map(lambda c: corner_objective(x, c),
+                                     corners)
         vals = {}
-        for c in corners:
-            res = simulate.run({"schematic": at_corner(x, c),
-                                "analysis": inner})
-            try:
-                vals[c] = _objective(res, spec, ui_hint, tdec_cfg)
-            except ValueError as exc:
-                # a misconfigured objective (wrong probe domain, no UI) fails
-                # the same way at every point, so surface it instead of
-                # returning inf forever and reporting a meaningless "optimum"
-                raise RuntimeError(f"optimize: {exc}") from None
-            if vals[c] is None:
+        for c, v in zip(corners, objs):
+            vals[c] = v
+            if v is None:
                 break          # one failed corner fails the design
         evals["n"] += 1
         # any failed corner -> None: a design that only converges at some

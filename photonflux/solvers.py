@@ -1,0 +1,363 @@
+"""Compile-once DC and transient solves for circulax circuits.
+
+``Circuit.dc()`` and ``Circuit.transient()`` hand ``eqx.filter_jit`` a freshly
+built callable on every call (the transient's ODE term is a new ``lambda``,
+the DC Newton step a new closure). A jit cache keys on those callables, so
+every call re-traces and re-compiles the whole solver: 1-3 s of XLA work
+around a solve that often takes milliseconds, paid again on each re-run,
+sweep point, optimizer evaluation and noise seed.
+
+These wrappers pass only module-level callables and keep every number
+dynamic, so a repeat solve of the same circuit structure reuses the compiled
+program. The solver, its arithmetic and its results are unchanged; only the
+compile is skipped.
+
+    from photonflux import solvers
+
+    y0 = solvers.dc(circuit)                       # cached Newton DC
+    sol = solvers.transient(circuit, t0=0.0, t1=t_stop, dt0=dt, y0=y0,
+                            saveat=ts, max_steps=n_steps)
+"""
+from __future__ import annotations
+
+import os
+from typing import Any
+
+__all__ = ["dc", "transient", "step_budget", "bdf2_reuse_solver",
+           "enable_compile_cache"]
+
+_CACHE_MAX_BYTES = 1 << 30
+_cache_set = False
+
+
+def _machine_tag() -> str:
+    """Host fingerprint for the XLA cache path: compiled CPU code targets the
+    host's instruction set, so a shared home directory must not hand one
+    machine's executables to another."""
+    import hashlib
+    import platform
+
+    flags = ""
+    try:
+        with open("/proc/cpuinfo") as fh:
+            flags = next((ln for ln in fh if ln.startswith("flags")), "")
+    except OSError:
+        pass
+    ident = "|".join((platform.platform(), platform.machine(),
+                      platform.processor(), flags))
+    return hashlib.sha256(ident.encode()).hexdigest()[:12]
+
+
+def enable_compile_cache(path: str | None = None) -> str | None:
+    """Keep compiled XLA programs on disk so a new process (a CLI example, a
+    flow, a server restart) skips recompiling circuits it has seen before.
+
+    Called on the first solve. ``PHOTONFLUX_JAX_CACHE`` overrides the
+    directory, or disables the cache when ``0``; a cache directory the user
+    already configured for JAX is left alone. Oldest entries are pruned
+    beyond 1 GB. Returns the directory in use (None when disabled)."""
+    global _cache_set
+    import jax
+
+    if _cache_set:
+        return jax.config.jax_compilation_cache_dir
+    _cache_set = True
+    env = os.environ.get("PHOTONFLUX_JAX_CACHE", "").strip()
+    if env == "0":
+        return None
+    if jax.config.jax_compilation_cache_dir:
+        return jax.config.jax_compilation_cache_dir
+    if path is None:
+        base = env or os.path.join(
+            os.environ.get("XDG_CACHE_HOME")
+            or os.path.join(os.path.expanduser("~"), ".cache"),
+            "photonflux", "xla")
+        path = os.path.join(base, f"jax{jax.__version__}-{_machine_tag()}")
+    try:
+        os.makedirs(path, exist_ok=True)
+        entries = sorted((e for e in os.scandir(path) if e.is_file()),
+                         key=lambda e: e.stat().st_mtime, reverse=True)
+        total = 0
+        for e in entries:
+            total += e.stat().st_size
+            if total > _CACHE_MAX_BYTES:
+                os.remove(e.path)
+    except OSError:
+        return None
+    jax.config.update("jax_compilation_cache_dir", path)
+    # circuit programs take ~0.3-5 s to compile; cache all but the trivial
+    jax.config.update("jax_persistent_cache_min_compile_time_secs", 0.2)
+    return path
+
+
+def _zero_vf(t, y, args):
+    import jax.numpy as jnp
+
+    return jnp.zeros_like(y)
+
+
+_ZERO_TERM = None
+
+
+def _zero_term():
+    """circulax's placeholder ODE term (its solvers never call it), built
+    once so the transient jit cache sees the same static callable."""
+    global _ZERO_TERM
+    if _ZERO_TERM is None:
+        import diffrax
+
+        _ZERO_TERM = diffrax.ODETerm(_zero_vf)
+    return _ZERO_TERM
+
+
+def step_budget(n: int) -> int:
+    """``max_steps`` rounded up to 1-2-5 x 10^k.
+
+    ``max_steps`` is a compile-time constant of the transient loop, so an
+    exact ``int(t_stop / dt) + 10`` recompiles on every t_stop edit. The loop
+    stops at t1 either way, so a rounded-up budget gives identical results
+    and lets nearby run lengths share one compiled program.
+    """
+    n = max(int(n), 16)
+    scale = 1
+    while True:
+        for m in (1, 2, 5):
+            if m * scale >= n:
+                return m * scale
+        scale *= 10
+
+
+_DC_JIT = None
+
+
+def _dc_jit():
+    global _DC_JIT
+    if _DC_JIT is None:
+        import equinox as eqx
+        from circulax.circuit import Circuit
+
+        @eqx.filter_jit
+        def run(solver, groups, sys_size, y_guess, params, rtol, atol,
+                max_steps):
+            # A throwaway Circuit around the traced groups: its .dc() applies
+            # the parameter updates (vmapping over array-valued ones) and
+            # runs the Newton solve inside this one compiled program.
+            view = Circuit(solver, groups, sys_size, {}, rtol=rtol,
+                           atol=atol, max_steps=max_steps)
+            return view.dc(y_guess, params=params)
+
+        _DC_JIT = run
+    return _DC_JIT
+
+
+def dc(circuit: Any, y_guess: Any = None, *,
+       params: dict[str, Any] | None = None) -> Any:
+    """``circuit.dc(y_guess, params=params)``, compiled once per structure.
+
+    Same semantics as :meth:`circulax.Circuit.dc`: array-valued ``params``
+    vmap over their shared leading axis and return ``(batch, n)``.
+    """
+    import jax.numpy as jnp
+
+    enable_compile_cache()
+    y = circuit._zero_guess() if y_guess is None else jnp.asarray(y_guess)
+    arrays = {k: jnp.asarray(v) for k, v in (params or {}).items()}
+    return _dc_jit()(circuit.solver, circuit.groups, circuit.sys_size, y,
+                     arrays, float(circuit.rtol), float(circuit.atol),
+                     int(circuit.max_steps))
+
+
+def transient(circuit: Any, *, y0: Any, max_steps: int, **kwargs: Any) -> Any:
+    """``circuit.transient(...)`` that reuses its compiled solver.
+
+    ``y0`` is required (circulax's implicit DC fallback would compile its
+    own Newton loop; use :func:`dc`). ``max_steps`` is rounded up with
+    :func:`step_budget`; everything else passes through unchanged.
+    """
+    if y0 is None:
+        raise ValueError("solvers.transient needs y0 (use solvers.dc first)")
+    enable_compile_cache()
+    kwargs.setdefault("term", _zero_term())
+    return circuit.transient(y0=y0, max_steps=step_budget(max_steps),
+                             **kwargs)
+
+
+# ---------------------------------------------------------------------------
+# BDF2 with a reused Newton matrix
+# ---------------------------------------------------------------------------
+
+_BDF2_REUSE = None
+
+
+def bdf2_reuse_solver(linear_solver: Any, **kwargs: Any) -> Any:
+    """A ``BDF2ReuseSolver`` for a dense circulax linear solver (the class
+    subclasses a circulax solver, so it is built on first use)."""
+    global _BDF2_REUSE
+    if _BDF2_REUSE is None:
+        _BDF2_REUSE = _make_bdf2_reuse()
+    return _BDF2_REUSE(linear_solver=linear_solver, **kwargs)
+
+
+def _make_bdf2_reuse():
+    import diffrax
+    import jax
+    import jax.numpy as jnp
+
+    from circulax.solvers.assembly import (
+        assemble_residual_only_complex,
+        assemble_residual_only_real,
+        assemble_system_complex,
+        assemble_system_real,
+    )
+    from circulax.solvers.linear import (
+        DAMPING_EPS,
+        DAMPING_FACTOR,
+        GROUND_STIFFNESS,
+    )
+    from circulax.solvers.transient import (
+        BDF2VectorizedTransientSolver,
+        _bdf2_preamble,
+        _unpack_args,
+    )
+
+    class BDF2ReuseSolver(BDF2VectorizedTransientSolver):
+        """circulax's BDF2 that stops rebuilding the Newton matrix every
+        iteration.
+
+        ``BDF2VectorizedTransientSolver`` assembles the Jacobian and solves a
+        fresh dense LU on every Newton iteration of every step. At a fixed
+        step that matrix, ``dF/dy + (alpha/h) dQ/dy``, barely moves between
+        steps (and is constant for the linear part of a circuit), so this
+        solver keeps its inverse in the solver state and iterates with it
+        (a chord, or modified-Newton, iteration): each iteration is one
+        residual evaluation and one matrix-vector product.
+
+        A step runs circulax's full Newton instead, and stores the inverse of
+        its last Jacobian for the steps after it, when the stored matrix is
+        stale (``alpha/h`` moved by more than ``coef_rtol``: the first two
+        steps, a step-size change) or when the chord iteration fails: it
+        contracts by less than ``max_rate`` per iteration (a strongly
+        nonlinear step: a transistor switching, a laser turning on) or has
+        not converged in ``chord_max_steps``.
+
+        Accuracy: both iterations converge to the same root. A chord
+        iterate's remaining error is about ``rate * |update|`` rather than
+        Newton's ``|update|^2``, so convergence is declared on the tighter
+        ``err < tight`` (circulax's scaled max-norm, in which full Newton
+        stops at ``err < 1``; at the default 1e-5 tolerances, ``tight =
+        1e-3`` is a 1e-8 update), after at least two iterations.
+        """
+
+        max_rate: float = 0.25
+        coef_rtol: float = 1e-3
+        tight: float = 1e-3
+        chord_max_steps: int = 12
+
+        def init(self, terms, t0, t1, y0, args):
+            y_nm1, h_nm1, q0 = super().init(terms, t0, t1, y0, args)
+            n = y0.shape[0]
+            # NaN coefficient: no matrix yet, so the first step builds one
+            return (y_nm1, h_nm1, q0, jnp.zeros((n, n), y0.dtype),
+                    jnp.asarray(jnp.nan, y0.dtype))
+
+        def step(self, terms, t0, t1, y0, args, solver_state, options):
+            groups, num_vars, hist_t, hist_y = _unpack_args(args)
+            h_n = t1 - t0
+            ls = self.linear_solver
+            cplx = getattr(ls, "is_complex", False)
+            y_nm1, h_nm1, q_nm1, inv0, coef0 = solver_state
+            y_pred, alpha, make_residual, hist_state = _bdf2_preamble(
+                y0, t0, h_n, (y_nm1, h_nm1, q_nm1), groups, num_vars, cplx)
+            coef = alpha / h_n
+            ground = [0, num_vars] if cplx else [0]
+            n = y0.shape[0]
+            diag = jnp.arange(n)
+            atol, rtol = self.newton_atol, self.newton_rtol
+
+            def residual_of(f, q, y):
+                r = make_residual(f, q)
+                for idx in ground:
+                    r = r.at[idx].add(GROUND_STIFFNESS * y[idx])
+                return r
+
+            def residual(y):
+                asm = (assemble_residual_only_complex if cplx
+                       else assemble_residual_only_real)
+                f, q = asm(y, groups, t1, h_n, hist_t=hist_t, hist_y=hist_y)
+                return residual_of(f, q, y)
+
+            def system(y):
+                # the matrix DenseSolver._solve_impl builds and solves
+                asm = assemble_system_complex if cplx else assemble_system_real
+                f, q, vals = asm(y, groups, t1, h_n, alpha=alpha,
+                                 hist_t=hist_t, hist_y=hist_y)
+                J = jnp.zeros((n, n), dtype=y.dtype)
+                J = J.at[ls.static_rows, ls.static_cols].add(vals)
+                J = J.at[diag, diag].add(ls.g_leak)
+                for idx in ls.ground_indices:
+                    J = J.at[idx, idx].add(GROUND_STIFFNESS)
+                return residual_of(f, q, y), J
+
+            def update(y, delta):
+                # circulax's damped Newton update and scaled convergence norm
+                damping = jnp.minimum(
+                    1.0, DAMPING_FACTOR / (jnp.max(jnp.abs(delta))
+                                           + DAMPING_EPS))
+                y_new = y + delta * damping
+                return y_new, jnp.max(jnp.abs(y - y_new)
+                                      / (atol + rtol * jnp.abs(y_new)))
+
+            inf = jnp.asarray(jnp.inf, y0.dtype)
+            no = jnp.asarray(False)
+
+            def chord(y_start):
+                def body(c):
+                    k, y, err_prev, _err, _done, _slow = c
+                    y_new, err = update(y, -(inv0 @ residual(y)))
+                    done = (k > 0) & (err < self.tight)
+                    slow = (k > 0) & (err > self.max_rate * err_prev) & ~done
+                    return k + 1, y_new, err, err, done, slow
+
+                def cond(c):
+                    k, _y, _ep, _err, done, slow = c
+                    return ~done & ~slow & (k < self.chord_max_steps)
+
+                _k, y, _ep, err, done, _slow = jax.lax.while_loop(
+                    cond, body, (jnp.asarray(0), y_start, inf, inf, no, no))
+                return y, err, done
+
+            def newton(y_start):
+                # circulax's iteration (to the tighter tolerance), keeping the
+                # last Jacobian: its inverse serves the following steps
+                def body(c):
+                    k, y, _err, _done, _J = c
+                    r, J = system(y)
+                    y_new, err = update(y, jnp.linalg.solve(J, -r))
+                    return k + 1, y_new, err, err < self.tight, J
+
+                def cond(c):
+                    k, _y, _err, done, _J = c
+                    return ~done & (k < self.newton_max_steps)
+
+                _k, y, err, done, J = jax.lax.while_loop(
+                    cond, body, (jnp.asarray(0), y_start, inf, no,
+                                 jnp.zeros((n, n), y0.dtype)))
+                return y, err, done, jnp.linalg.inv(J)
+
+            # t1 - t0 wobbles in its last bits even at a constant step, and a
+            # slightly-off matrix only slows the chord (the residual always
+            # uses the exact coefficient): rebuild on a real change only
+            stale = ~(jnp.abs(coef - coef0) <= self.coef_rtol * jnp.abs(coef))
+            y1, err1, done1 = jax.lax.cond(
+                stale, lambda: (y_pred, inf, no), lambda: chord(y_pred))
+            y_next, err, done, inv = jax.lax.cond(
+                done1, lambda: (y1, err1, done1, inv0), lambda: newton(y1))
+            # Out of iterations: accept on circulax's own criterion (err < 1)
+            # rather than fail a step plain Newton would have taken.
+            result = jax.lax.cond(
+                done | (err < 1.0), lambda: diffrax.RESULTS.successful,
+                lambda: diffrax.RESULTS.nonlinear_divergence)
+            return (y_next, y_next - y_pred, {"y0": y0, "y1": y_next},
+                    (*hist_state, inv, coef), result)
+
+    return BDF2ReuseSolver

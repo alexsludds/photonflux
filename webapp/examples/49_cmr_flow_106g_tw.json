@@ -10,8 +10,8 @@
         "title": "Coupling-modulated ring at 106.25 GBd — traveling-wave PN",
         "lines": [
           "Example 48 with each arm's junction under a traveling-wave",
-          "electrode (PN Phase Shifter, Traveling-Wave): a 10-section RLC",
-          "ladder (unloaded Z0 60 Ohm, n_rf 2.4, 2 dB/cm) loaded by the",
+          "electrode (PN Phase Shifter, Traveling-Wave): an RLC ladder, one",
+          "section per <= 100 um (unloaded n_rf 2.4, 2 dB/cm), loaded by the",
           "junction (Cj0 0.3 fF/um, 10 Ohm*mm series R), fed through the",
           "driver at e_in and terminated into the bias (VTERM = vbias).",
           "Driver: fixed 4 Vpp EMF behind 50 Ohm (2 Vpp into a matched 50",

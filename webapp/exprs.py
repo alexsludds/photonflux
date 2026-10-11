@@ -14,7 +14,8 @@ appended as plot traces; ``spec()``/``psd()`` results become an extra
 log-frequency plot; scalars go to the run log.
 
 Evaluation is an ast-whitelist interpreter — no attribute access, no
-subscripts, no names outside the context, ``__builtins__`` emptied.
+subscripts, no names outside the context, no string constants, integer
+literals evaluated as floats, ``__builtins__`` emptied.
 """
 from __future__ import annotations
 
@@ -96,6 +97,13 @@ def _eval(expr: str, ctx: dict, funcs: dict):
             raise ValueError(
                 f"unknown name '{node.id}' — traces here: "
                 + ", ".join(sorted(k for k in ctx if not k.startswith("_"))))
+        if isinstance(node, ast.Constant):
+            if isinstance(node.value, (str, bytes)):
+                raise ValueError("string constants are not allowed")
+            # integer literals become floats: 9**9**9 then overflows at once
+            # instead of computing a ~10^8-digit integer under the run lock
+            if isinstance(node.value, int) and not isinstance(node.value, bool):
+                node.value = float(node.value)
     return eval(compile(tree, "<expr>", "eval"),  # noqa: S307 — whitelisted
                 {"__builtins__": {}}, {**funcs, **ctx})
 

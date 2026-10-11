@@ -47,6 +47,35 @@ _C0 = 299792458.0
 # ---------------------------------------------------------------------------
 # physical parameters
 # ---------------------------------------------------------------------------
+def resolve_dispersion(lam: float, D_ps: float, S_ps: float,
+                       lambda0_nm: float) -> tuple[float, float]:
+    """(D_ps, S_ps) at wavelength ``lam`` [m], honouring a G.652 lambda0 profile.
+
+    When ``lambda0_nm > 0`` the O-band-correct profile around the zero-
+    dispersion wavelength is used (``S_ps`` read as S0, default 0.092
+    ps/nm^2/km); otherwise the flat C-band D/S pair is returned unchanged.
+    The one conversion shared by ``fiber_cd`` / ``fiber_nl`` (lti.py), this
+    SSFM and the coherent receiver's CD compensator.
+    """
+    if lambda0_nm > 0.0:
+        S0 = S_ps if S_ps > 0.0 else 0.092
+        lnm, l0 = lam * 1e9, float(lambda0_nm)
+        D_ps = S0 / 4.0 * (lnm - l0 ** 4 / lnm ** 3)
+        S_ps = S0 / 4.0 * (1.0 + 3.0 * l0 ** 4 / lnm ** 4)
+    return D_ps, S_ps
+
+
+def beta23(lam: float, D_ps: float, S_ps: float) -> tuple[float, float]:
+    """beta2 [s^2/m], beta3 [s^3/m] from D [ps/nm/km], S [ps/nm^2/km] at
+    wavelength ``lam`` [m]: beta2 = -D lam^2/(2 pi c),
+    beta3 = lam^3 (S lam + 2 D)/(2 pi c)^2 (nonzero even when S = 0)."""
+    D_si = D_ps * 1e-6                       # ps/nm/km  -> s/m^2
+    S_si = S_ps * 1e3                        # ps/nm^2/km -> s/m^3
+    beta2 = -D_si * lam ** 2 / (2.0 * np.pi * _C0)
+    beta3 = lam ** 3 * (S_si * lam + 2.0 * D_si) / (2.0 * np.pi * _C0) ** 2
+    return beta2, beta3
+
+
 @dataclass(frozen=True)
 class FiberParams:
     """SI nonlinear-fibre coefficients (all per metre / watt / second)."""
@@ -71,25 +100,17 @@ def fiber_params(
     """Webapp-facing fibre parameters -> SI :class:`FiberParams`.
 
     ``D_ps`` [ps/nm/km], ``S_ps`` [ps/nm^2/km] and the ``lambda0_nm`` G.652
-    zero-dispersion profile are converted to ``beta2``/``beta3`` with the *same*
-    formulas as ``lti.py::build``'s ``fiber`` path, so the ``gamma = 0`` limit
-    of :func:`propagate` matches ``fiber_cd`` to the vector-fit error. ``alpha``
+    zero-dispersion profile are converted to ``beta2``/``beta3`` by
+    :func:`resolve_dispersion` / :func:`beta23` — the same conversion
+    ``fiber_cd`` uses, so the ``gamma = 0`` limit of :func:`propagate` matches
+    it to the vector-fit error. ``alpha``
     is the power attenuation [1/m]; ``gamma_per_W_km`` [1/(W*km)] is the Kerr
     parameter (silicon-fibre C-band ~1.3 /W/km).
     """
     L = float(length_km) * 1e3
     lam = float(lambda_nm) * 1e-9
-    if lambda0_nm > 0.0:
-        # G.652 profile around the zero-dispersion wavelength: S_ps is read as
-        # S0 (the slope AT lambda0); D follows, exactly as fiber_cd does it.
-        S0 = S_ps if S_ps > 0.0 else 0.092
-        lnm, l0 = lam * 1e9, float(lambda0_nm)
-        D_ps = S0 / 4.0 * (lnm - l0 ** 4 / lnm ** 3)
-        S_ps = S0 / 4.0 * (1.0 + 3.0 * l0 ** 4 / lnm ** 4)
-    D_si = D_ps * 1e-6         # ps/nm/km  -> s/m^2
-    S_si = S_ps * 1e3          # ps/nm^2/km -> s/m^3
-    beta2 = -D_si * lam ** 2 / (2.0 * np.pi * _C0)
-    beta3 = lam ** 3 * (S_si * lam + 2.0 * D_si) / (2.0 * np.pi * _C0) ** 2
+    beta2, beta3 = beta23(lam, *resolve_dispersion(lam, D_ps, S_ps,
+                                                   lambda0_nm))
     alpha = float(atten_db_km) * np.log(10.0) / 10.0 / 1e3       # 1/m
     gamma = float(gamma_per_W_km) / 1e3                          # 1/(W*m)
     return FiberParams(length=L, alpha=alpha, beta2=beta2, beta3=beta3,

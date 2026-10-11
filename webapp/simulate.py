@@ -23,6 +23,7 @@ so a re-run with only analysis changes skips the JAX compile.
 """
 from __future__ import annotations
 
+import copy
 import hashlib
 import json
 import math
@@ -42,13 +43,44 @@ _CIRCUIT_CACHE: dict[str, Any] = {}   # schematic-hash -> (circuit, meta)
 _MODELS_CACHE: dict[str, Any] = {}    # sky130-geometry-key set -> models_map
 
 
+_PATTERN_SOURCES = ("prbs", "qam_source")
+
+
+def _instance_groups(sch: dict) -> list[dict]:
+    """The canvas instances plus every subcircuit definition's body."""
+    return [sch.get("instances") or {}] + [
+        ((d or {}).get("schematic") or {}).get("instances") or {}
+        for d in (sch.get("subcircuits") or {}).values()]
+
+
 def _has_sky130_fet(sch: dict) -> bool:
     """Any SKY130 FET on the canvas or inside a subcircuit definition."""
-    groups = [sch.get("instances") or {}]
-    groups += [(d or {}).get("instances") or {}
-               for d in (sch.get("subcircuits") or {}).values()]
     return any((CATALOG.get(i.get("type"), {}).get("sky130") or {}).get("kind")
-               == "fet" for g in groups for i in g.values())
+               == "fet" for g in _instance_groups(sch) for i in g.values())
+
+
+def with_global_ui(sch: dict) -> dict:
+    """Pattern sources take their unit interval from the schematic's global
+    baud rate (``globals.baud``): fill ``settings.ui = 1/baud`` wherever a
+    source (on the canvas or in a subcircuit body) has none, so notebook,
+    CLI and flow runs see the rate the editor shows. An explicit ``ui`` wins.
+    Returns ``sch`` itself when nothing needs filling, else a filled copy."""
+    baud = float((sch.get("globals") or {}).get("baud") or 0.0)
+    if not baud > 0:
+        return sch
+
+    def missing(i):
+        return (i.get("type") in _PATTERN_SOURCES
+                and "ui" not in (i.get("settings") or {}))
+
+    if not any(missing(i) for g in _instance_groups(sch) for i in g.values()):
+        return sch
+    sch = copy.deepcopy(sch)
+    for g in _instance_groups(sch):
+        for i in g.values():
+            if missing(i):
+                i.setdefault("settings", {})["ui"] = 1.0 / baud
+    return sch
 
 
 def sch_corners(sch: dict) -> tuple[str, ...]:
@@ -1475,8 +1507,6 @@ def _run_ac_sweep(sch: dict, analysis: dict) -> dict:
     cached path, so the same sweep re-runs instantly. Plots the |h21| family
     (shaded by value) and logs f_T for each value.
     """
-    import copy
-
     inst = analysis.get("sweep_instance")
     param = analysis.get("sweep_param")
     values = [float(v) for v in (analysis.get("sweep_values") or [])][:8]
@@ -1706,7 +1736,6 @@ def _run_sweep_overlay(payload: dict) -> dict:
     """Fan a plot-producing analysis out over 1-2 swept parameters and overlay
     the results (the generic engine behind the run-configuration pane for
     transient / noise / pulse / 2-axis AC)."""
-    import copy
 
     sch = payload.get("schematic") or {}
     analysis = payload.get("analysis") or {}
@@ -1823,7 +1852,8 @@ def run(payload: dict) -> dict:
 
 def _run_inner(payload: dict) -> dict:
     try:
-        sch = payload.get("schematic") or {}
+        sch = with_global_ui(payload.get("schematic") or {})
+        payload = {**payload, "schematic": sch}
         analysis = payload.get("analysis") or {"mode": "dc"}
         mode = analysis.get("mode", "dc")
         if mode == "flow":
@@ -1872,8 +1902,6 @@ def _run_inner(payload: dict) -> dict:
                              "seed": int(nz.get("seed", 1))}
         if mode == "pulse":
             # rerun the schematic with the PRBS source in single-pulse mode
-            import copy
-
             sch = copy.deepcopy(sch)
             pat_inst = analysis.get("pattern") or next(
                 (n for n, i in (sch.get("instances") or {}).items()

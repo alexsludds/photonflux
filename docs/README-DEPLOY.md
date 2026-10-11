@@ -16,7 +16,7 @@ Everything is in the repo-root [`Dockerfile`](../Dockerfile) + build-time
 |---|---|---|
 | jaxlib, klujax, diffrax, sax | PyPI (manylinux) | pulled by `circulax` |
 | circulax 0.2.4 | PyPI (pure-python) | the solver |
-| bosdi 0.1.8 | PyPI (manylinux) | Verilog-A → JAX lowering and the OSDI loader |
+| **bosdi** | **built from source** | Verilog-A → JAX lowering and the OSDI loader. Pinned to the head of [gdsfactory/bosdi#34](https://github.com/gdsfactory/bosdi/pull/34) (`BOSDI_REF`), built in the Dockerfile's `bosdi-wheel` stage (Rust + C++); back to the PyPI wheel once released |
 | libngspice0 | apt | SKY130 model-card extraction |
 | **openvaf-ir** | **`openvaf-ir` release asset** | ChipFlow fork `robtaylor/OpenVAF@vajax`, LLVM 18 — built once by CI ([`openvaf-ir.yml`](../.github/workflows/openvaf-ir.yml)), downloaded via `OPENVAF_IR_URL` |
 | SKY130 PDK | volare | pinned `open_pdks c6d73a35…` |
@@ -172,6 +172,6 @@ docker logs <id>        # confirm /api/run 200s, no missing-binary/PDK errors
   auto-reloads on `.py` edits by default (a supervisor re-spawns the server), so
   a browser refresh shows the latest code. The image sets `PHOTONFLUX_RELOAD=0`
   to run a single plain process; every other new behavior is opt-in via env.
-- **Pinned versions:** circulax 0.2.4 · bosdi 0.1.8 ·
+- **Pinned versions:** circulax 0.2.4 · bosdi `BOSDI_REF` ·
   SKY130 `open_pdks c6d73a35f524070e85faff4a6a9eef49553ebc2b` · LLVM 18 ·
   ngspice/libngspice (Debian). Bump the `ARG`s in the Dockerfile to move them.

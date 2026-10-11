@@ -65,6 +65,11 @@ flowchart TD
 # one-time environment (Python 3.12, native on Apple Silicon)
 python3 -m venv .venv-circulax
 .venv-circulax/bin/pip install "circulax[verilog-a]"
+# bosdi with the circulax 0.2.4 fix (gdsfactory/bosdi#34, unreleased): built
+# from source, so it needs Rust. Back to the PyPI wheel once it is released.
+SETUPTOOLS_SCM_PRETEND_VERSION_FOR_BOSDI=0.1.9.dev0+g0327afb0855715a670165cdbc871ddd290226250 \
+  .venv-circulax/bin/pip install --force-reinstall --no-deps \
+  "bosdi @ git+https://github.com/alexsludds/bosdi@0327afb0855715a670165cdbc871ddd290226250"
 .venv-circulax/bin/pip install -e .
 
 # SKY130 PDK (used for FET model-card extraction)
@@ -235,7 +240,7 @@ Native arm64 for local dev; the container rebuilds the native pieces for Linux.
 | `bin/openvaf-ir` | Verilog-A → OSDI for circulax (BSIM4-correct) | [robtaylor/OpenVAF](https://github.com/robtaylor/OpenVAF) branch `vajax` |
 | `libngspice` | SKY130 PDK card extraction only (no simulation) | Homebrew (apt in the container) |
 | SKY130 PDK | CMOS transistors | volare (`~/.volare/sky130A`) |
-| `.venv-circulax` | circulax 0.2.4 + bosdi 0.1.8 + JAX | pip |
+| `.venv-circulax` | circulax 0.2.4 + bosdi ([#34](https://github.com/gdsfactory/bosdi/pull/34) head) + JAX | pip |
 
 ### Rebuilding openvaf-ir
 

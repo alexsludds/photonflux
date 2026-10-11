@@ -22,6 +22,25 @@ ARG PY_VER=3.12
 ARG OPENVAF_IR_URL=https://github.com/alexsludds/photonflux/releases/download/openvaf-ir/openvaf-ir-linux-x86_64
 # SKY130 PDK pin — matches the local dev box (open_pdks commit).
 ARG SKY130_PDK_COMMIT=c6d73a35f524070e85faff4a6a9eef49553ebc2b
+# bosdi pin: the head of gdsfactory/bosdi#34 (va_component accepts circulax
+# 0.2.4's delay-history argument). Unreleased, so it is built from source
+# below; switch back to a PyPI "bosdi==" pin once a release includes it.
+ARG BOSDI_REF=0327afb0855715a670165cdbc871ddd290226250
+
+# ===========================================================================
+# bosdi wheel: Rust static lib + nanobind C++ shim, built from BOSDI_REF
+# ===========================================================================
+FROM python:${PY_VER}-slim AS bosdi-wheel
+ARG BOSDI_REF
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        build-essential curl git ca-certificates \
+    && rm -rf /var/lib/apt/lists/* \
+    && curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal
+ENV PATH=/root/.cargo/bin:$PATH
+# The fork lacks bosdi's release tags, so pin the version setuptools-scm reports.
+RUN SETUPTOOLS_SCM_PRETEND_VERSION_FOR_BOSDI="0.1.9.dev0+g${BOSDI_REF}" \
+    pip wheel --no-cache-dir --no-deps -w /wheels \
+      "bosdi @ git+https://github.com/alexsludds/bosdi@${BOSDI_REF}"
 
 # ===========================================================================
 # Runtime: python + circulax/JAX + libngspice + PDK + warmed caches
@@ -46,10 +65,12 @@ WORKDIR /app
 
 # --- Python deps -----------------------------------------------------------
 # circulax (pure-python) pulls jax/jaxlib/diffrax/klujax (all manylinux) from
-# PyPI; bosdi ships a manylinux wheel there too (since 0.1.8, its release
-# wheels are on PyPI, and it no longer needs the openvaf-py binding).
-RUN pip install --no-cache-dir \
-      "circulax==0.2.4" "bosdi==0.1.8" volare numpy matplotlib
+# PyPI; bosdi comes from the wheel stage above (it no longer needs the
+# openvaf-py binding).
+COPY --from=bosdi-wheel /wheels /tmp/wheels
+RUN pip install --no-cache-dir /tmp/wheels/bosdi-*.whl \
+      "circulax==0.2.4" volare numpy matplotlib \
+    && rm -rf /tmp/wheels
 
 # --- app source + Linux openvaf-ir (overwrites the vendored Mac binary) -----
 COPY . /app

@@ -168,6 +168,8 @@ with lumped junctions driven through 50 Ohm the junction RC caps it well
 short of the spec (relOMA -4.9 dB, TDECQ 2.4 dB). Example 49 runs the same
 flow on traveling-wave PN arms: TDECQ 1.3 dB, RLM 0.95 and ER 4.9 dB pass,
 relOMA -3.1 dB still misses -- the 2 Vpp swing, not bandwidth, now limits.
+(Both TDECQ figures were scored through a 5-tap FFE with S = 0.005 mW, before
+the flows switched to the 802.3dj reference equalizer and S = 0.)
 
 ## Serial-link (SERDES) workflow
 
@@ -187,16 +189,22 @@ relOMA -3.1 dB still misses -- the 2 Vpp swing, not bandwidth, now limits.
   families fold together.
   Its **stateye** row scores whatever eye is shown (`POST /api/eyemeasure`,
   `webapp/eyemeasure.py`): PAM4 -> IEEE TDECQ, raw and through the reference
-  FFE; NRZ -> TDEC and OMA - TDEC. Settings: reference-receiver bandwidth
-  (x baud, or off) and order, FFE taps and pre-cursors, DFE taps (802.3dj
-  D2.1: one, 0 <= b <= 0.3), how the taps adapt (noise-aware MMSE block
-  solve, normalized LMS with step mu and passes, TDECQ-optimal Nelder-Mead
-  on TDECQ itself -- the 802.3 definition, slow, with live "evaluation i/n"
-  progress -- or manual taps), the P802.3dj D2.1 Table 180-15 reference-
-  equalizer limits (on by default: the search stays inside them, MMSE/LMS
-  taps are projected into them), training on the PRBS source's pattern or
-  decision-directed,
-  target SER/BER, scope noise S, and the histogram grid. "show scored eye"
+  equalizer; NRZ -> TDEC and OMA - TDEC. Settings: reference-receiver
+  bandwidth (x baud, or off) and order, FFE taps and pre-cursors, DFE taps,
+  how the taps adapt (noise-aware MMSE block solve -- what P802.3dj D3.1+
+  specifies --, normalized LMS with step mu and passes, TDECQ-optimal
+  Nelder-Mead on TDECQ itself -- the Clause 121 definition, slow, with live
+  "evaluation i/n" progress -- or manual taps), the P802.3dj D3.2 Table
+  180-16 reference-equalizer limits (w(0) >= 0.9 - b(1), the pre/post
+  difference including the DFE tap, 0 <= b <= 0.33; on by default: the
+  search stays inside them, MMSE/LMS taps are projected into them), training
+  on the PRBS source's pattern or decision-directed,
+  target SER/BER, scope noise S, and the histogram grid. FFE taps,
+  pre-cursors, DFE taps and target SER default to "auto": the lane rate's
+  standard -- 802.3dj at 200G/lane (15 taps, 3 pre, 1 DFE, SER 4.56e-4),
+  802.3cd at 100G/lane (5 taps, 1 pre, no DFE, SER 4.8e-4). S defaults to
+  0: 802.3 credits scope noise back to the transmitter, and a simulated
+  trace has none. "show scored eye"
   draws the eye stateye measured (after the reference receiver and FFE,
   time-aligned to the probe).
 * **Link tab / BER report**: pick a received probe in the Link tab's

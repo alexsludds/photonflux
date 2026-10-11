@@ -240,3 +240,26 @@ def test_example_48_junction_rc_costs_tdecq():
     assert out["rc"]["lam_res"] == pytest.approx(out["ideal"]["lam_res"])
     assert out["rc"]["tdecq_db"] > out["ideal"]["tdecq_db"] + 1.0
     assert out["rc"]["rlm"] < out["ideal"]["rlm"]
+
+
+def test_example_49_real_transit_and_coupler_knobs():
+    # example 49 closes its ring with delayed (real-transit) parts through a
+    # 10 um, 0.3 dB/cm delay line, and the optimizer owns both couplers: the
+    # k1/k2 variables must reach DC1/DC2 (the resonance notch moves with them)
+    ex = _example("49_cmr_flow_106g_tw")
+    inst, fl = ex["schematic"]["instances"], ex["flow"]
+    for name in ("PN_A", "PN_B", "WG_A", "WG_B", "WG_R1", "WG_R2"):
+        assert inst[name]["settings"]["transit"] == "delayed", name
+    for name in ("WG_R1", "WG_R2"):
+        assert inst[name]["settings"]["loss_dB_cm"] == 0.3
+    assert fl["vars"]["ring_um"] == 10.0
+    opt = next(s for s in fl["steps"] if s["id"] == "opt")
+    knobs = {p["var"] for p in opt["params"]}
+    assert {"k1", "k2"} <= knobs and "ring_um" not in knobs
+    notch = {}
+    for k1 in (0.5, 0.35):
+        fr = _run(ex["schematic"], fl, only="res",
+                  prior={"vars": {**fl["vars"], "k1": k1}, "overrides": {}})
+        assert fr["steps"][0]["status"] == "ok", fr["steps"][0]
+        notch[k1] = fr["vars"]["notch_db"]
+    assert abs(notch[0.5] - notch[0.35]) > 0.3

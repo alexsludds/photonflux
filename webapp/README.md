@@ -263,7 +263,12 @@ traces a 2001-point spectrum in about a second.
 * **Waveguide**: first-order dispersion via the group index
   (`n(lam) = neff + (neff - n_group)(lam - lam_c)/lam_c`) plus dB/cm loss.
   Interferometer FSR comes out as lam^2/(n_group dL) — the group index, not
-  n_eff, which is the standard trap.
+  n_eff, which is the standard trap. `transit` = quasi-static (default)
+  applies the transmission instantly; `delayed` adds the real group delay
+  L n_g / c in both directions (Pade all-pass stages of <= 0.5 ps, group
+  delay within ~1 % to 60 GHz), so a ring closed by such guides has its
+  round trip and photon lifetime. Identical at DC; about 3x the transient
+  cost in example 49 (`tests/test_transit.py`).
 * **Y-splitter**: lossless 1x2, `split_ratio` to p2. It is reciprocal —
   wire a second one in reverse (feed p2/p3, take p1) and it is the coherent
   combiner of an MZI; power missing at destructive interference is the
@@ -477,7 +482,8 @@ strength in the other.
   ring's Q ~ 80k sets the catch — RLM >= 0.94 only within +-0.5 pm of
   drift. The optics are quasi-static (steady-state waveguides), so the eye
   shows level placement, not photon-lifetime bandwidth
-  (`tests/test_pn_phase_shifter.py` pins it).
+  (`tests/test_pn_phase_shifter.py` pins it); set `transit` = delayed on
+  the ring's parts for the real round trip, as example 49 does.
 * **PN phase shifter, traveling-wave** (`pn_phase_shifter_tw`, its own
   long symbol with the electrode strip): the lumped part's junction physics
   distributed under a transmission-line electrode. Drive `e_in` (at the `p1`
@@ -492,7 +498,10 @@ strength in the other.
   modelled rather than approximated by a pole. `n_sections` 0 picks one
   section per <= 100 um (accurate to ~60 GHz). At DC it equals the lumped
   part; `tests/test_pn_phase_shifter_tw.py` pins the line impedance and delay
-  and the walk-off. Example 49 is example 48 with traveling-wave arms.
+  and the walk-off. `transit` = delayed carries the field itself through
+  every section (instead of only the phase change), so the part adds its
+  full group delay, as Waveguide does. Example 49 is example 48 with
+  traveling-wave arms and real optical transit.
 * **Bring your own .va**: the palette's "Upload .va" button compiles any
   Verilog-A file through openvaf/bosdi into a placeable JAX component
   (ports from the module, parameters with their defaults). Uploads persist

@@ -100,7 +100,9 @@ def measure(payload: dict) -> dict:
     t_scored = tu[0] + common["settle_ui"] * ui
     try:
         if nlv == 2:
-            m = tdec.measure(p, dt, baud, ber=float(cfg.get("ber", 1e-12)),
+            ber = cfg.get("ber")
+            m = tdec.measure(p, dt, baud, ber=1e-12 if ber in (None, "", "auto")
+                             else float(ber),
                              oma_type=str(cfg.get("oma_type", "4140")),
                              **common)
             fam = m.oma_type
@@ -162,7 +164,7 @@ def measure(payload: dict) -> dict:
             ffe_passes=int(cfg.get("passes", 5)), ffe_manual=manual,
             ffe_max_evals=int(cfg.get("max_evals", 40)),
             dfe_taps=n_dfe, dfe_manual=dfe_manual,
-            ffe_limits="802.3dj" if cfg.get("limits", True) else None,
+            ffe_limits="auto" if cfg.get("limits", True) else None,
             oma_reference={"outer": raw.get("oma_outer"),
                            "xp": raw.get("oma_xp")},
             progress=progress, **pam)

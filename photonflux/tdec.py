@@ -70,9 +70,11 @@ def tdecq_reference(baud: float) -> dict:
 
     * 200G/lane (``baud >= DJ_MIN_BAUD``): P802.3dj Clause 180 (D3.2) --
       target SER 4.56e-4 (Qt 3.428, the BER 2.28e-4 allocated to the optical
-      PMD), 15-tap FFE with up to 3 pre-cursors plus one DFE tap.
+      PMD), 15-tap FFE with up to 3 pre-cursors plus one DFE tap, inside the
+      Table 180-16 coefficient limits.
     * 100G/lane: 802.3cd/cu/df (Clause 121 method) -- SER 4.8e-4 (Qt
-      3.414), 5-tap FFE with one pre-cursor, no DFE.
+      3.414), 5-tap FFE with one pre-cursor, no DFE, and no coefficient
+      limits beyond the taps summing to 1.
 
     The reference receiver is a 4th-order Bessel-Thomson at baud/2 in both.
     The 113.4375 GBd clauses with an inner FEC (182/183) may set a different
@@ -80,9 +82,9 @@ def tdecq_reference(baud: float) -> dict:
     """
     if baud >= DJ_MIN_BAUD:
         return {"standard": "802.3dj", "ser": 4.56e-4, "ffe_taps": 15,
-                "ffe_pre": 3, "dfe_taps": 1}
+                "ffe_pre": 3, "dfe_taps": 1, "limits": "802.3dj"}
     return {"standard": "802.3cd", "ser": 4.8e-4, "ffe_taps": 5,
-            "ffe_pre": 1, "dfe_taps": 0}
+            "ffe_pre": 1, "dfe_taps": 0, "limits": None}
 
 
 @dataclass
@@ -380,7 +382,7 @@ def measure_pam4(
     ffe_max_evals: int = 60,
     dfe_taps: int | None = None,
     dfe_manual=None,
-    ffe_limits: str | None = "802.3dj",
+    ffe_limits: str | None = "auto",
     oma_reference=None,
     progress=None,
     ref_rx_bw_factor: float | None = 0.5,
@@ -445,6 +447,8 @@ def measure_pam4(
     unequalized record when not given -- so a DFE is not charged for the
     OMA it removes.
 
+    ``ffe_limits="auto"`` (the default) applies the lane rate's limits --
+    802.3dj's at 200G/lane, none at 100G/lane, where 802.3cd sets none.
     ``ffe_limits="802.3dj"`` applies the P802.3dj D3.2 Table 180-16 limits
     (main tap 0.9 - b(1)..2.5, per-tap ratios, |w(1)/w(0) - b(1) -
     w(-1)/w(0)| <= 0.25, 0 <= b <= 0.33): the TDECQ-optimal search stays
@@ -473,6 +477,8 @@ def measure_pam4(
         ffe_pre = min(ref["ffe_pre"], (max(int(ffe_taps), 1) - 1) // 2)
     if dfe_taps is None:
         dfe_taps = ref["dfe_taps"] if ffe_taps else 0
+    if ffe_limits == "auto":
+        ffe_limits = ref["limits"]
     eq: dict = {}
     if ffe_taps or dfe_taps:
         if not hasattr(stateye, "tap_limit_violations"):

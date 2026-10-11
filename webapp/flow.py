@@ -312,8 +312,8 @@ def score_eye(t, values, pattern: dict, cfg: dict | None) -> dict:
     ui = float(pattern["ui"])
     pam4 = str(pattern.get("mode")) == "pam4"
     c = {**STATEYE_DEFAULTS, **(cfg or {})}
-    if not pam4:
-        c.setdefault("ber", 1e-12)
+    if not pam4 and c.get("ber") in (None, "", "auto"):
+        c["ber"] = 1e-12
     m = eyemeasure.measure({"t": list(t), "values": list(values),
                             "unit": "mW", "ui": ui, "levels": 4 if pam4 else 2,
                             "skip_s": SETTLE_UI * ui, "pattern": pattern,

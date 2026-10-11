@@ -3099,8 +3099,9 @@ function stateyeCfg(nlv) {
     s_noise: parseFloat($("tq-snoise").value) || 0,
     nx: parseInt($("tq-grid").value.split("x")[0]),
     ny: parseInt($("tq-grid").value.split("x")[1]),
+    // the field holds "auto" until the eye is NRZ: TDEC's BER then is 1e-12
     [nlv === 4 ? "ser" : "ber"]: nlv === 4 ? auto("tq-ser", parseFloat)
-      : parseFloat($("tq-ser").value),
+      : (parseFloat($("tq-ser").value) || 1e-12),
   };
 }
 

@@ -264,8 +264,10 @@ function flowFomRows(st) {
 function flowStateyeNote() {
   const c = flowStateye(), pam4 = flowPam4();
   const rx = c.rx_bw === "off" ? "no ref Rx" : `BT${c.rx_order} ref Rx at ${c.rx_bw}&times;baud`;
-  const eq = pam4 ? ` &middot; FFE ${c.taps} (${c.pre} pre) ${c.method}${c.dfe ? ` + DFE ${c.dfe}` : ""}`
-    + `${c.limits ? " &middot; 802.3dj limits" : ""} &middot; SER ${c.ser}` : ` &middot; BER ${c.ber}`;
+  const allAuto = [c.taps, c.pre, c.dfe].every((v) => v === "auto");
+  const eq = pam4 ? ` &middot; ${allAuto ? "lane rate's 802.3 reference EQ"
+      : `FFE ${c.taps} (${c.pre} pre)${c.dfe && c.dfe !== "0" ? ` + DFE ${c.dfe}` : ""}`} ${c.method}`
+    + `${c.limits ? " &middot; tap limits" : ""} &middot; SER ${c.ser}` : ` &middot; BER ${c.ber}`;
   $("flow-eval-stateye").innerHTML = `stateye: the Eye tab's settings &mdash;
     ${rx}${eq} &middot; S ${c.s_noise} mW.
     <button type="button" class="rp-link" id="flow-eval-eyelink">edit in the Eye tab</button>`;

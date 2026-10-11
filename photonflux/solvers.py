@@ -217,8 +217,15 @@ def _make_bdf2_reuse():
     from circulax.solvers.transient import (
         BDF2VectorizedTransientSolver,
         _bdf2_preamble,
-        _unpack_args,
     )
+
+    def split_args(args):
+        # circulax >= 0.2.4 appends (hist_t, hist_y) for circuits with delayed
+        # components; older releases pass (groups, num_vars) and have no
+        # history keywords on the assembly functions
+        hist = ({"hist_t": args[2], "hist_y": args[3]} if len(args) == 4
+                else {})
+        return args[0], args[1], hist
 
     class BDF2ReuseSolver(BDF2VectorizedTransientSolver):
         """circulax's BDF2 that stops rebuilding the Newton matrix every
@@ -261,7 +268,7 @@ def _make_bdf2_reuse():
                     jnp.asarray(jnp.nan, y0.dtype))
 
         def step(self, terms, t0, t1, y0, args, solver_state, options):
-            groups, num_vars, hist_t, hist_y = _unpack_args(args)
+            groups, num_vars, hist = split_args(args)
             h_n = t1 - t0
             ls = self.linear_solver
             cplx = getattr(ls, "is_complex", False)
@@ -283,14 +290,13 @@ def _make_bdf2_reuse():
             def residual(y):
                 asm = (assemble_residual_only_complex if cplx
                        else assemble_residual_only_real)
-                f, q = asm(y, groups, t1, h_n, hist_t=hist_t, hist_y=hist_y)
+                f, q = asm(y, groups, t1, h_n, **hist)
                 return residual_of(f, q, y)
 
             def system(y):
                 # the matrix DenseSolver._solve_impl builds and solves
                 asm = assemble_system_complex if cplx else assemble_system_real
-                f, q, vals = asm(y, groups, t1, h_n, alpha=alpha,
-                                 hist_t=hist_t, hist_y=hist_y)
+                f, q, vals = asm(y, groups, t1, h_n, alpha=alpha, **hist)
                 J = jnp.zeros((n, n), dtype=y.dtype)
                 J = J.at[ls.static_rows, ls.static_cols].add(vals)
                 J = J.at[diag, diag].add(ls.g_leak)

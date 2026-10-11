@@ -640,7 +640,6 @@ def _dc_solve(circuit, meta, log, params=None):
         return solvers.dc(circuit, params=params)
     import diffrax
     import numpy as np
-    from circulax.solvers.transient import BDF2VectorizedTransientSolver
 
     # Fixed-step BDF2 from the cold (all-zero) state with the DC sources
     # applied: the first implicit step projects onto the constraint
@@ -662,8 +661,8 @@ def _dc_solve(circuit, meta, log, params=None):
         circuit,
         t0=0.0, t1=t_settle, dt0=dt, y0=circuit._zero_guess(),
         saveat=diffrax.SaveAt(t1=True), params=stage or None,
-        transient_solver=BDF2VectorizedTransientSolver(
-            linear_solver=circuit.solver, newton_max_steps=40),
+        transient_solver=solvers.bdf2_reuse_solver(circuit.solver,
+                                                   newton_max_steps=40),
         max_steps=int(t_settle / dt) + 10, throw=False,
         stepsize_controller=diffrax.ConstantStepSize(),
     )
@@ -859,18 +858,23 @@ def _run_transient(circuit, meta, analysis, log) -> dict:
     def solve_one(seed_params):
         y0 = _dc_solve(circuit, meta, None, params=seed_params)
         if solver == "bdf2":
-            from circulax.solvers.transient import (
-                BDF2VectorizedTransientSolver,
-            )
-
             dt = dtmax_user or min(dtmax or 1e9,
                                    t_stop / max(points * 4, 2000))
+            if analysis.get("newton") == "full":
+                # circulax's own BDF2: a fresh Jacobian + LU every iteration
+                from circulax.solvers.transient import (
+                    BDF2VectorizedTransientSolver,
+                )
+
+                stepper = BDF2VectorizedTransientSolver(
+                    linear_solver=circuit.solver, newton_max_steps=40)
+            else:
+                stepper = solvers.bdf2_reuse_solver(circuit.solver,
+                                                    newton_max_steps=40)
             return dt, solvers.transient(
                 circuit,
                 t0=0.0, t1=t_stop, dt0=dt, y0=y0, saveat=saveat,
-                params=seed_params,
-                transient_solver=BDF2VectorizedTransientSolver(
-                    linear_solver=circuit.solver, newton_max_steps=40),
+                params=seed_params, transient_solver=stepper,
                 max_steps=int(t_stop / dt) + 10, throw=False,
                 stepsize_controller=diffrax.ConstantStepSize(),
             )

@@ -154,6 +154,11 @@ def _require_stateye():
             "until docs/patches/stateye-modern-toolchain.patch is applied; see "
             "docs/stateye-integration-plan.md section 2."
         ) from exc
+    from . import _stateye_fast
+
+    # stateye's per-column bathtub fits are ~85 % of a TDECQ measurement;
+    # the vectorized drop-ins give the same numbers several times faster
+    _stateye_fast.install(stateye)
     return stateye
 
 

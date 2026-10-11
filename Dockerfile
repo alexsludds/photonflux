@@ -35,7 +35,8 @@ ARG BOSDI_REF
 RUN apt-get update && apt-get install -y --no-install-recommends \
         build-essential curl git ca-certificates \
     && rm -rf /var/lib/apt/lists/* \
-    && curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal
+    && curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs -o /tmp/rustup.sh \
+    && sh /tmp/rustup.sh -y --profile minimal && rm /tmp/rustup.sh
 ENV PATH=/root/.cargo/bin:$PATH
 # The fork lacks bosdi's release tags, so pin the version setuptools-scm reports.
 RUN SETUPTOOLS_SCM_PRETEND_VERSION_FOR_BOSDI="0.1.9.dev0+g${BOSDI_REF}" \

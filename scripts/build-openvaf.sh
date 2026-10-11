@@ -22,14 +22,25 @@ OPENVAF_REV="89a1f798c0768f30743ef7e9bf6cca6eebd24307"
 log() { printf '\033[1m[build-openvaf]\033[0m %s\n' "$*"; }
 die() { printf '\033[1;31m[build-openvaf] error:\033[0m %s\n' "$*" >&2; exit 1; }
 
-# Already built and runnable? Nothing to do.
+# Emits the --dump-json MIR bosdi lowers Verilog-A from? An older
+# robtaylor@vajax build runs (--version) but fails this.
+dumps_json() {
+  local probe
+  probe="$(mktemp -d)/probe.va"
+  printf '%s\n' '`include "disciplines.vams"' 'module probe(a, b);' \
+    '  inout a, b;' '  electrical a, b;' '  analog I(a, b) <+ V(a, b);' \
+    'endmodule' > "$probe"
+  "$DEST" --dump-json "$probe" 2>/dev/null | grep -q '"schema_version": 1'
+}
+
+# Already built, runnable and the right fork? Nothing to do.
 if [[ "$FORCE" != "--force" && -x "$DEST" ]]; then
-  if "$DEST" --version >/dev/null 2>&1; then
+  if "$DEST" --version >/dev/null 2>&1 && dumps_json; then
     log "already installed and runnable: $DEST"
     "$DEST" --version 2>&1 | sed 's/^/  /' || true
     exit 0
   fi
-  log "$DEST exists but does not run; rebuilding"
+  log "$DEST is missing bosdi's --dump-json or does not run; rebuilding"
 fi
 
 command -v git >/dev/null   || die "git not found"

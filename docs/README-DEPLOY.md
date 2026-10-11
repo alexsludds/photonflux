@@ -75,8 +75,9 @@ image build, **read the warmup summary in the build log** — it prints
 ```
 
 If the FET lines FAIL but the photonic ones pass, the image still ships and all
-photonics works; only SKY130 examples are affected. The photonic path needs
-no native toolchain at runtime. (`webapp/warmup.py` already tolerates FET failures; set `WARMUP_STRICT=1`
+photonics works; only SKY130 examples are affected. Both paths need
+`bin/openvaf-ir` when a model is not in the warmed cache: bosdi lowers new
+Verilog-A with it. (`webapp/warmup.py` already tolerates FET failures; set `WARMUP_STRICT=1`
 to make any failure fail the build instead.)
 
 ## Option A — Google Cloud Run (public URL, $0 but needs billing)

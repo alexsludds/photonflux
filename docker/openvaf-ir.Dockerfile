@@ -51,6 +51,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 COPY --from=ovbuild /openvaf-ir /usr/local/bin/openvaf-ir
 RUN ldd /usr/local/bin/openvaf-ir && ! ldd /usr/local/bin/openvaf-ir | grep -q 'not found'
+# ...and must emit the --dump-json MIR bosdi lowers Verilog-A from.
+RUN printf '%s\n' '`include "disciplines.vams"' 'module probe(a, b);' \
+        '  inout a, b;' '  electrical a, b;' '  analog I(a, b) <+ V(a, b);' \
+        'endmodule' > /tmp/probe.va \
+    && openvaf-ir --dump-json /tmp/probe.va | grep -q '"schema_version": 1'
 
 FROM scratch AS out
 COPY --from=smoke /usr/local/bin/openvaf-ir /openvaf-ir-linux-x86_64

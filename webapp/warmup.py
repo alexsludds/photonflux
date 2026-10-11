@@ -10,8 +10,9 @@ already populated and the native toolchain proven:
   * a representative example set is solved to JIT-warm the circulax solvers and
     to force each FET flavor's OSDI compile through a real run.
 
-Per-item failures are logged, not fatal: the image still ships (photonics works
-even if the FET/OpenVAF path has a problem) unless WARMUP_STRICT=1. Read the
+Per-item failures are logged, not fatal: the image still ships unless
+WARMUP_STRICT=1. Photonics is lowered by bosdi through the same
+bin/openvaf-ir, so a broken binary fails both paths. Read the
 PASS/FAIL summary in the build log to see what compiled. Runs under the venv
 python configured in the Dockerfile.
 """

@@ -92,11 +92,11 @@ scripts/build-openvaf.sh                             # needs Rust + LLVM 18
 .venv-circulax/bin/python webapp/server.py           # -> http://localhost:8642
 ```
 
-> **SKY130 transistors need `bin/openvaf-ir`.** Photonic (`cx.va`) models and
-> the non-PDK examples work without it, but any `cx.sky130_fet` call — the
-> SKY130 device studies in the web app and `examples/*_sky130.py` — fails with
-> `FileNotFoundError: bin/openvaf-ir not found` until you run
-> `scripts/build-openvaf.sh`. It is gitignored because it is a native,
+> **Every Verilog-A model needs `bin/openvaf-ir`.** bosdi lowers each `cx.va`
+> model with it, and `cx.sky130_fet` compiles BSIM4 with it, so circuits fail
+> with `FileNotFoundError: bin/openvaf-ir not found` until you run
+> `scripts/build-openvaf.sh`. A checkout built before the switch to the cdaunt
+> fork must rerun it: `python -m photonflux doctor` flags the old build. It is gitignored because it is a native,
 > arch-specific binary the container rebuilds for Linux.
 
 ## Browser app — `webapp/` ([webapp/README.md](webapp/README.md))
@@ -257,6 +257,7 @@ brew install llvm@18 ngspice libngspice
 
 git clone https://github.com/cdaunt/OpenVAF && cd OpenVAF
 git checkout 89a1f798c0768f30743ef7e9bf6cca6eebd24307
+sed -i '' 's/let check = .*;/let check = true;/' openvaf/target/build.rs
 LLVM_SYS_181_PREFIX=/opt/homebrew/opt/llvm@18 LLVM_SYS_181_PREFER_DYNAMIC=1 \
 cargo build --release -p openvaf-driver --bin openvaf-r --features llvm18
 # install the produced binary as bin/openvaf-ir

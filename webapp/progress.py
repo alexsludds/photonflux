@@ -51,6 +51,7 @@ class _Progress:
         self._depth = 0       # nested run() re-entrancy guard
         self._cancel = False  # set by request_cancel(); the solve callback raises
         self._label = ""      # flow stage text (set_label)
+        self._span = 0.0      # simulated t_stop of the current solve
 
     def enable(self) -> None:
         """Opt this process in to per-step progress reporting. The web server
@@ -141,6 +142,19 @@ class _Progress:
             self._seed = max(0, int(k))
 
     # --- per-step report (the jax.debug.callback target) ------------------
+    def set_span(self, t_stop: float) -> None:
+        """Simulated span of the current solve, for :meth:`report_time`."""
+        with self._lock:
+            self._span = float(t_stop)
+
+    def report_time(self, t) -> None:
+        """:meth:`report` from a raw solver time. The compiled solve passes
+        ``t`` rather than ``t / t_stop`` so its callback closes over nothing
+        run-specific and the compiled program is reused across runs."""
+        with self._lock:
+            span = self._span
+        self.report(float(t) / span if span > 0 else 0.0)
+
     def report(self, local) -> None:
         """Record ``local`` in ``[0, 1]`` — position within the current seed's
         solve — folding it into the run-wide fraction. Called from inside the

@@ -33,6 +33,7 @@ import traceback
 from typing import Any
 
 from catalog import CATALOG, build_models
+from photonflux import solvers
 from progress import RunCancelled
 
 # Flattened subcircuits produce dotted hierarchical refdes/probe names
@@ -636,7 +637,7 @@ def _dc_solve(circuit, meta, log, params=None):
     lasing attractor; one Newton polish from that state then converges.
     """
     if not meta.get("hard_dc"):
-        return circuit.dc(params=params) if params else circuit.dc()
+        return solvers.dc(circuit, params=params)
     import diffrax
     import numpy as np
     from circulax.solvers.transient import BDF2VectorizedTransientSolver
@@ -657,7 +658,8 @@ def _dc_solve(circuit, meta, log, params=None):
             stage[f"{inst}.delay"] = 1.0     # user-delayed: stays off
         elif ctype == "vsin":
             stage[f"{inst}.freq"] = 0.0      # hold at V*sin(phase)
-    sol = circuit.transient(
+    sol = solvers.transient(
+        circuit,
         t0=0.0, t1=t_settle, dt0=dt, y0=circuit._zero_guess(),
         saveat=diffrax.SaveAt(t1=True), params=stage or None,
         transient_solver=BDF2VectorizedTransientSolver(
@@ -665,7 +667,7 @@ def _dc_solve(circuit, meta, log, params=None):
         max_steps=int(t_settle / dt) + 10, throw=False,
         stepsize_controller=diffrax.ConstantStepSize(),
     )
-    y = circuit.dc(np.asarray(sol.ys)[-1], params=params)
+    y = solvers.dc(circuit, np.asarray(sol.ys)[-1], params=params)
     if log is not None:
         log.append(f"hard-DC device: BDF2 settle ({t_settle:g}s) "
                    "+ Newton polish")
@@ -738,7 +740,7 @@ def _run_dcsweep(circuit, meta, analysis, log) -> dict:
         y0 = _dc_solve(circuit, meta, log) if meta.get("hard_dc") else None
         pd = {p: jnp.asarray(xx * sc) for p, sc in paths}
         pd[spath] = jnp.asarray(ss * sscale)
-        y = circuit.dc(y0, params=pd)
+        y = solvers.dc(circuit, y0, params=pd)
         log.append(
             f"DC sweep ({points} points of {len(paths)} x {param} x "
             f"{len(svals)} steps of {spath}) in "
@@ -763,7 +765,8 @@ def _run_dcsweep(circuit, meta, analysis, log) -> dict:
 
     t0 = time.perf_counter()
     y0 = _dc_solve(circuit, meta, log) if meta.get("hard_dc") else None
-    y = circuit.dc(y0, params={p: jnp.asarray(x * sc) for p, sc in paths})
+    y = solvers.dc(circuit, y0,
+                   params={p: jnp.asarray(x * sc) for p, sc in paths})
     swept = path if len(paths) == 1 else f"{len(paths)} instances' {param}"
     log.append(f"DC sweep ({points} points of {swept}) in "
                f"{time.perf_counter() - t0:.2f}s")
@@ -773,6 +776,18 @@ def _run_dcsweep(circuit, meta, analysis, log) -> dict:
             "xlabel": (f"{param} (all)" if inst == "*"
                        else f"{inst}.{param}"),
             "traces": traces}
+
+
+def _progress_save_fn(t, y, args):
+    """SaveAt fn that streams solver time to the web UI's progress bar.
+
+    Module-level, so the compiled transient (whose cache keys on this
+    callable) is reused across runs; ``PROGRESS.set_span`` supplies t_stop."""
+    import jax
+    from progress import PROGRESS
+
+    jax.debug.callback(PROGRESS.report_time, t)
+    return y
 
 
 def _run_transient(circuit, meta, analysis, log) -> dict:
@@ -835,13 +850,8 @@ def _run_transient(circuit, meta, analysis, log) -> dict:
     from progress import PROGRESS
 
     if PROGRESS.enabled:
-        import jax
-
-        def _save_fn(t, y, args):
-            jax.debug.callback(PROGRESS.report, t / t_stop)
-            return y
-
-        saveat = diffrax.SaveAt(ts=ts, fn=_save_fn)
+        saveat = diffrax.SaveAt(ts=ts, fn=_progress_save_fn)
+        PROGRESS.set_span(t_stop)
         PROGRESS.set_seeds(seeds)
     else:
         saveat = diffrax.SaveAt(ts=ts)
@@ -855,7 +865,8 @@ def _run_transient(circuit, meta, analysis, log) -> dict:
 
             dt = dtmax_user or min(dtmax or 1e9,
                                    t_stop / max(points * 4, 2000))
-            return dt, circuit.transient(
+            return dt, solvers.transient(
+                circuit,
                 t0=0.0, t1=t_stop, dt0=dt, y0=y0, saveat=saveat,
                 params=seed_params,
                 transient_solver=BDF2VectorizedTransientSolver(
@@ -865,7 +876,8 @@ def _run_transient(circuit, meta, analysis, log) -> dict:
             )
         controller = diffrax.PIDController(
             rtol=rtol, atol=atol, **({"dtmax": dtmax} if dtmax else {}))
-        return None, circuit.transient(
+        return None, solvers.transient(
+            circuit,
             t0=0.0, t1=t_stop, dt0=min(1e-12, t_stop / 1e3), y0=y0,
             saveat=saveat, params=seed_params, max_steps=400_000,
             throw=False, stepsize_controller=controller,
@@ -1064,7 +1076,7 @@ def _ac_system(circuit):
     if any(getattr(g, "is_fdomain", False) for g in circuit.groups.values()):
         raise NetlistError("AC analysis does not support frequency-domain "
                            "(dispersive optical) components")
-    y_dc = circuit.dc()
+    y_dc = solvers.dc(circuit)
     G_vals, C_vals = assemble_gc_real(y_dc, circuit.groups)
     rows, cols, gnd, _ = _build_index_arrays(
         circuit.groups, circuit.sys_size, is_complex=False)
@@ -1113,7 +1125,7 @@ def _ac_system_complex(circuit):
     if any(getattr(g, "is_fdomain", False) for g in circuit.groups.values()):
         raise NetlistError("AC analysis does not support frequency-domain "
                            "(dispersive optical) components")
-    y_dc = jnp.asarray(np.asarray(circuit.dc()))
+    y_dc = jnp.asarray(np.asarray(solvers.dc(circuit)))
     # two well-separated step sizes; J is affine in 1/dt so any pair recovers
     # (G, C) exactly (float64 keeps the 1e6 spread well-conditioned).
     dt1, dt2 = 1e-6, 1e-12
@@ -1185,7 +1197,7 @@ def _run_noise(circuit, meta, analysis, log) -> dict:
                                 float(inz) ** 2))
     grp = circuit.groups.get("diode")
     if grp is not None:
-        y_dc = np.asarray(circuit.dc()).real
+        y_dc = np.asarray(solvers.dc(circuit)).real
         vi = np.asarray(grp.var_indices)
         Is = np.asarray(grp.params.Is)
         nid = np.asarray(grp.params.n)

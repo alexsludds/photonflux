@@ -104,6 +104,12 @@ volts).
 
 - **Six analyses:** Transient, DC operating point, AC (S-parameters), Noise
   (small-signal), Pulse / COM, and Optimize.
+- **Testbench flows:** chain analyses into one pre-configured run — find a
+  resonance, run a PAM4 eye at a detuning, optimize under constraints, then
+  evaluate the best design over a full PRBS period against a spec (relOMA,
+  OMA, IL, ER, TDECQ/TDEC, RLM via stateye). Steps share variables, the canvas
+  is never edited until you Apply, and `python -m photonflux flow tb.json`
+  runs a saved flow headless (exit 1 on a failed check).
 - **Run-configuration pane** — a caret next to **Run** opens a sweep-overlay
   panel: sweep one or two parameters over any plot-producing analysis and
   overlay the runs (shaded by step, or a distinct hue per run). The legacy fast
@@ -203,7 +209,7 @@ photonflux/       Python package — the circulax bridge (the only simulator)
   toolchain.py    openvaf-ir / VA-include / SKY130-PDK discovery + `doctor`
   _ngspice.py     ctypes binding to libngspice — SKY130 card extraction only
   signals.py      PRBS bit patterns (engine-agnostic stimulus)
-  cli.py          `python -m photonflux doctor`
+  cli.py          `python -m photonflux doctor` / `flow <testbench.json>`
 webapp/           browser schematic editor + stdlib simulation server
   server.py       serves the static UI and POST /api/run (single origin)
   static/         index.html + app.js + symbols.js + style.css (uPlot plotting)

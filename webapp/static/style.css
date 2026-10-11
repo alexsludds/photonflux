@@ -502,3 +502,126 @@ body { display: flex; flex-direction: column; }
   position: absolute; top: 6px; right: 8px; background: none; border: 0;
   color: var(--text-dim); font-size: 18px; cursor: pointer;
 }
+
+/* ---------------- testbench flows (flow.js) ---------------- */
+.dim { color: var(--text-dim); }
+.ok { color: var(--ok); }
+.err { color: var(--err); }
+.warn { color: var(--optical); font-weight: 700; }
+.rp-num-flow { background: var(--select); }
+.flow-mode { display: flex; background: var(--bg); border: 1px solid var(--border);
+  border-radius: 6px; padding: 2px; gap: 2px; }
+.flow-mode button { flex: 1; background: none; border: none; color: var(--text-dim);
+  border-radius: 4px; padding: 4px 0; font: inherit; font-size: 12px; cursor: pointer; }
+.flow-mode button.on { background: var(--accent); color: #fff; }
+#flow-body { display: flex; flex-direction: column; gap: 6px; }
+#flow-body[hidden] { display: none; }
+.flow-row { display: flex; gap: 5px; align-items: center; }
+.flow-row > input, .flow-row > select { flex: 1; }
+.flow-row button, .flow-step-mv button, .fl-btns button {
+  background: var(--panel); color: var(--text); border: 1px solid var(--border);
+  border-radius: 5px; padding: 3px 8px; font: inherit; font-size: 12px; cursor: pointer; }
+.flow-row button:hover, .fl-btns button:hover { border-color: var(--accent); }
+#flow-vars-btn.active { border-color: var(--accent); color: var(--accent2); }
+#flow-vars { display: flex; flex-direction: column; gap: 4px; }
+#flow-vars[hidden] { display: none; }
+.flow-lbl { font-size: 11px; color: var(--text-dim); margin-top: 2px; }
+#runpanel textarea { width: 100%; min-width: 0; resize: vertical; background: var(--bg);
+  color: var(--text); border: 1px solid var(--border); border-radius: 5px; padding: 4px 6px;
+  font: 11.5px "SF Mono", Menlo, Consolas, monospace; line-height: 1.45; }
+#runpanel textarea:focus { border-color: var(--accent); outline: none; }
+.flow-err { color: var(--err); font-size: 11px; }
+.flow-err:empty { display: none; }
+#flow-steps { display: flex; flex-direction: column; gap: 4px; }
+.flow-step { position: relative; display: grid; grid-template-columns: 16px 1fr auto;
+  gap: 2px 7px; align-items: center; padding: 5px 7px; background: var(--bg);
+  border: 1px solid var(--border); border-radius: 6px; cursor: pointer; }
+.flow-step:hover { border-color: var(--accent); }
+.flow-step.sel { border-color: var(--accent2); box-shadow: inset 3px 0 0 var(--accent2); }
+.flow-step-txt { min-width: 0; }
+.flow-step-k { font-size: 10px; color: var(--text-dim); white-space: nowrap; overflow: hidden;
+  text-overflow: ellipsis; }
+.flow-step-t { font-size: 12px; font-weight: 600; white-space: nowrap; overflow: hidden;
+  text-overflow: ellipsis; }
+.flow-step-st { font-size: 11px; white-space: nowrap; }
+.flow-step-io { grid-column: 2 / 4; display: flex; flex-wrap: wrap; gap: 3px; }
+.flow-chip { font-size: 10px; padding: 0 5px; border-radius: 8px; border: 1px solid var(--border);
+  background: var(--panel2); color: var(--text); white-space: nowrap; }
+.flow-step-mv { position: absolute; right: 4px; bottom: 3px; display: flex; gap: 2px; }
+.flow-step-mv button { padding: 0 4px; font-size: 9px; line-height: 14px; }
+.flow-add select { color: var(--text-dim); }
+#flow-stephdr { display: flex; align-items: center; gap: 6px; padding: 2px 2px 0; }
+#flow-stephdr[hidden] { display: none; }
+.flow-badge { background: var(--accent2); color: var(--bg); font-weight: 700; font-size: 10px;
+  border-radius: 4px; padding: 1px 6px; white-space: nowrap; }
+#flow-step-title { flex: 1; min-width: 0; background: transparent; border: 1px solid transparent;
+  color: var(--text); font: inherit; font-weight: 600; border-radius: 4px; padding: 2px 4px; }
+#flow-step-title:hover, #flow-step-title:focus { border-color: var(--border); outline: none; }
+#flow-step-kind { font-size: 11px; }
+.rp-card[hidden], .flow-only[hidden] { display: none !important; }
+.flow-inner { display: flex; flex-direction: column; gap: 2px; font-size: 12px; }
+#runpanel label.flow-chk { display: flex; gap: 5px; align-items: center; color: var(--text); }
+.flow-fom { display: flex; flex-direction: column; gap: 3px; }
+.flow-fom-row { display: grid; grid-template-columns: 1fr 88px; gap: 6px; align-items: center; }
+#btn-run-menu { background: var(--accent); color: #fff; border: none; border-left: 1px solid #5d4fd0;
+  border-radius: 0 5px 5px 0; margin-left: -7px; padding: 5px 7px; cursor: pointer; }
+#btn-run-menu:hover { background: var(--accent2); }
+#btn-run:has(+ #btn-run-menu:not([hidden])) { border-radius: 5px 0 0 5px; }
+#run-menu { position: fixed; z-index: 30; display: flex;
+  flex-direction: column; background: var(--panel2); border: 1px solid var(--accent);
+  border-radius: 7px; padding: 4px; box-shadow: 0 8px 24px #0008; }
+#run-menu[hidden] { display: none; }
+#run-menu button { background: none; border: none; color: var(--text); text-align: left;
+  padding: 6px 9px; border-radius: 4px; font: inherit; cursor: pointer; white-space: nowrap; }
+#run-menu button:hover { background: var(--panel); }
+#run-menu kbd { color: var(--text-dim); font-size: 11px; margin-left: 10px; }
+#flow-view-wrap { display: inline-flex; align-items: center; gap: 4px; color: var(--text-dim);
+  font-size: 12px; margin-right: 6px; }
+#flow-view-wrap[hidden] { display: none; }
+#flow-view { background: var(--bg); color: var(--text); border: 1px solid var(--border);
+  border-radius: 4px; font: inherit; font-size: 12px; padding: 1px 4px; }
+
+.fl-res { display: grid; grid-template-columns: minmax(0, 1fr) 380px; gap: 12px; }
+.fl-left { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.fl-right { display: flex; flex-direction: column; gap: 7px; border-left: 1px solid var(--border);
+  padding-left: 12px; min-width: 0; }
+.fl-pipe { display: flex; align-items: stretch; }
+.fl-node { flex: 1 1 0; min-width: 0; background: var(--panel2); border: 1px solid var(--border);
+  border-radius: 7px; padding: 6px 8px; cursor: pointer; }
+.fl-node.sel { border-color: var(--accent2); }
+.fl-node-h { display: flex; justify-content: space-between; gap: 6px; font-weight: 600; font-size: 12px; }
+.fl-node-h span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fl-node-s { font-size: 11px; color: var(--text-dim); }
+.fl-node-e { font-size: 11px; color: var(--err); margin-top: 3px; }
+.fl-edge { flex: 0 0 22px; display: flex; align-items: center; justify-content: center;
+  color: var(--text-dim); }
+.fl-plots { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 8px; }
+.fl-plot { background: var(--panel2); border: 1px solid var(--border); border-radius: 7px;
+  padding: 6px 8px 4px; cursor: pointer; min-width: 0; }
+.fl-plot.sel { border-color: var(--accent2); }
+.fl-plot-h { font-size: 11.5px; font-weight: 600; }
+.fl-plot svg { width: 100%; height: 132px; display: block; }
+.fl-cap { font-size: 10.5px; color: var(--text-dim); }
+.fl-frame { fill: none; stroke: var(--border); }
+.fl-line { fill: none; stroke: var(--optical); stroke-width: 1.4; vector-effect: non-scaling-stroke; }
+.fl-eye { fill: none; stroke: var(--electrical); stroke-width: 1; opacity: .16;
+  vector-effect: non-scaling-stroke; }
+.fl-mark { stroke: var(--select); stroke-dasharray: 3 2; vector-effect: non-scaling-stroke; }
+.fl-mark-t { fill: var(--select); font-size: 9px; }
+.fl-ax { fill: var(--text-dim); font-size: 9px; }
+.fl-ok { fill: var(--ok); }
+.fl-bad { fill: var(--text-dim); opacity: .7; }
+.fl-pt { fill: var(--electrical); opacity: .8; }
+.fl-best { fill: none; stroke: var(--ok); stroke-width: 1.5; vector-effect: non-scaling-stroke; }
+.fl-h { font-weight: 600; font-size: 12px; margin-top: 2px; }
+.fl-table { border-collapse: collapse; width: 100%; font-size: 12px; }
+.fl-table th { text-align: left; color: var(--text-dim); font-weight: 500; font-size: 11px;
+  padding: 2px 4px; border-bottom: 1px solid var(--border); }
+.fl-table td { padding: 2px 4px; border-bottom: 1px solid var(--panel2); white-space: nowrap; }
+.fl-table td.mono { color: var(--select); font: 11.5px "SF Mono", Menlo, monospace; }
+.fl-check { display: grid; grid-template-columns: 14px 1fr auto; gap: 5px; font-size: 12px;
+  align-items: center; }
+.fl-check code { font-size: 11px; }
+.fl-apply { display: flex; flex-direction: column; gap: 6px; margin-top: 4px; }
+.fl-btns { display: flex; gap: 6px; flex-wrap: wrap; }
+#fl-apply { background: var(--accent); border-color: var(--accent); color: #fff; }

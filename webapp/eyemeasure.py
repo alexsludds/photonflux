@@ -176,7 +176,15 @@ def measure(payload: dict) -> dict:
         log.append(f"outside the 802.3dj reference equalizer: {v}")
     levels = [_num(eq.get(f"{n}_level_xp"))
               for n in ("zero", "one", "two", "three")]
+    # transmitter levels (after the reference receiver, before the equalizer):
+    # RLM, ER and the top level that insertion loss is read against
+    levels_raw = [_num(raw.get(f"{n}_level_xp"))
+                  for n in ("zero", "one", "two", "three")]
+    er = _num(raw.get(f"extinction_ratio_{fam}"))
     return {"ok": True, "format": "PAM4", "tdecq_db": tq, "tdecq_raw_db": tq_raw,
+            "er_db": er if er is not None else _num(
+                raw.get("extinction_ratio_xp")),
+            "levels_raw": levels_raw,
             # OMA at the equalizer input, as 802.3dj references it
             "family": fam, "oma": _num(raw.get(f"oma_{fam}")),
             "ceq": _num(eq.get("ceq", 1.0)),

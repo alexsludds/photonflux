@@ -50,6 +50,7 @@ class _Progress:
         self._seed = 0
         self._depth = 0       # nested run() re-entrancy guard
         self._cancel = False  # set by request_cancel(); the solve callback raises
+        self._label = ""      # flow stage text (set_label)
 
     def enable(self) -> None:
         """Opt this process in to per-step progress reporting. The web server
@@ -77,6 +78,7 @@ class _Progress:
                 self._run_i = 0
                 self._seeds = 1
                 self._seed = 0
+                self._label = ""
 
     def leave(self) -> None:
         with self._lock:
@@ -85,6 +87,7 @@ class _Progress:
                 self._active = False
                 self._frac = 1.0
                 self._phase = ""
+                self._label = ""
 
     # --- cooperative cancellation (the web UI's Stop button) --------------
     def request_cancel(self) -> None:
@@ -113,6 +116,21 @@ class _Progress:
             self._run_i = max(0, int(i))
             self._seed = 0
             self._phase = "compiling"
+
+    def restart(self) -> None:
+        """Start the bar over for the next sub-run of a multi-run job (a flow
+        runs many analyses inside one outermost run(), and the fraction is
+        otherwise monotonic across all of them)."""
+        with self._lock:
+            self._frac = 0.0
+            self._phase = "compiling"
+            self._runs, self._run_i, self._seeds, self._seed = 1, 0, 1, 0
+
+    def set_label(self, text: str) -> None:
+        """Free-text stage shown beside the bar (a flow's "step 3/4 · eval
+        12/30"); cleared when the outermost run ends."""
+        with self._lock:
+            self._label = str(text)
 
     def set_seeds(self, n: int) -> None:
         with self._lock:
@@ -153,7 +171,8 @@ class _Progress:
         with self._lock:
             return {"active": self._active, "frac": round(self._frac, 4),
                     "phase": self._phase,
-                    "runs": self._runs, "run": self._run_i}
+                    "runs": self._runs, "run": self._run_i,
+                    "label": self._label}
 
 
 PROGRESS = _Progress()

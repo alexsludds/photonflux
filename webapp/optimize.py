@@ -129,6 +129,69 @@ def _tdec_objective(res: dict, probe: str, ui_hint: float | None,
     return float(val)
 
 
+def nelder_mead(f, x0, lo, hi, iters: int):
+    """Bounded Nelder-Mead (reflect/expand/contract/shrink, clipped to the
+    [lo, hi] box) minimizing ``f`` within ``iters`` evaluations. The start
+    simplex is x0 (clipped) plus a 15%-of-span step along each axis.
+
+    Returns the final ``(simplex, fs)``; non-finite values mark points ``f``
+    could not score. Shared by Optimize and the flow Optimize step.
+
+    Clipping to the box makes the simplex propose the same point again (a
+    reflection past a bound lands on it); those repeats are answered from a
+    memo and do not count against ``iters`` -- each evaluation is a full
+    simulation. Proposals past the budget are rejected unevaluated, so ``f``
+    runs at most ``iters`` times; a cap on proposals keeps a collapsed simplex
+    from looping."""
+    calls = {"n": 0, "proposals": 0}
+    memo: dict = {}
+
+    def g(x):
+        calls["proposals"] += 1
+        # exact match: a clipped point is bit-identical to the bound, and
+        # rounding would merge distinct small-SI values (1e-14 F, ...)
+        key = tuple(np.asarray(x, float).tolist())
+        if key not in memo:
+            if calls["n"] >= iters:     # budget spent mid-iteration: no new
+                return np.inf           # simulation, the point is rejected
+            calls["n"] += 1
+            memo[key] = f(x)
+        return memo[key]
+
+    x0 = np.clip(np.asarray(x0, float), lo, hi)
+    simplex = [x0]
+    for i in range(len(x0)):
+        step = 0.15 * (hi[i] - lo[i])
+        xi = x0.copy()
+        xi[i] = xi[i] + step if xi[i] + step <= hi[i] else xi[i] - step
+        simplex.append(xi)
+    fs = [g(x) for x in simplex]
+
+    while calls["n"] < iters and calls["proposals"] < 5 * iters:
+        order = np.argsort(fs)
+        simplex = [simplex[i] for i in order]
+        fs = [fs[i] for i in order]
+        cen = np.mean(simplex[:-1], axis=0)
+        xr = np.clip(cen + (cen - simplex[-1]), lo, hi)
+        fr = g(xr)
+        if fr < fs[0]:
+            xe = np.clip(cen + 2.0 * (cen - simplex[-1]), lo, hi)
+            fe = g(xe)
+            simplex[-1], fs[-1] = (xe, fe) if fe < fr else (xr, fr)
+        elif fr < fs[-2]:
+            simplex[-1], fs[-1] = xr, fr
+        else:
+            xc = np.clip(cen + 0.5 * (simplex[-1] - cen), lo, hi)
+            fc = g(xc)
+            if fc < fs[-1]:
+                simplex[-1], fs[-1] = xc, fc
+            else:
+                for i in range(1, len(simplex)):
+                    simplex[i] = simplex[0] + 0.5 * (simplex[i] - simplex[0])
+                    fs[i] = g(simplex[i])
+    return simplex, fs
+
+
 def _patch(sch: dict, params: list[dict], x: np.ndarray) -> dict:
     out = copy.deepcopy(sch)
     for spec, val in zip(params, x):
@@ -272,39 +335,7 @@ def run_optimize(payload: dict) -> dict:
         s = (sch["instances"].get(p["inst"], {}).get("settings") or {})
         cur.append(float(s.get(p["param"], 0.5 * (float(p["min"])
                                                   + float(p["max"])))))
-    x0 = np.clip(np.asarray(cur, float), lo, hi)
-    n = len(x0)
-    simplex = [x0]
-    for i in range(n):
-        step = 0.15 * (hi[i] - lo[i])
-        xi = x0.copy()
-        xi[i] = xi[i] + step if xi[i] + step <= hi[i] else xi[i] - step
-        simplex.append(xi)
-    fs = [f(x) for x in simplex]
-
-    # Nelder-Mead (standard reflect/expand/contract/shrink)
-    while evals["n"] < iters:
-        order = np.argsort(fs)
-        simplex = [simplex[i] for i in order]
-        fs = [fs[i] for i in order]
-        cen = np.mean(simplex[:-1], axis=0)
-        xr = np.clip(cen + (cen - simplex[-1]), lo, hi)
-        fr = f(xr)
-        if fr < fs[0]:
-            xe = np.clip(cen + 2.0 * (cen - simplex[-1]), lo, hi)
-            fe = f(xe)
-            simplex[-1], fs[-1] = (xe, fe) if fe < fr else (xr, fr)
-        elif fr < fs[-2]:
-            simplex[-1], fs[-1] = xr, fr
-        else:
-            xc = np.clip(cen + 0.5 * (simplex[-1] - cen), lo, hi)
-            fc = f(xc)
-            if fc < fs[-1]:
-                simplex[-1], fs[-1] = xc, fc
-            else:
-                for i in range(1, len(simplex)):
-                    simplex[i] = simplex[0] + 0.5 * (simplex[i] - simplex[0])
-                    fs[i] = f(simplex[i])
+    simplex, fs = nelder_mead(f, np.asarray(cur, float), lo, hi, iters)
 
     if not history:
         return {"ok": False, "error":

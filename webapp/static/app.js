@@ -525,7 +525,8 @@ function autosave() {
     localStorage.setItem(WS_KEY, JSON.stringify({
       active: activeTab,
       tabs: tabs.map((t) => ({ title: t.title || "", state: t.state,
-        view: t.view, analysis: t.analysis, runCfg: t.runCfg, exprs: t.exprs })),
+        view: t.view, analysis: t.analysis, runCfg: t.runCfg, exprs: t.exprs,
+        flow: t.flow, flowOn: t.flowOn, flowSel: t.flowSel })),
     }));
   } catch {}
   schedulePushMirror();   // keep the notebook-facing mirror in step
@@ -547,7 +548,7 @@ let mirror = { rev: 0, timer: null, applying: false, lastPushed: "",
 function mirrorDoc() {
   const t = tabs[activeTab];
   return { title: (t && t.title) || "", schematic: state,
-           analysis: collectAnalysis(), selection };
+           ...flowDocFields(), selection };
 }
 
 function schedulePushMirror() {
@@ -589,7 +590,12 @@ function applyRemoteDoc(doc) {
     if (!(selection && selection.kind === "inst" &&
           state.instances[selection.id]))
       selection = null;
-    if (doc.analysis) applyAnalysis(doc.analysis);
+    // in flow mode the Run panel shows a step: the doc's analysis is the
+    // tab's stashed single analysis, and a pushed flow replaces the tab's
+    if (tabs[activeTab]?.flowOn) {
+      if (doc.analysis) tabs[activeTab].flowSingle = doc.analysis;
+    } else if (doc.analysis) applyAnalysis(doc.analysis);
+    if (doc.flow) flowAdoptRemote(doc.flow);
     if (doc.title && tabs[activeTab] && tabs[activeTab].title !== doc.title) {
       tabs[activeTab].title = doc.title;
       renderTabStrip();
@@ -636,6 +642,11 @@ function freshTabRecord() {
               inst: "", param: "", values: "", inst2: "", param2: "", values2: "" },
     exprs: "",
     lastResult: null,
+    // testbench flow (flow.js): the document, whether the Run panel edits it,
+    // the selected step, the single analysis stashed while it does, the last
+    // flow result and which step's result the plot tabs show
+    flow: null, flowOn: false, flowSel: 0, flowSingle: null,
+    flowResult: null, flowView: null,
   };
 }
 
@@ -653,7 +664,8 @@ function snapshotActiveTab() {
   t.state = state;
   t.undoStack = undoStack; t.redoStack = redoStack;
   t.view = view;
-  t.analysis = collectAnalysis();
+  // in flow mode the Run panel shows a step; the tab's own analysis is stashed
+  t.analysis = t.flowOn ? flowSingleAnalysis(t) : collectAnalysis();
   t.runCfg = readRunCfg();
   t.exprs = exprText();
   t.lastResult = lastResult;
@@ -684,6 +696,7 @@ function checkoutTab(i) {
   lastResult = t.lastResult || null;
   clearResults();               // wipe the previous tab's panes unconditionally
   if (lastResult?.ok) { rerenderResults(); renderLink(); showLog(lastResult); }
+  flowCheckout(t);
   renderTabStrip();
 }
 
@@ -1518,7 +1531,11 @@ window.addEventListener("keydown", (ev) => {
     ev.preventDefault(); copySelection(); return;
   }
   if (mod && ev.key === "v" && !ev.shiftKey) { ev.preventDefault(); pasteClipboard(); return; }
-  if (mod && ev.key === "Enter") { ev.preventDefault(); runSim(); return; }
+  if (mod && ev.key === "Enter") {
+    // a flow: Shift = from the selected step, Alt = that step only
+    ev.preventDefault(); runSim(ev.shiftKey ? "from" : ev.altKey ? "only" : "all");
+    return;
+  }
   switch (ev.key) {
     case "Escape": if (runAbort) { stopSim(); } else { disarm(); render(); } break;
     case "Delete": case "Backspace": ev.preventDefault(); deleteSelection(); break;
@@ -2477,14 +2494,16 @@ function startProgressPoll() {
     try { p = await (await fetch("/api/progress")).json(); }
     catch { return; }
     if (stopped || !p || !p.active) return;
+    // a flow names its stage ("step 3/4, eval 12/30, <step title>")
+    const stage = p.label ? `${p.label}, ` : "";
     if (p.frac > 0 || p.phase === "solving") {
       seenFrac = true;
       bar.classList.remove("indeterminate");
       const pct = Math.min(100, Math.max(0, p.frac * 100));
       fill.style.width = `${pct.toFixed(1)}%`;
-      if (label) label.textContent = `${pct.toFixed(0)}%`;
+      if (label) label.textContent = `${stage}${pct.toFixed(0)}%`;
     } else if (label) {
-      label.textContent = "Compiling…";
+      label.textContent = `${stage}Compiling…`;
     }
   }, 200);
   return {
@@ -2520,8 +2539,16 @@ function stopSim() {
   runAbort.abort();
 }
 
-async function runSim() {
+// runKind ("all" | "from" | "only") picks how much of a flow to run; a click
+// event or no argument runs the whole flow (or the single analysis)
+async function runSim(runKind) {
   const btn = $("btn-run"), stopBtn = $("btn-stop"), status = $("run-status");
+  const flowOn = !!tabs[activeTab]?.flowOn;
+  let analysis;
+  if (flowOn) {
+    analysis = flowRunAnalysis(typeof runKind === "string" ? runKind : "all");
+    if (!analysis) return;           // the flow editor flagged a config error
+  } else analysis = collectAnalysis();
   const payload = {
     schematic: {
       // PRBS sources pull their unit interval from the global baud rate: inject
@@ -2541,7 +2568,7 @@ async function runSim() {
         ? { subcircuits: state.subcircuits } : {}),
       corner: globalCorner(),
     },
-    analysis: collectAnalysis(),
+    analysis,
   };
   // The tab this run belongs to: if the user switches tabs while the solve is
   // in flight, the result is filed on this record instead of being displayed.
@@ -2568,6 +2595,7 @@ async function runSim() {
     status.textContent = slowSky
       ? `running… ${s}s (first run extracts SKY130 cards, ~1 min)`
       : nRuns > 1 ? `sweeping ${nRuns} runs… ${s}s`
+      : a.mode === "flow" ? `running flow… ${s}s`
       : `running… ${s}s`;
   }, 250);
   status.textContent = "running…";
@@ -2578,7 +2606,8 @@ async function runSim() {
   // their existing elapsed-time ticker is enough and avoids a bar that can
   // only ever sit indeterminate. Swept transients keep mode "transient", so
   // this covers them too, while excluding e.g. a 2-axis AC sweep.
-  const timeDomain = a.mode === "transient" || a.mode === "pulse";
+  const timeDomain = a.mode === "transient" || a.mode === "pulse"
+    || a.mode === "flow";
   const progPoll = timeDomain ? startProgressPoll() : { stop() {} };
   let res, aborted = false;
   try {
@@ -2606,10 +2635,21 @@ async function runSim() {
     return;
   }
   if (runTab && tabs[activeTab] !== runTab) {
-    if (res.ok) runTab.lastResult = res;   // keep a prior good result on failure
+    if (res.ok && res.kind === "flow") flowStoreResult(runTab, res, a);
+    else if (res.ok) runTab.lastResult = res;   // keep a prior good result on failure
     status.textContent = res.ok
       ? `done in ${dt}s (other tab)` : `failed (${dt}s, other tab)`;
     status.className = res.ok ? "ok" : "err";
+    return;
+  }
+  if (res.ok && res.kind === "flow") {
+    flowStoreResult(runTab, res, a);
+    flowShowResult(runTab);
+    status.textContent = `${res.flow.passed ? "flow passed" : res.flow.failed
+      ? "flow step failed" : "flow ran — checks fail"} in ${dt}s`;
+    status.className = res.flow.passed ? "ok" : "err";
+    $("results").classList.remove("collapsed");
+    setResultsTab("flow");
     return;
   }
   lastResult = res;
@@ -2956,8 +2996,8 @@ function showLog(res) {
   $("log-pre").innerHTML = lines.join("\n") || "(no log)";
 }
 
-const escapeHtml = (s) => s.replace(/[&<>]/g, (c) =>
-  ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
+const escapeHtml = (s) => String(s).replace(/[&<>"']/g, (c) =>
+  ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 
 function setResultsTab(tab) {
   document.querySelectorAll(".rtab").forEach((b) =>
@@ -2966,6 +3006,7 @@ function setResultsTab(tab) {
     p.classList.toggle("active", p.id === "tab-" + tab));
   if (tab === "eye") renderEye();
   if (tab === "link") renderLink();
+  if (tab === "flow") flowRenderTab();
 }
 
 // ---------------------------------------------------------------------------
@@ -3032,21 +3073,10 @@ function syncTdecqControls() {
 $("tq-method").addEventListener("change", syncTdecqControls);
 $("eye-mod").addEventListener("change", syncTdecqControls);
 
-async function measureEye() {
-  const out = $("tq-result"), btn = $("tq-run");
-  if (!lastResult) return;
-  const sel = $("eye-trace").value;
-  let fam = visibleTraces(lastResult.traces)
-    .filter((q) => (q.probe || q.name) === sel);
-  const sw = $("eye-sweep");
-  if (!$("eye-sweep-wrap").hidden && sw.value !== "__all__")
-    fam = fam.filter((q) => (q.name || "").endsWith(` @ ${sw.value}`));
-  if (!fam.length) { out.innerHTML = `<span class="tq-err">no trace ${sel}</span>`; return; }
-  const tr = fam[0], t = lastResult.x;
-  const nlv = $("eye-mod").value === "auto" ? eyeDefaults().mod
-    : parseInt($("eye-mod").value);
+// the Eye tab's stateye settings (a flow's figures of merit use them too)
+function stateyeCfg(nlv) {
   const rxbw = $("tq-rxbw").value.trim().toLowerCase();
-  const cfg = {
+  return {
     rx_bw: rxbw === "auto" ? (nlv === 4 ? 0.5 : 0.75) : (rxbw === "off" ? "off" : parseFloat(rxbw)),
     rx_order: parseInt($("tq-rxorder").value) || 4,
     taps: parseInt($("tq-taps").value) || 0,
@@ -3065,6 +3095,22 @@ async function measureEye() {
     ny: parseInt($("tq-grid").value.split("x")[1]),
     [nlv === 4 ? "ser" : "ber"]: parseFloat($("tq-ser").value),
   };
+}
+
+async function measureEye() {
+  const out = $("tq-result"), btn = $("tq-run");
+  if (!lastResult) return;
+  const sel = $("eye-trace").value;
+  let fam = visibleTraces(lastResult.traces)
+    .filter((q) => (q.probe || q.name) === sel);
+  const sw = $("eye-sweep");
+  if (!$("eye-sweep-wrap").hidden && sw.value !== "__all__")
+    fam = fam.filter((q) => (q.name || "").endsWith(` @ ${sw.value}`));
+  if (!fam.length) { out.innerHTML = `<span class="tq-err">no trace ${sel}</span>`; return; }
+  const tr = fam[0], t = lastResult.x;
+  const nlv = $("eye-mod").value === "auto" ? eyeDefaults().mod
+    : parseInt($("eye-mod").value);
+  const cfg = stateyeCfg(nlv);
   const payload = { t, values: tr.values, unit: tr.unit || "",
     ui: parseSI($("eye-ui").value), levels: nlv, skip_s: eyeSkipSeconds(t),
     pattern: patternForEye(), cfg };
@@ -3736,7 +3782,7 @@ function download(name, text, mime) {
 function saveJSON() {
   download("circuit.json", JSON.stringify(
     { title: tabs[activeTab]?.title || "photonflux circuit",
-      schematic: state, analysis: collectAnalysis() },
+      schematic: state, ...flowDocFields() },
     null, 2), "application/json");
 }
 $("btn-save").addEventListener("click", saveJSON);
@@ -3794,6 +3840,7 @@ function loadDocument(doc) {
   });
   selection = null;
   applyAnalysis(doc.analysis);
+  flowLoadDoc(doc);
   $("eye-ui").value = fmtNum(globalUI());   // eye folds at the loaded baud rate
   renderInspector();
   zoomToFit();
@@ -4022,6 +4069,9 @@ async function boot() {
         t.analysis = r.analysis || null;
         if (r.runCfg) t.runCfg = r.runCfg;
         t.exprs = r.exprs || "";
+        t.flow = r.flow || null;
+        t.flowOn = !!(r.flowOn && r.flow);
+        t.flowSel = r.flowSel | 0;
         return t;
       });
       loaded = true;    // before checkout: a render failure must not fall

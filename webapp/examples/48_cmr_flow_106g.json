@@ -1,0 +1,498 @@
+{
+  "title": "Coupling-modulated ring, 106.25 GBd PAM4 flow",
+  "group": "Lasers & modulators",
+  "description": "Example 47's coupling-modulated ring at 106.25 GBd PAM4 with realistic O-band PN and driver assumptions (junction RC through the driver and series resistance) and a four-step flow: find the resonance at the drive bias, PAM4 eye, optimize detuning / bias / arm imbalance / PN length / ring length for the worst spec margin, evaluate over a full PRBS-13Q period against RLM > 0.95, TDECQ < 1.5 dB, relOMA > -2 dB, ER > 3.5 dB. The flow shows the spec is out of reach for a lumped junction at 2 Vpp",
+  "schematic": {
+    "notes": [
+      {
+        "x": 40,
+        "y": -360,
+        "title": "Coupling-modulated ring at 106.25 GBd — a testbench flow",
+        "lines": [
+          "Example 47's ring at 106.25 GBd PAM4 with realistic drive and",
+          "PN assumptions, all flow variables (Flow card -> vars):",
+          "O-band lateral PN: VpiL 2.0 V*cm, 12 dB/cm, Cj0 0.3 fF/um,",
+          "series R 10 Ohm*mm; driver 50 Ohm, 2 Vpp, 5 ps edges, 0.02 UI",
+          "RJ/SJ/DJ. RDRV = driver + PN series R, so the junction RC",
+          "limits bandwidth (example 47 drives the junctions ideally).",
+          "1 Find resonance at the drive bias (1 nm sweep, > one FSR).",
+          "2 PAM4 eye, 1000 symbols: rlm, er_db, rel_oma_db, il_db, tdecq_db.",
+          "3 Optimize detune, bias, arm imbalance, PN and ring length for",
+          "  the worst normalized spec margin, re-running 1 + 2 each time.",
+          "4 Evaluate the optimum over a full PRBS-13Q period against",
+          "  RLM > 0.95, TDECQ < 1.5 dB, relOMA > -2 dB, ER > 3.5 dB.",
+          "Verdict: NOT met. Best found (50 evals, PN 313 um, ring 124 um):",
+          "relOMA -4.9 dB, TDECQ 2.4 dB, RLM 0.947, ER 3.3 dB, IL 2.2 dB.",
+          "At 2 Vpp the static levels alone cap relOMA near -3 dB (600 um",
+          "PN); the RC (~25 GHz at 300 um, 50 Ohm) costs 1.5-4 dB of",
+          "TDECQ, so PN length trades OMA against TDECQ. Still optimistic:",
+          "quasi-static optics (no photon lifetime; Q 1e4-1e5 = 10-60 ps",
+          "against a 9.4 ps UI)."
+        ]
+      }
+    ],
+    "instances": {
+      "LAS": {
+        "type": "cw_laser",
+        "x": 40,
+        "y": 170,
+        "rot": 0,
+        "settings": {
+          "power": 0.001,
+          "wavelength_nm": 1310.014
+        }
+      },
+      "GND": {
+        "type": "ground",
+        "x": 60,
+        "y": 250,
+        "rot": 0,
+        "settings": {}
+      },
+      "DC1": {
+        "type": "dir_coupler",
+        "x": 200,
+        "y": 190,
+        "rot": 0,
+        "settings": {
+          "coupling": 0.5
+        }
+      },
+      "PN_A": {
+        "type": "pn_phase_shifter",
+        "x": 340,
+        "y": 70,
+        "rot": 0,
+        "settings": {
+          "length_m": 0.00025,
+          "vpil_vcm": 2.0,
+          "vref": 2.0,
+          "vbi": 0.85,
+          "loss_dB_cm": 12.0,
+          "dloss_dB_cm": 1.5,
+          "cj0_ff_um": 0.3,
+          "neff": 2.4,
+          "n_group": 4.0,
+          "center_wavelength_nm": 1310.0,
+          "wavelength_nm": 1310.014
+        }
+      },
+      "WG_A": {
+        "type": "waveguide",
+        "x": 480,
+        "y": 90,
+        "rot": 0,
+        "settings": {
+          "length_m": 2.024019e-05,
+          "loss_dB_cm": 2.0,
+          "neff": 2.4,
+          "n_group": 4.0,
+          "center_wavelength_nm": 1310.0,
+          "wavelength_nm": 1310.014
+        }
+      },
+      "PN_B": {
+        "type": "pn_phase_shifter",
+        "x": 340,
+        "y": 290,
+        "rot": 0,
+        "settings": {
+          "length_m": 0.00025,
+          "vpil_vcm": 2.0,
+          "vref": 2.0,
+          "vbi": 0.85,
+          "loss_dB_cm": 12.0,
+          "dloss_dB_cm": 1.5,
+          "cj0_ff_um": 0.3,
+          "neff": 2.4,
+          "n_group": 4.0,
+          "center_wavelength_nm": 1310.0,
+          "wavelength_nm": 1310.014
+        }
+      },
+      "WG_B": {
+        "type": "waveguide",
+        "x": 480,
+        "y": 310,
+        "rot": 0,
+        "settings": {
+          "length_m": 1.9999999999999998e-05,
+          "loss_dB_cm": 2.0,
+          "neff": 2.4,
+          "n_group": 4.0,
+          "center_wavelength_nm": 1310.0,
+          "wavelength_nm": 1310.014
+        }
+      },
+      "DC2": {
+        "type": "dir_coupler",
+        "x": 620,
+        "y": 190,
+        "rot": 0,
+        "settings": {
+          "coupling": 0.5
+        }
+      },
+      "TT": {
+        "type": "opt_term",
+        "x": 800,
+        "y": 178,
+        "rot": 0,
+        "settings": {}
+      },
+      "WG_R1": {
+        "type": "waveguide",
+        "x": 620,
+        "y": 470,
+        "rot": 0,
+        "settings": {
+          "length_m": 7.5e-05,
+          "loss_dB_cm": 2.0,
+          "neff": 2.4,
+          "n_group": 4.0,
+          "center_wavelength_nm": 1310.0,
+          "wavelength_nm": 1310.014
+        }
+      },
+      "WG_R2": {
+        "type": "waveguide",
+        "x": 200,
+        "y": 470,
+        "rot": 0,
+        "settings": {
+          "length_m": 7.5e-05,
+          "loss_dB_cm": 2.0,
+          "neff": 2.4,
+          "n_group": 4.0,
+          "center_wavelength_nm": 1310.0,
+          "wavelength_nm": 1310.014
+        }
+      },
+      "GND2": {
+        "type": "ground",
+        "x": 440,
+        "y": 250,
+        "rot": 0,
+        "settings": {}
+      },
+      "GND3": {
+        "type": "ground",
+        "x": 430,
+        "y": 30,
+        "rot": 0,
+        "settings": {}
+      },
+      "VRAIL": {
+        "type": "vdc",
+        "x": 440,
+        "y": 360,
+        "rot": 0,
+        "settings": {
+          "V": 4.0
+        }
+      },
+      "GND4": {
+        "type": "ground",
+        "x": 440,
+        "y": 430,
+        "rot": 0,
+        "settings": {}
+      },
+      "PRBS": {
+        "type": "prbs",
+        "x": 440,
+        "y": 180,
+        "rot": 0,
+        "settings": {
+          "mode": "pam4",
+          "order": 13,
+          "v0": 1.0,
+          "v1": 3.0,
+          "tr": 5e-12,
+          "seed": 1,
+          "rj_ui": 0.02,
+          "sj_ui": 0.02,
+          "dj_ui": 0.02
+        }
+      },
+      "RDRV": {
+        "type": "resistor",
+        "x": 380,
+        "y": 120,
+        "rot": 0,
+        "settings": {
+          "R": 75.0
+        }
+      }
+    },
+    "wires": [
+      {
+        "from": "LAS,p1",
+        "to": "DC1,p1"
+      },
+      {
+        "from": "LAS,p2",
+        "to": "GND,p1"
+      },
+      {
+        "from": "DC1,p3",
+        "to": "PN_A,p1"
+      },
+      {
+        "from": "PN_A,p2",
+        "to": "WG_A,p1"
+      },
+      {
+        "from": "WG_A,p2",
+        "to": "DC2,p1"
+      },
+      {
+        "from": "DC1,p4",
+        "to": "PN_B,p1"
+      },
+      {
+        "from": "PN_B,p2",
+        "to": "WG_B,p1"
+      },
+      {
+        "from": "WG_B,p2",
+        "to": "DC2,p2"
+      },
+      {
+        "from": "DC2,p3",
+        "to": "TT,p1"
+      },
+      {
+        "from": "DC2,p4",
+        "to": "WG_R1,p2"
+      },
+      {
+        "from": "WG_R1,p1",
+        "to": "WG_R2,p2"
+      },
+      {
+        "from": "WG_R2,p1",
+        "to": "DC1,p2"
+      },
+      {
+        "from": "PN_A,an",
+        "to": "GND3,p1"
+      },
+      {
+        "from": "PN_A,cat",
+        "to": "RDRV,p2"
+      },
+      {
+        "from": "PN_B,an",
+        "to": "PN_A,cat"
+      },
+      {
+        "from": "PRBS,p2",
+        "to": "GND2,p1"
+      },
+      {
+        "from": "PN_B,cat",
+        "to": "VRAIL,p1"
+      },
+      {
+        "from": "VRAIL,p2",
+        "to": "GND4,p1"
+      },
+      {
+        "from": "RDRV,p1",
+        "to": "PRBS,p1"
+      }
+    ],
+    "probes": [
+      {
+        "name": "thru",
+        "at": "DC2,p3",
+        "color": "#6ecbf5"
+      },
+      {
+        "name": "drive",
+        "at": "PN_A,cat",
+        "color": "#4ade80"
+      },
+      {
+        "name": "ring",
+        "at": "WG_R1,p1",
+        "color": "#e6862c",
+        "hide": true
+      },
+      {
+        "name": "mod_in",
+        "at": "LAS,p1"
+      }
+    ],
+    "globals": {
+      "baud": 106250000000.0
+    }
+  },
+  "analysis": {
+    "mode": "transient",
+    "t_stop": 9.411764705882354e-09,
+    "points": 10000,
+    "link": {
+      "probe": "thru",
+      "ffe_taps": 0,
+      "dfe_taps": 0
+    }
+  },
+  "flow": {
+    "name": "Resonance → PAM4 eye → optimize → evaluate",
+    "vars": {
+      "detune_pm": 2.0,
+      "dL_nm": 250.0,
+      "vbias": 2.0,
+      "pn_um": 250.0,
+      "ring_um": 150.0,
+      "vswing": 2.0,
+      "r_drv_ohm": 50.0,
+      "rs_ohm_mm": 10.0,
+      "vpil_vcm": 2.0,
+      "loss_db_cm": 12.0,
+      "cj0_ff_um": 0.3
+    },
+    "set": {
+      "WG_A.length_m": "2.0120095e-05 + dL_nm*0.5e-9",
+      "WG_B.length_m": "2.0120095e-05 - dL_nm*0.5e-9",
+      "PRBS.v0": "vbias - vswing/2",
+      "PRBS.v1": "vbias + vswing/2",
+      "PN_A.length_m": "pn_um*1e-6",
+      "PN_B.length_m": "pn_um*1e-6",
+      "PN_A.vpil_vcm": "vpil_vcm",
+      "PN_B.vpil_vcm": "vpil_vcm",
+      "PN_A.loss_dB_cm": "loss_db_cm",
+      "PN_B.loss_dB_cm": "loss_db_cm",
+      "PN_A.cj0_ff_um": "cj0_ff_um",
+      "PN_B.cj0_ff_um": "cj0_ff_um",
+      "WG_R1.length_m": "ring_um*0.5e-6",
+      "WG_R2.length_m": "ring_um*0.5e-6",
+      "RDRV.R": "r_drv_ohm + rs_ohm_mm/(pn_um*1e-3)/2"
+    },
+    "stateye": {
+      "rx_bw": "auto",
+      "rx_order": 4,
+      "taps": 5,
+      "pre": 1,
+      "dfe": 0,
+      "method": "mmse",
+      "limits": true,
+      "use_pattern": true,
+      "s_noise": 0.005,
+      "ser": 0.00048,
+      "nx": 256,
+      "ny": 1024
+    },
+    "steps": [
+      {
+        "id": "res",
+        "kind": "analysis",
+        "title": "Find resonance at the bias",
+        "set": {
+          "PRBS.v0": "vbias",
+          "PRBS.v1": "vbias"
+        },
+        "analysis": {
+          "mode": "dcsweep",
+          "instance": "*",
+          "param": "wavelength_nm",
+          "start": 1309.5,
+          "stop": 1310.5,
+          "points": 2001
+        },
+        "outputs": {
+          "lam_res": "xat_min(thru)",
+          "notch_db": "dbp(min(thru)/max(thru))"
+        },
+        "checks": [
+          "notch_db < -3"
+        ]
+      },
+      {
+        "id": "eye",
+        "kind": "analysis",
+        "title": "PAM4 eye at the lock point",
+        "set": {
+          "*.wavelength_nm": "lam_res - detune_pm*1e-3"
+        },
+        "analysis": {
+          "mode": "transient",
+          "t_stop": 9.411764705882354e-09,
+          "points": 10000
+        },
+        "outputs": {
+          "rlm": "rlm(thru)",
+          "er_db": "er_db(thru)",
+          "rel_oma_db": "rel_oma_db(thru, mod_in)",
+          "il_db": "il_db(thru, mod_in)",
+          "tdecq_db": "tdecq(thru)"
+        },
+        "checks": []
+      },
+      {
+        "id": "opt",
+        "kind": "optimize",
+        "title": "Maximize the worst spec margin",
+        "inner": [
+          "res",
+          "eye"
+        ],
+        "params": [
+          {
+            "var": "detune_pm",
+            "min": 0.5,
+            "max": 8.0
+          },
+          {
+            "var": "vbias",
+            "min": 1.4,
+            "max": 2.6
+          },
+          {
+            "var": "dL_nm",
+            "min": 150.0,
+            "max": 450.0
+          },
+          {
+            "var": "pn_um",
+            "min": 100.0,
+            "max": 600.0
+          },
+          {
+            "var": "ring_um",
+            "min": 100.0,
+            "max": 800.0
+          }
+        ],
+        "objective": "min((rlm - 0.95)/0.05, (1.5 - tdecq_db)/1.5, (rel_oma_db + 2)/2, (er_db - 3.5)/3.5)",
+        "maximize": true,
+        "constraints": [],
+        "iters": 50
+      },
+      {
+        "id": "eval",
+        "kind": "evaluate",
+        "title": "Evaluate the best design",
+        "inner": [
+          "res",
+          "eye"
+        ],
+        "record": "full_period",
+        "probes": {
+          "in": "mod_in",
+          "out": "thru"
+        },
+        "fom": {
+          "rel_oma_db": ">= -2",
+          "oma_dbm": null,
+          "il_db": null,
+          "er_db": ">= 3.5",
+          "tdecq_db": "<= 1.5",
+          "rlm": ">= 0.95"
+        }
+      }
+    ]
+  }
+}

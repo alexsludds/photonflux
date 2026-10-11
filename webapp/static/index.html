@@ -37,6 +37,12 @@
     </select></label>
   <span class="sep"></span>
   <button id="btn-run" title="Run simulation (Cmd+Enter)">&#9654; Run</button>
+  <button id="btn-run-menu" hidden title="Run options for the flow">&#9662;</button>
+  <div id="run-menu" hidden>
+    <button data-run="all">Run flow <kbd>&#8984;&#8629;</kbd></button>
+    <button data-run="from">Run from the selected step <span class="dim">(reuse earlier results)</span></button>
+    <button data-run="only">Run the selected step only</button>
+  </div>
   <button id="btn-stop" hidden title="Stop the running simulation (Esc)">&#9632; Stop</button>
   <span id="run-progress" hidden aria-hidden="true"><span id="run-progress-fill"></span></span>
   <span id="run-progress-label" hidden></span>
@@ -86,7 +92,87 @@
 
 <div id="rightcol">
   <aside id="runpanel">
-    <section class="rp-card">
+    <section class="rp-card" id="flow-card">
+      <h3 class="rp-h"><span class="rp-num rp-num-flow">F</span>Flow</h3>
+      <div class="flow-mode" role="tablist">
+        <button type="button" data-flow="off" class="on">Single analysis</button>
+        <button type="button" data-flow="on">Flow</button>
+      </div>
+      <div id="flow-body" hidden>
+        <div class="flow-row">
+          <input id="flow-name" type="text" placeholder="flow name" spellcheck="false">
+          <button type="button" id="flow-vars-btn"
+            title="Flow variables (knobs the steps and the optimizer share) and the design mapping every step applies">vars</button>
+        </div>
+        <div id="flow-vars" hidden>
+          <div class="flow-lbl">variables <span class="dim">name = value</span></div>
+          <textarea id="flow-vars-text" rows="3" spellcheck="false"
+            placeholder="detune_pm = 2.5&#10;vbias = 2.0"></textarea>
+          <div class="flow-lbl">every step sets <span class="dim">INST.param = expression</span></div>
+          <textarea id="flow-set-text" rows="3" spellcheck="false"
+            placeholder="PRBS.v0 = vbias - vswing/2"></textarea>
+          <div class="flow-err" id="flow-vars-err"></div>
+        </div>
+        <div id="flow-steps"></div>
+        <div class="flow-row flow-add">
+          <select id="flow-add-kind" title="Add a step after the selected one">
+            <option value="">+ Add step&hellip;</option>
+            <option value="analysis">Analysis</option>
+            <option value="optimize">Optimize</option>
+            <option value="evaluate">Evaluate</option>
+          </select>
+          <button type="button" id="flow-dup" title="Duplicate the selected step">Duplicate</button>
+          <button type="button" id="flow-del" title="Delete the selected step">Delete</button>
+        </div>
+      </div>
+    </section>
+    <div id="flow-stephdr" hidden>
+      <span id="flow-step-badge" class="flow-badge"></span>
+      <input id="flow-step-title" type="text" spellcheck="false" title="Step title">
+      <span id="flow-step-kind" class="dim"></span>
+    </div>
+    <section class="rp-card flow-only" id="flow-opt-card" hidden>
+      <h3 class="rp-h"><span class="rp-num">1</span>Optimize</h3>
+      <div class="flow-lbl">re-runs per evaluation</div>
+      <div id="flow-opt-inner" class="flow-inner"></div>
+      <div class="flow-lbl">vary <span class="dim">variable or INST.param = min : max</span></div>
+      <textarea id="flow-opt-params" rows="3" spellcheck="false"
+        placeholder="detune_pm = 1 : 6&#10;WG_A.length_m = 19.9u : 20.5u"></textarea>
+      <label>objective <input id="flow-opt-obj" type="text" placeholder="rel_oma_db"></label>
+      <label>goal <select id="flow-opt-max">
+        <option value="1">maximize</option><option value="0">minimize</option></select></label>
+      <div class="flow-lbl">subject to <span class="dim">one per line</span></div>
+      <textarea id="flow-opt-cons" rows="3" spellcheck="false"
+        placeholder="rlm >= 0.96&#10;tdecq_db <= 1.3"></textarea>
+      <label>evals <input id="flow-opt-iters" type="text" value="30"></label>
+      <div class="rp-note">Nelder-Mead; a constraint shortfall costs 100&times; its
+        relative size in objective units. The optimum carries into later steps.</div>
+      <div class="flow-err" id="flow-opt-err"></div>
+    </section>
+    <section class="rp-card flow-only" id="flow-eval-card" hidden>
+      <h3 class="rp-h"><span class="rp-num">1</span>Evaluate</h3>
+      <div class="flow-lbl">runs, at the current design</div>
+      <div id="flow-eval-inner" class="flow-inner"></div>
+      <label>record <select id="flow-eval-record">
+        <option value="full_period">full PRBS period</option>
+        <option value="inner">as the step is set up</option></select></label>
+      <label>mod in <select id="flow-eval-in"></select></label>
+      <label>mod out <select id="flow-eval-out"></select></label>
+      <div class="rp-note" id="flow-eval-stateye"></div>
+      <div class="flow-lbl">figures of merit <span class="dim">spec, blank = report only</span></div>
+      <div id="flow-eval-fom" class="flow-fom"></div>
+      <div class="flow-err" id="flow-eval-err"></div>
+    </section>
+    <section class="rp-card flow-only" id="flow-set-card" hidden>
+      <h3 class="rp-h"><span class="rp-num rp-num-flow">S</span>Set for this step</h3>
+      <textarea id="flow-step-set" rows="2" spellcheck="false"
+        placeholder="*.wavelength_nm = lam_res - detune_pm*1e-3"></textarea>
+      <div class="rp-note">INST.param = expression over the flow variables;
+        <code>*</code> sets every instance that has the parameter. Applies to
+        this step's run only &mdash; the canvas is never edited.</div>
+      <div class="flow-err" id="flow-set-err"></div>
+    </section>
+    <section class="rp-card" id="rp-analysis">
       <h3 class="rp-h"><span class="rp-num">1</span>Analysis</h3>
       <select id="sel-analysis">
       <option value="transient">Transient</option>
@@ -143,7 +229,7 @@
     </span>
   </div>
     </section>
-    <section class="rp-card">
+    <section class="rp-card" id="rp-measure">
       <h3 class="rp-h"><span class="rp-num">2</span>Measure</h3>
       <div class="an-group" data-mode="optimize" hidden>
       <label>objective <input id="an-op-obj" type="text" size="9"
@@ -160,8 +246,20 @@
         <button type="button" id="rp-open-fx" class="rp-link">&fnof;x expressions</button>;
         pick a received probe in the Link tab for BER.
       </div>
+      <div id="flow-measure" class="flow-only" hidden>
+        <div class="flow-lbl">outputs &rarr; flow variables <span class="dim">name = expression</span></div>
+        <textarea id="flow-step-outputs" rows="3" spellcheck="false"
+          placeholder="lam_res = xat_min(thru)&#10;rlm = rlm(thru)"></textarea>
+        <div class="flow-lbl">checks <span class="dim">one per line</span></div>
+        <textarea id="flow-step-checks" rows="2" spellcheck="false"
+          placeholder="notch_db < -3"></textarea>
+        <div class="rp-note">Expressions see probes, <code>x</code>/<code>t</code> and
+          the variables: min max mean xat_min xat_max cross dbp &hellip; and the stateye
+          figures of merit rlm er_db tdecq rel_oma_db(out, in) il_db(out, in) oma_dbm.</div>
+        <div class="flow-err" id="flow-measure-err"></div>
+      </div>
     </section>
-    <section class="rp-card">
+    <section class="rp-card" id="rp-vary">
       <h3 class="rp-h"><span class="rp-num">3</span>Vary</h3>
       <div class="an-group" data-mode="optimize" hidden>
       <label>params <input id="an-op-params" type="text" size="26"
@@ -213,12 +311,15 @@
 <div id="results" class="collapsed">
   <div id="results-resizer" title="Drag to resize"></div>
   <div id="results-bar">
+    <button class="rtab" data-tab="flow" id="rtab-flow" hidden>Flow</button>
     <button class="rtab active" data-tab="plots">Waveforms</button>
     <button class="rtab" data-tab="eye">Eye</button>
     <button class="rtab" data-tab="link">Link</button>
     <button class="rtab" data-tab="op">Operating point</button>
     <button class="rtab" data-tab="log">Log</button>
     <span class="spacer"></span>
+    <label id="flow-view-wrap" hidden title="Which flow step the Waveforms / Eye / Link / Operating point tabs show">step
+      <select id="flow-view"></select></label>
     <button id="btn-exprs" title="Derived-trace expressions">&fnof;x</button>
     <button id="btn-csv" title="Download results as CSV">CSV</button>
     <button id="btn-results-toggle" title="Collapse/expand results">&#9650;</button>
@@ -230,6 +331,7 @@
       deriv integ rms pk2pk min max mean spec psd &middot; applied on Run</div>
   </div>
   <div id="results-body">
+    <div id="tab-flow" class="rpane"></div>
     <div id="tab-plots" class="rpane active"></div>
     <div id="tab-eye" class="rpane">
       <div id="eye-controls">
@@ -312,5 +414,6 @@
 <script src="/vendor/katex/contrib-auto-render.min.js"></script>
 <script src="/symbols.js"></script>
 <script src="/app.js"></script>
+<script src="/flow.js"></script>
 </body>
 </html>

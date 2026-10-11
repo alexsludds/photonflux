@@ -1,7 +1,7 @@
 {
   "title": "Coupling-modulated ring, 106.25 GBd PAM4 flow (traveling-wave PN)",
   "group": "Lasers & modulators",
-  "description": "Example 48 with traveling-wave PN phase shifters: each arm's junction sits under a transmission-line electrode fed through the driver resistance and terminated into the bias, so the bandwidth is set by the loaded line's loss and RF/optical walk-off instead of the junction RC. Same flow and spec as example 48 (RLM > 0.95, TDECQ < 1.5 dB, relOMA > -2 dB, ER > 3.5 dB)",
+  "description": "Example 48 with traveling-wave PN phase shifters and real optical transit: each arm's junction sits under a transmission-line electrode fed through the driver resistance and terminated into the bias, and the arms and ring guides carry their group delay (transit = delayed), so the ring has its real round trip and photon lifetime. A 10 um, 0.3 dB/cm feedback delay line closes the ring; the optimizer also sets both couplers. Same spec as example 48 (RLM > 0.95, TDECQ < 1.5 dB, relOMA > -2 dB, ER > 3.5 dB)",
   "schematic": {
     "notes": [
       {
@@ -78,7 +78,8 @@
           "n_group": 4.0,
           "center_wavelength_nm": 1310.0,
           "wavelength_nm": 1310.014,
-          "polarity": 1.0
+          "polarity": 1.0,
+          "transit": "delayed"
         }
       },
       "WG_A": {
@@ -92,7 +93,8 @@
           "neff": 2.4,
           "n_group": 4.0,
           "center_wavelength_nm": 1310.0,
-          "wavelength_nm": 1310.014
+          "wavelength_nm": 1310.014,
+          "transit": "delayed"
         }
       },
       "PN_B": {
@@ -116,7 +118,8 @@
           "n_group": 4.0,
           "center_wavelength_nm": 1310.0,
           "wavelength_nm": 1310.014,
-          "polarity": -1.0
+          "polarity": -1.0,
+          "transit": "delayed"
         }
       },
       "WG_B": {
@@ -130,7 +133,8 @@
           "neff": 2.4,
           "n_group": 4.0,
           "center_wavelength_nm": 1310.0,
-          "wavelength_nm": 1310.014
+          "wavelength_nm": 1310.014,
+          "transit": "delayed"
         }
       },
       "DC2": {
@@ -155,12 +159,13 @@
         "y": 470,
         "rot": 0,
         "settings": {
-          "length_m": 7.5e-05,
-          "loss_dB_cm": 2.0,
+          "length_m": 5e-06,
+          "loss_dB_cm": 0.3,
           "neff": 2.4,
           "n_group": 4.0,
           "center_wavelength_nm": 1310.0,
-          "wavelength_nm": 1310.014
+          "wavelength_nm": 1310.014,
+          "transit": "delayed"
         }
       },
       "WG_R2": {
@@ -169,12 +174,13 @@
         "y": 470,
         "rot": 0,
         "settings": {
-          "length_m": 7.5e-05,
-          "loss_dB_cm": 2.0,
+          "length_m": 5e-06,
+          "loss_dB_cm": 0.3,
           "neff": 2.4,
           "n_group": 4.0,
           "center_wavelength_nm": 1310.0,
-          "wavelength_nm": 1310.014
+          "wavelength_nm": 1310.014,
+          "transit": "delayed"
         }
       },
       "GND2": {
@@ -418,11 +424,13 @@
   "flow": {
     "name": "Resonance → PAM4 eye → optimize → evaluate (TW)",
     "vars": {
-      "detune_pm": 1.92,
-      "dL_nm": 247.0,
+      "detune_pm": 5.0,
+      "dL_nm": 252.0,
       "vbias": 2.04,
       "pn_um": 495.0,
-      "ring_um": 172.0,
+      "ring_um": 10.0,
+      "k1": 0.5,
+      "k2": 0.5,
       "z0_ohm": 60.0,
       "r_term_ohm": 40.0,
       "v_emf_pp": 4.0,
@@ -447,6 +455,8 @@
       "PN_B.cj0_ff_um": "cj0_ff_um",
       "WG_R1.length_m": "ring_um*0.5e-6",
       "WG_R2.length_m": "ring_um*0.5e-6",
+      "DC1.coupling": "k1",
+      "DC2.coupling": "k2",
       "PRBS.v0": "vbias - v_emf_pp/2",
       "PRBS.v1": "vbias + v_emf_pp/2",
       "RDA.R": "r_drv_ohm",
@@ -526,7 +536,7 @@
       {
         "id": "opt",
         "kind": "optimize",
-        "title": "Maximize the worst spec margin (incl. Z0, termination)",
+        "title": "Maximize the worst spec margin (incl. couplers, Z0, termination)",
         "inner": [
           "res",
           "eye"
@@ -535,7 +545,7 @@
           {
             "var": "detune_pm",
             "min": 0.5,
-            "max": 8.0
+            "max": 15.0
           },
           {
             "var": "vbias",
@@ -553,11 +563,6 @@
             "max": 1500.0
           },
           {
-            "var": "ring_um",
-            "min": 100.0,
-            "max": 800.0
-          },
-          {
             "var": "z0_ohm",
             "min": 30.0,
             "max": 80.0
@@ -566,6 +571,16 @@
             "var": "r_term_ohm",
             "min": 20.0,
             "max": 80.0
+          },
+          {
+            "var": "k1",
+            "min": 0.15,
+            "max": 0.85
+          },
+          {
+            "var": "k2",
+            "min": 0.15,
+            "max": 0.85
           }
         ],
         "objective": "min((rlm - 0.95)/0.05, (1.5 - tdecq_db)/1.5, (rel_oma_db + 2)/2, (er_db - 3.5)/3.5)",

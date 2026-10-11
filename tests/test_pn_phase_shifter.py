@@ -7,9 +7,10 @@ Physics pinned here:
     g(V_R) = sqrt(1 + V_R/vbi) - 1, normalised so dphi(vref) = pi*vref*L/VpiL;
   * electrode: abrupt-junction charge Q = 2*Cj0*L*vbi*g(V_R), i.e.
     C_j = Cj0*L/sqrt(1 + V_R/vbi), plus leakage V_R/rleak;
-  * example 47: the push-pull MZI coupler modulates the ring's coupling (null
-    at mid-bias, linewidth falls monotonically over-> under-coupled) while
-    the resonance stays put.
+  * example 47 (PAM4): the push-pull MZI coupler modulates the ring's
+    coupling with the resonance fixed; the design point keeps the 2 Vpp swing
+    on the under-coupled flank with evenly spaced levels (RLM), tolerant to
+    +-0.5 pm of drift.
 """
 from __future__ import annotations
 
@@ -106,28 +107,102 @@ def test_junction_charge_and_leakage():
     assert np.isfinite(float(q["cat"])) and np.isfinite(float(f["cat"]))
 
 
-def test_example_47_coupling_modulation():
-    import simulate
+def _rlm(p):
+    """IEEE 802.3 ratio of level mismatch from four ascending levels."""
+    vm = (p[0] + p[3]) / 2
+    es1 = (p[1] - vm) / (p[0] - vm)
+    es2 = (p[2] - vm) / (p[3] - vm)
+    return min(3 * es1, 3 * es2, 2 - 3 * es1, 2 - 3 * es2)
 
+
+def _ex47(drive_dc: bool = True):
+    """Example 47; with drive_dc the PRBS becomes a DC source DRV."""
     ex = json.loads((_ROOT / "webapp/examples/47_coupling_modulated_ring.json")
                     .read_text())
-    r = simulate.run({"schematic": ex["schematic"],
-                      "analysis": ex["analysis"]})
+    sch, prbs = ex["schematic"], ex["schematic"]["instances"]["PRBS"]
+    if drive_dc:
+        sch["instances"]["DRV"] = {**prbs, "type": "vdc", "settings": {}}
+        del sch["instances"]["PRBS"]
+        for w in sch["wires"]:
+            for e in ("from", "to"):
+                w[e] = w[e].replace("PRBS,", "DRV,")
+    return ex, prbs["settings"]
+
+
+def _set_lambda(sch, lam):
+    for inst in sch["instances"].values():
+        if "wavelength_nm" in inst["settings"]:
+            inst["settings"]["wavelength_nm"] = lam
+
+
+def _pam4_levels(sch, ps):
+    import simulate
+
+    v = ps["v0"] + (ps["v1"] - ps["v0"]) * np.arange(4) / 3
+    r = simulate.run({"schematic": sch, "analysis": {
+        "mode": "dcsweep", "instance": "DRV", "param": "V",
+        "values": v.tolist()}})
+    assert r["ok"], r.get("error")
+    return np.asarray(next(t for t in r["traces"] if t["name"] == "thru")
+                      ["values"])
+
+
+def test_example_47_pam4_levels():
+    ex, ps = _ex47()
+    sch = ex["schematic"]
+    lam0 = sch["instances"]["LAS"]["settings"]["wavelength_nm"]
+    p = _pam4_levels(sch, ps)
+    assert np.all(np.diff(p) > 0)                # monotonic: one flank only
+    assert _rlm(p) > 0.97
+    assert 10 * np.log10(p[3] / p[0]) == pytest.approx(4.0, abs=0.3)
+    for d in (-5e-4, 5e-4):                      # +-0.5 pm drift tolerance
+        _set_lambda(sch, lam0 + d)
+        assert _rlm(np.sort(_pam4_levels(sch, ps))) > 0.94
+
+
+def test_example_47_coupling_flank():
+    # spectral view at the two drive extremes: the notch gets shallower AND
+    # narrower (under-coupled flank) while the resonance stays put
+    import simulate
+
+    ex, ps = _ex47()
+    lam0 = ex["schematic"]["instances"]["LAS"]["settings"]["wavelength_nm"]
+    r = simulate.run({"schematic": ex["schematic"], "analysis": {
+        "mode": "dcsweep", "instance": "*", "param": "wavelength_nm",
+        "start": lam0 - 0.1, "stop": lam0 + 0.1, "points": 4001,
+        "step_instance": "DRV", "step_param": "V",
+        "step_values": [ps["v0"], ps["v1"]]}})
     assert r["ok"], r.get("error")
     x = np.asarray(r["x"])
-    notch, lres, fwhm = [], [], []
+    depth, lres, fwhm = [], [], []
     for tr in r["traces"]:
         if tr["probe"] != "thru":
             continue
         y = np.asarray(tr["values"])
         j = int(np.argmin(y))
-        notch.append(10 * np.log10(y[j] / y.max()))
+        depth.append(y[j] / y.max())
         lres.append(x[j])
         fwhm.append(np.ptp(x[y < (y.max() + y[j]) / 2]))
-    steps = ex["analysis"]["step_values"]
-    mid = steps.index(2.0)
-    assert notch[mid] < -40                      # critical coupling at mid-bias
-    assert lres[mid] == pytest.approx(1310.0, abs=5e-4)
-    assert np.ptp(lres) < 3.5e-3                 # resonance walks < 3.5 pm
-    assert notch[0] > -20 and notch[-1] > -20    # drive ends are off-critical
-    assert np.all(np.diff(fwhm) < 0)             # over- -> under-coupled
+    assert depth[1] > depth[0] and fwhm[1] < fwhm[0]
+    assert abs(lres[1] - lres[0]) < 2e-3
+
+
+def test_example_47_transient_eye_levels():
+    # the shipped PRBS transient at 53.125 GBd lands the same evenly spaced
+    # levels (quasi-static optics, ideal drive: no ISI)
+    import simulate
+
+    ex, ps = _ex47(drive_dc=False)
+    baud = ex["schematic"]["globals"]["baud"]
+    ps["ui"] = 1.0 / baud                        # the editor injects this
+    an = {k: v for k, v in ex["analysis"].items() if k != "link"}
+    r = simulate.run({"schematic": ex["schematic"], "analysis": an})
+    assert r["ok"], r.get("error")
+    t = np.asarray(r["x"])
+    tr = {x["name"]: np.asarray(x["values"]) for x in r["traces"]}
+    ts = (np.arange(20, 780) + 0.5) / baud
+    y, v = np.interp(ts, t, tr["thru"]), np.interp(ts, t, tr["drive"])
+    lv = ps["v0"] + (ps["v1"] - ps["v0"]) * np.arange(4) / 3
+    sym = np.abs(v[:, None] - lv).argmin(1)
+    p = np.array([y[sym == k].mean() for k in range(4)])
+    assert _rlm(p) > 0.97

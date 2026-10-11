@@ -401,10 +401,14 @@ strength in the other.
   ring** built from parts — two 50/50 `dir_coupler`s whose arms carry
   push-pull `pn_phase_shifter`s (depletion PN junction: sqrt-law n_eff and
   loss, nonlinear junction charge) form an MZI coupler closed by
-  `waveguide`s. Stepping the series push-pull drive 0..4 V swings the ring
-  from over- through critical to under-coupled (linewidth 39 -> 18 pm)
-  while the resonance moves only ~3 pm — the junctions change the coupling,
-  not the round-trip phase (`tests/test_pn_phase_shifter.py` pins it).
+  `waveguide`s. The junctions change the coupling, not the round-trip phase,
+  so the resonance stays put while a 53.125 GBd PAM4 PRBS (2 Vpp, series
+  push-pull) rides the under-coupled flank: the arm phase bias and laser
+  detuning are chosen for evenly spaced levels (RLM 0.98, ER 4 dB), and the
+  ring's Q ~ 50k sets the catch — RLM >= 0.95 only within +-0.5 pm of
+  drift. The optics are quasi-static (steady-state waveguides), so the eye
+  shows level placement, not photon-lifetime bandwidth
+  (`tests/test_pn_phase_shifter.py` pins it).
 * **Bring your own .va**: the palette's "Upload .va" button compiles any
   Verilog-A file through openvaf/bosdi into a placeable JAX component
   (ports from the module, parameters with their defaults). Uploads persist

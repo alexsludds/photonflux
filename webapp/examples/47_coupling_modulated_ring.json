@@ -1,33 +1,34 @@
 {
-  "title": "Coupling-modulated ring (MZI coupler)",
+  "title": "Coupling-modulated ring, PAM4 (MZI coupler)",
   "group": "Lasers & modulators",
-  "description": "Coupling-modulated silicon microring built from parts: two 50/50 directional couplers and push-pull PN-junction phase shifters form an MZI coupler, so 0-4 V of drive swings the ring from over- to under-coupled (notch -10 dB -> null -> -7 dB, linewidth 39 -> 18 pm) while the resonance moves only ~3 pm. Waveguides are steady-state S-matrices, so this is a spectral (DC sweep) testbench",
+  "description": "53.125 GBd PAM4 on a coupling-modulated silicon microring built from parts: two 50/50 directional couplers and series push-pull PN-junction phase shifters form an MZI coupler. The design point (arm phase bias, laser detuning, 1.65-3.65 V drive) keeps the swing on the under-coupled flank for evenly spaced levels: RLM 0.98, ER 4.0 dB, OMA 0.46 mW, IL 1.2 dB, tolerant to +-0.5 pm of drift. Quasi-static optics (steady-state waveguides): the eye shows level placement, not photon-lifetime bandwidth",
   "schematic": {
     "notes": [
       {
         "x": 40,
-        "y": -300,
-        "title": "Coupling-modulated ring \u2014 what this testbench does",
+        "y": -340,
+        "title": "Coupling-modulated ring, PAM4 \u2014 what this testbench does",
         "lines": [
           "A microring whose bus coupler is itself an MZI: 50/50",
-          "couplers DC1 and DC2 bound two arms, each with a 400 um",
-          "depletion PN phase shifter (PN_A on the bus side, PN_B",
-          "on the ring side). WG_R1 + WG_R2 close the ring.",
-          "The arm phase difference sets the effective coupling,",
-          "k_eff^2 = cos^2(dphi/2). WG_A is 209 nm longer than WG_B,",
-          "parking the ring at critical coupling at mid-bias (a",
-          "heater does this on a real chip).",
-          "Series push-pull: PN_A sees V_R = VDRV, PN_B sees",
-          "V_R = 4 V - VDRV. Stepping VDRV 0..4 V takes the ring from",
-          "over-coupled (broad, -10 dB) through critical (null) to",
-          "under-coupled (narrow, -7 dB) while the resonance moves",
-          "only ~3 pm: the junctions modulate the coupling, not",
-          "the round-trip phase. Probe ring (hidden) is the",
-          "intracavity power: untick its Hide from plots to see it.",
+          "couplers DC1/DC2 bound two arms, each a 400 um depletion",
+          "PN phase shifter (PN_A bus side, PN_B ring side); WG_R1 +",
+          "WG_R2 close the ring. Series push-pull: PRBS drives the",
+          "middle node, so PN_A sees V_R = v and PN_B 4 V - v. The arm",
+          "phase difference sets k_eff^2 = cos^2(dphi/2) while the",
+          "ring's round-trip phase (its resonance) stays put.",
+          "PAM4 design point: 53.125 GBd PRBS13 PAM4, 1.65..3.65 V",
+          "(2 Vpp). WG_A is 240 nm longer than WG_B, which puts the",
+          "whole swing on the under-coupled flank (notch -6.4 dB ->",
+          "-1.3 dB), and LAS sits 2-3 pm blue of resonance, where the",
+          "levels come out evenly spaced: RLM 0.98, ER 4.0 dB, OMA",
+          "0.46 mW, IL 1.2 dB. Eye and Link tabs: levels, BER, TDECQ.",
+          "The catch is Q ~ 50k: RLM holds >= 0.95 only within",
+          "+-0.5 pm of laser-resonance drift. Steady-state waveguides",
+          "make the optics quasi-static: the eye shows level placement,",
+          "not photon-lifetime bandwidth.",
           "",
-          "Set DC1.coupling = DC2.coupling = 0.3 and re-run: the",
-          "drive now leaks into the ring phase, so the notch walks",
-          "~12 pm and never fully nulls."
+          "Vary * (all) wavelength_nm = 1310.012, 1310.014, 1310.016",
+          "and re-run: 2 pm of drift bunches the ladder (RLM ~0.84)."
         ]
       }
     ],
@@ -39,7 +40,7 @@
         "rot": 0,
         "settings": {
           "power": 0.001,
-          "wavelength_nm": 1310.0
+          "wavelength_nm": 1310.014
         }
       },
       "GND": {
@@ -74,7 +75,7 @@
           "neff": 2.4,
           "n_group": 4.0,
           "center_wavelength_nm": 1310.0,
-          "wavelength_nm": 1310.0
+          "wavelength_nm": 1310.014
         }
       },
       "WG_A": {
@@ -83,12 +84,12 @@
         "y": 90,
         "rot": 0,
         "settings": {
-          "length_m": 2.020887e-05,
+          "length_m": 2.024019e-05,
           "loss_dB_cm": 2.0,
           "neff": 2.4,
           "n_group": 4.0,
           "center_wavelength_nm": 1310.0,
-          "wavelength_nm": 1310.0
+          "wavelength_nm": 1310.014
         }
       },
       "PN_B": {
@@ -107,7 +108,7 @@
           "neff": 2.4,
           "n_group": 4.0,
           "center_wavelength_nm": 1310.0,
-          "wavelength_nm": 1310.0
+          "wavelength_nm": 1310.014
         }
       },
       "WG_B": {
@@ -121,7 +122,7 @@
           "neff": 2.4,
           "n_group": 4.0,
           "center_wavelength_nm": 1310.0,
-          "wavelength_nm": 1310.0
+          "wavelength_nm": 1310.014
         }
       },
       "DC2": {
@@ -151,7 +152,7 @@
           "neff": 2.4,
           "n_group": 4.0,
           "center_wavelength_nm": 1310.0,
-          "wavelength_nm": 1310.0
+          "wavelength_nm": 1310.014
         }
       },
       "WG_R2": {
@@ -165,16 +166,7 @@
           "neff": 2.4,
           "n_group": 4.0,
           "center_wavelength_nm": 1310.0,
-          "wavelength_nm": 1310.0
-        }
-      },
-      "VDRV": {
-        "type": "vdc",
-        "x": 440,
-        "y": 180,
-        "rot": 0,
-        "settings": {
-          "V": 2.0
+          "wavelength_nm": 1310.014
         }
       },
       "GND2": {
@@ -206,6 +198,20 @@
         "y": 430,
         "rot": 0,
         "settings": {}
+      },
+      "PRBS": {
+        "type": "prbs",
+        "x": 440,
+        "y": 180,
+        "rot": 0,
+        "settings": {
+          "mode": "pam4",
+          "order": 13,
+          "v0": 1.65,
+          "v1": 3.65,
+          "tr": 7e-12,
+          "seed": 1
+        }
       }
     },
     "wires": [
@@ -263,14 +269,14 @@
       },
       {
         "from": "PN_A,cat",
-        "to": "VDRV,p1"
+        "to": "PRBS,p1"
       },
       {
         "from": "PN_B,an",
         "to": "PN_A,cat"
       },
       {
-        "from": "VDRV,p2",
+        "from": "PRBS,p2",
         "to": "GND2,p1"
       },
       {
@@ -289,28 +295,29 @@
         "color": "#6ecbf5"
       },
       {
+        "name": "drive",
+        "at": "PN_A,cat",
+        "color": "#4ade80"
+      },
+      {
         "name": "ring",
         "at": "WG_R1,p1",
         "color": "#e6862c",
         "hide": true
       }
-    ]
+    ],
+    "globals": {
+      "baud": 53125000000.0
+    }
   },
   "analysis": {
-    "mode": "dcsweep",
-    "instance": "*",
-    "param": "wavelength_nm",
-    "start": 1309.85,
-    "stop": 1310.15,
-    "points": 4001,
-    "step_instance": "VDRV",
-    "step_param": "V",
-    "step_values": [
-      0.0,
-      1.0,
-      2.0,
-      3.0,
-      4.0
-    ]
+    "mode": "transient",
+    "t_stop": 1.5058823529411764e-08,
+    "points": 20000,
+    "link": {
+      "probe": "thru",
+      "ffe_taps": 0,
+      "dfe_taps": 0
+    }
   }
 }

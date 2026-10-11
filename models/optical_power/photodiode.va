@@ -3,7 +3,11 @@
 
 // PIN photodiode: linear responsivity model.
 //   Optical input `popt` (referenced to gnd): voltage represents optical power [W].
-//   Electrical port (an, cat): photocurrent flows cathode->anode.
+//   Electrical port (an, cat): the photocurrent is a reverse current — it
+//   flows through the diode from cathode to anode and leaves at the anode
+//   (an unbiased diode's anode charges positive; a reverse-biased one sources
+//   Iph out of the anode into a TIA). Same polarity as the webapp/example
+//   coherent-field photodiodes.
 //   `Cj` adds junction capacitance for small-signal bandwidth.
 module photodiode(popt, gnd, an, cat);
     inout popt, gnd, an, cat;
@@ -17,6 +21,7 @@ module photodiode(popt, gnd, an, cat);
 
     analog begin
         Iph = R * V(popt, gnd) + Idk;
-        I(an, cat) <+ Iph + Cj * ddt(V(an, cat));
+        I(cat, an) <+ Iph;
+        I(an, cat) <+ Cj * ddt(V(an, cat));
     end
 endmodule

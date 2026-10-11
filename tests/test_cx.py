@@ -62,10 +62,11 @@ def pd_circuit():
 
 
 def test_va_photodiode_dc_exact(pd_circuit):
-    """V(load) = -(R*P + Idk)*RL through the bosdi-compiled photodiode.va."""
+    """V(load) = +(R*P + Idk)*RL through the bosdi-compiled photodiode.va:
+    the photocurrent leaves the anode into the load (photovoltaic polarity)."""
     y = pd_circuit.dc()
     vload = float(pd_circuit.port(y, "vload").real)
-    expect = -(0.8 * 9e-3 + 1e-9) * 200.0
+    expect = (0.8 * 9e-3 + 1e-9) * 200.0
     assert vload == pytest.approx(expect, rel=1e-9)
 
 
@@ -77,7 +78,7 @@ def test_va_photodiode_grad_exact(pd_circuit):
         return pd_circuit.port(y, "vload").real
 
     g = float(jax.grad(vload)(0.8))
-    assert g == pytest.approx(-9e-3 * 200.0, rel=1e-9)  # dV/dR = -P*RL
+    assert g == pytest.approx(9e-3 * 200.0, rel=1e-9)  # dV/dR = P*RL
 
 
 # ---------------------------------------------------------------------------

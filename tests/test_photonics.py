@@ -36,14 +36,15 @@ def test_laser_dml_li_curve():
 
 
 def test_photodiode_responsivity():
-    # anode grounded, cathode -> RL -> ground; photocurrent I = R*P + Idk flows
-    # anode->cathode, so V(cat) = +I*RL. The current is load-independent.
+    # anode grounded, cathode -> RL -> ground; the photocurrent I = R*P + Idk
+    # flows cathode->anode inside the diode, i.e. it is drawn from the cathode
+    # load, so V(cat) = -I*RL. The current is load-independent.
     for rl in (1.0, 200.0):
         assert _pd_current(0.7, 2e-3, rl) == pytest.approx(0.7 * 2e-3 + 1e-9, rel=1e-6)
 
 
 def _pd_current(r: float, p: float, rl: float = 1.0) -> float:
-    """Photocurrent I = R*P + Idk, read as V(cat)/RL across a cathode load."""
+    """Photocurrent I = R*P + Idk, read as -V(cat)/RL across a cathode load."""
     from circulax import compile_circuit
     from circulax.components.electronic import Resistor, VoltageSource
     net = {
@@ -62,7 +63,7 @@ def _pd_current(r: float, p: float, rl: float = 1.0) -> float:
     c = compile_circuit(net, {"ground": lambda: 0, "vsrc": VoltageSource,
                               "pd": cx.va("photodiode"), "res": Resistor},
                         backend="dense")
-    return complex(c.port(c.dc(), "cat")).real / rl
+    return -complex(c.port(c.dc(), "cat")).real / rl
 
 
 def test_mzm_transfer():

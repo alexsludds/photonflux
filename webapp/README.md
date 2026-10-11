@@ -405,7 +405,7 @@ strength in the other.
   so the resonance stays put while a 53.125 GBd PAM4 PRBS (2 Vpp, series
   push-pull) rides the under-coupled flank: the arm phase bias and laser
   detuning are chosen for evenly spaced levels (RLM 0.98, ER 4 dB), and the
-  ring's Q ~ 50k sets the catch — RLM >= 0.95 only within +-0.5 pm of
+  ring's Q ~ 80k sets the catch — RLM >= 0.94 only within +-0.5 pm of
   drift. The optics are quasi-static (steady-state waveguides), so the eye
   shows level placement, not photon-lifetime bandwidth
   (`tests/test_pn_phase_shifter.py` pins it).

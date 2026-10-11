@@ -157,7 +157,8 @@ def test_example_47_pam4_levels():
     assert 10 * np.log10(p[3] / p[0]) == pytest.approx(4.0, abs=0.3)
     for d in (-5e-4, 5e-4):                      # +-0.5 pm drift tolerance
         _set_lambda(sch, lam0 + d)
-        assert _rlm(np.sort(_pam4_levels(sch, ps))) > 0.94
+        pd = _pam4_levels(sch, ps)
+        assert np.all(np.diff(pd) > 0) and _rlm(pd) > 0.94
 
 
 def test_example_47_coupling_flank():
@@ -188,21 +189,14 @@ def test_example_47_coupling_flank():
 
 
 def test_example_47_transient_eye_levels():
-    # the shipped PRBS transient at 53.125 GBd lands the same evenly spaced
-    # levels (quasi-static optics, ideal drive: no ISI)
+    # the shipped PRBS transient + link report at 53.125 GBd: error-free, with
+    # the same evenly spaced levels (quasi-static optics; jitter only moves
+    # edges)
     import simulate
 
     ex, ps = _ex47(drive_dc=False)
-    baud = ex["schematic"]["globals"]["baud"]
-    ps["ui"] = 1.0 / baud                        # the editor injects this
-    an = {k: v for k, v in ex["analysis"].items() if k != "link"}
-    r = simulate.run({"schematic": ex["schematic"], "analysis": an})
+    ps["ui"] = 1.0 / ex["schematic"]["globals"]["baud"]   # the editor injects this
+    r = simulate.run({"schematic": ex["schematic"], "analysis": ex["analysis"]})
     assert r["ok"], r.get("error")
-    t = np.asarray(r["x"])
-    tr = {x["name"]: np.asarray(x["values"]) for x in r["traces"]}
-    ts = (np.arange(20, 780) + 0.5) / baud
-    y, v = np.interp(ts, t, tr["thru"]), np.interp(ts, t, tr["drive"])
-    lv = ps["v0"] + (ps["v1"] - ps["v0"]) * np.arange(4) / 3
-    sym = np.abs(v[:, None] - lv).argmin(1)
-    p = np.array([y[sym == k].mean() for k in range(4)])
-    assert _rlm(p) > 0.97
+    assert r["link"]["counted"]["sym_errors"] == 0
+    assert _rlm(np.sort(r["link"]["qfit"]["levels"])) > 0.97

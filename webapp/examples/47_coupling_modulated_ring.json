@@ -1,7 +1,7 @@
 {
   "title": "Coupling-modulated ring, PAM4 (MZI coupler)",
   "group": "Lasers & modulators",
-  "description": "53.125 GBd PAM4 on a coupling-modulated silicon microring built from parts: two 50/50 directional couplers and series push-pull PN-junction phase shifters form an MZI coupler. The design point (arm phase bias, laser detuning, 1.65-3.65 V drive) keeps the swing on the under-coupled flank for evenly spaced levels: RLM 0.98, ER 4.0 dB, OMA 0.46 mW, IL 1.2 dB, tolerant to +-0.5 pm of drift. Quasi-static optics (steady-state waveguides): the eye shows level placement, not photon-lifetime bandwidth",
+  "description": "53.125 GBd PAM4 on a coupling-modulated silicon microring built from parts: two 50/50 directional couplers and series push-pull PN-junction phase shifters form an MZI coupler. The design point (arm phase bias, laser detuning, 1.65-3.65 V drive) keeps the swing on the under-coupled flank for evenly spaced levels: RLM 0.98, ER 4.0 dB, OMA 0.46 mW, IL 1.2 dB, RLM >= 0.94 over +-0.5 pm of drift. Quasi-static optics (steady-state waveguides): the eye shows level placement, not photon-lifetime bandwidth",
   "schematic": {
     "notes": [
       {
@@ -18,11 +18,11 @@
           "ring's round-trip phase (its resonance) stays put.",
           "PAM4 design point: 53.125 GBd PRBS13 PAM4, 1.65..3.65 V",
           "(2 Vpp). WG_A is 240 nm longer than WG_B, which puts the",
-          "whole swing on the under-coupled flank (notch -6.4 dB ->",
+          "whole swing on the under-coupled flank (notch -6.3 dB ->",
           "-1.3 dB), and LAS sits 2-3 pm blue of resonance, where the",
           "levels come out evenly spaced: RLM 0.98, ER 4.0 dB, OMA",
           "0.46 mW, IL 1.2 dB. Eye and Link tabs: levels, BER, TDECQ.",
-          "The catch is Q ~ 50k: RLM holds >= 0.95 only within",
+          "The catch is Q ~ 80k: RLM stays >= 0.94 only within",
           "+-0.5 pm of laser-resonance drift. Steady-state waveguides",
           "make the optics quasi-static: the eye shows level placement,",
           "not photon-lifetime bandwidth.",

@@ -5,9 +5,10 @@ arrays — a transient-friendly piecewise-linear waveform evaluated with
 ``jnp.interp`` (clamped at both ends). Everything here is plain numpy at
 netlist-build time; nothing is traced.
 
-PRBS conventions follow the user's serdes codebase (signaling.py):
-  * LFSR tap pairs {7:[7,6], 9:[9,5], 11:[11,9], 15:[15,14], 23:[23,18],
-    31:[31,28]}, x^k feedback, seed != 0.
+PRBS conventions:
+  * Fibonacci LFSR taps PRBS_TAPS below (IEEE 802.3 PRBS-13 for order 13),
+    seed != 0. Same sequences as photonflux.signals.prbs, started at a
+    different phase.
   * PAM4 is Gray-coded: bit pairs 00,01,11,10 -> symbol levels 0,1,2,3.
   * TX FFE is a symbol-spaced 3-tap FIR [pre, main, post]; pre/post are
     given in dB as in TxFFE.from_emphasis (0 dB = tap off).

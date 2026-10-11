@@ -497,7 +497,7 @@ CATALOG: dict[str, dict] = {
             _p("radius_um", 7.5, "um", "Ring radius"),
             _p("n_g", 4.0, "", "Group index"),
             _p("n_eff", 2.4, "", "Effective index"),
-            _p("loss_db_m", 7000.0, "dB/m", "Round-trip loss"),
+            _p("loss_db_m", 7000.0, "dB/m", "Propagation loss"),
             _p("kappa2", 0.10, "", "Power coupling k^2"),
             _p("dl_dv_pm", 45.0, "pm/V", "Tuning slope"),
             _p("cj_ff_um", 0.5, "fF/um", "Junction cap."),
@@ -1189,8 +1189,7 @@ CATALOG: dict[str, dict] = {
                "(loss_db at f_nyq) with minimum phase, vector-fitted to a "
                "compact state-space at compile time (parameter edits "
                "recompile). Voltage-transfer block: high-Z input, driven "
-               "output — add your own source/termination resistors. The "
-               "same shape as the user's serdes channel.py.",
+               "output — add your own source/termination resistors.",
         "ports": _ports("inp:e out:e"),
         "params": [
             _p("loss_db", 10.0, "dB", "Loss @ f_nyq", rebuild=True),
@@ -1479,8 +1478,7 @@ CATALOG: dict[str, dict] = {
                "ground current input, `out` drives -gain*Iin through a two-"
                "real-pole response (-3 dB at f3db) with an optional tanh "
                "swing limit (0 = off). in_noise is the input-referred "
-               "current noise density used by the noise analyses. Parameter "
-               "names follow the user's behavioural TIA conventions.",
+               "current noise density used by the noise analyses.",
         "ports": _ports("inp:e out:e"),
         "params": [
             _p("gain_ohm", 10e3, "Ohm", "Transimpedance"),
@@ -2100,7 +2098,7 @@ def _coherent_rx():
 
 
 def _tia():
-    """Behavioural TIA macro, parameter names mirroring the user's tia.py.
+    """Behavioural TIA macro.
 
     ``in`` is a virtual-ground current input (V = 0, like an ideal feedback
     summing node); ``out`` drives ``-gain_ohm * i_in`` through a two-real-
@@ -2141,8 +2139,8 @@ def _tia():
 
 
 def _ctle():
-    """CTLE: A_dc (1 + s/wz) / ((1 + s/wp1)(1 + s/wp2)) — the exact
-    1-zero/2-pole shape of the user's ctle.py. The zero is placed so
+    """CTLE: A_dc (1 + s/wz) / ((1 + s/wp1)(1 + s/wp2)), the classic
+    1-zero/2-pole receive equalizer. The zero is placed so
     20*log10(wp1/wz) = peaking_db and A_dc = wz/wp1, giving ~unity gain in
     the peaked band. High-impedance input, driven output.
     """

@@ -351,7 +351,7 @@ pin`. Three views per run:
   (`vout1..4`), so all four channels' received eyes come out of the single
   solve side by side.
 
-`python webapp/wdm_spectrum.py` runs the example once and renders the bus
+`python webapp/tools/wdm_spectrum.py` runs the example once and renders the bus
 spectrum plus each channel's drop spectrum and received waveform.
 
 A note on the modelling: coherent-field envelopes are baseband, so putting

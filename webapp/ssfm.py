@@ -9,19 +9,26 @@ soliton. The standard tool for this in VPI / Lumerical INTERCONNECT is the
 split-step Fourier method (SSFM), implemented here.
 
 Physics (retarded frame, coherent baseband envelope ``A(z, T)``, |A|^2 = power
-[W]) — Agrawal, *Nonlinear Fiber Optics*, eq. 2.3.44::
+[W]) — the complex conjugate of Agrawal, *Nonlinear Fiber Optics*, eq. 2.3.44::
 
     dA/dz = -(alpha/2) A                          (attenuation)
-            + i (beta2/2) d^2A/dT^2               (GVD)
-            - i (beta3/6) d^3A/dT^3               (third-order dispersion)
-            - i gamma |A|^2 A                     (Kerr / SPM)
+            + j (beta2/2) d^2A/dT^2               (GVD)
+            + (beta3/6) d^3A/dT^3                 (third-order dispersion)
+            - j gamma |A|^2 A                     (Kerr / SPM)
 
-Sign convention matches the rest of the repo. Envelopes use the physics
-``e^{+j w t}`` frame (a tone at envelope frequency ``+f`` is ``e^{+j2pi f t}``,
-as in ``examples/wg_fwm.py``), so in the Fourier domain ``d/dT -> j w`` and the
-linear operator is
+Sign convention: the *engineering* carrier ``e^{+j w0 t}`` (propagation
+``e^{-j beta z}``, as circulax's waveguides and ``waveguide_nl.va`` use), so an
+envelope tone ``e^{+j2pi f t}`` is the optical frequency ``f0 + f``. In the
+Fourier domain ``d/dT -> j w`` and the linear operator is
 
     L(w) = -alpha/2 - j (beta2/2 w^2 + beta3/6 w^3).
+
+NB ``cx.cw_laser``'s WDM offset, the CMT ring models, ``opt_filter`` and the
+optical-spectrum display use the *physics* ``e^{-i w0 t}`` convention (an
+envelope tone at ``+f`` is ``f0 - f``). Chirp-free single-carrier intensity is
+the same either way, but WDM walk-off and chirp x dispersion take the
+opposite sign across that boundary until the repo settles on one convention
+(fiber_cd / fiber_nl share this one).
 
 Over the full length this is exactly ``fiber_cd``'s target all-pass
 ``amp * exp(-j theta(w))`` with ``theta = beta2 L/2 w^2 + beta3 L/6 w^3`` and

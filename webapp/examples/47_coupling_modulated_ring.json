@@ -1,0 +1,314 @@
+{
+  "title": "Coupling-modulated ring (MZI coupler)",
+  "group": "Lasers & modulators",
+  "description": "Coupling-modulated silicon microring built from parts: two 50/50 directional couplers and push-pull PN-junction phase shifters form an MZI coupler, so 0-4 V of drive swings the ring from over- to under-coupled (notch -11 dB -> null -> -7 dB, linewidth 39 -> 18 pm) with the resonance fixed to within 3 pm. Waveguides are steady-state S-matrices, so this is a spectral (DC sweep) testbench",
+  "schematic": {
+    "notes": [
+      {
+        "x": 40,
+        "y": -230,
+        "title": "Coupling-modulated ring \u2014 what this testbench does",
+        "lines": [
+          "A microring whose bus coupler is itself an MZI: 50/50",
+          "couplers DC1 and DC2 bound two arms, each with a 400 um",
+          "depletion PN phase shifter (PN_A on the bus side, PN_B",
+          "on the ring side). WG_R1 + WG_R2 close the ring.",
+          "The arm phase difference sets the effective coupling,",
+          "k_eff^2 = cos^2(dphi/2). WG_A is 209 nm longer than WG_B,",
+          "parking the ring at critical coupling at mid-bias (a",
+          "heater does this on a real chip).",
+          "Series push-pull: PN_A sees V_R = VDRV, PN_B sees",
+          "V_R = 4 V - VDRV. Stepping VDRV 0..4 V takes the ring from",
+          "over-coupled (broad, -11 dB) through critical (null) to",
+          "under-coupled (narrow, -7 dB) while the resonance stays",
+          "within 3 pm: the junctions modulate the coupling, not",
+          "the round-trip phase. ring = intracavity power.",
+          "",
+          "Set DC1.coupling = DC2.coupling = 0.3 and re-run: the",
+          "drive now leaks into the ring phase, so the notch walks",
+          "~12 pm and never fully nulls."
+        ]
+      }
+    ],
+    "instances": {
+      "LAS": {
+        "type": "cw_laser",
+        "x": 40,
+        "y": 170,
+        "rot": 0,
+        "settings": {
+          "power": 0.001,
+          "wavelength_nm": 1310.0
+        }
+      },
+      "GND": {
+        "type": "ground",
+        "x": 60,
+        "y": 250,
+        "rot": 0,
+        "settings": {}
+      },
+      "DC1": {
+        "type": "dir_coupler",
+        "x": 200,
+        "y": 190,
+        "rot": 0,
+        "settings": {
+          "coupling": 0.5
+        }
+      },
+      "PN_A": {
+        "type": "pn_phase_shifter",
+        "x": 340,
+        "y": 70,
+        "rot": 0,
+        "settings": {
+          "length_m": 0.0004,
+          "vpil_vcm": 1.5,
+          "vref": 2.0,
+          "vbi": 0.85,
+          "loss_dB_cm": 15.0,
+          "dloss_dB_cm": 1.5,
+          "cj0_ff_um": 0.3,
+          "neff": 2.4,
+          "n_group": 4.0,
+          "center_wavelength_nm": 1310.0,
+          "wavelength_nm": 1310.0
+        }
+      },
+      "WG_A": {
+        "type": "waveguide",
+        "x": 480,
+        "y": 90,
+        "rot": 0,
+        "settings": {
+          "length_m": 2.020887e-05,
+          "loss_dB_cm": 2.0,
+          "neff": 2.4,
+          "n_group": 4.0,
+          "center_wavelength_nm": 1310.0,
+          "wavelength_nm": 1310.0
+        }
+      },
+      "PN_B": {
+        "type": "pn_phase_shifter",
+        "x": 340,
+        "y": 290,
+        "rot": 0,
+        "settings": {
+          "length_m": 0.0004,
+          "vpil_vcm": 1.5,
+          "vref": 2.0,
+          "vbi": 0.85,
+          "loss_dB_cm": 15.0,
+          "dloss_dB_cm": 1.5,
+          "cj0_ff_um": 0.3,
+          "neff": 2.4,
+          "n_group": 4.0,
+          "center_wavelength_nm": 1310.0,
+          "wavelength_nm": 1310.0
+        }
+      },
+      "WG_B": {
+        "type": "waveguide",
+        "x": 480,
+        "y": 310,
+        "rot": 0,
+        "settings": {
+          "length_m": 1.9999999999999998e-05,
+          "loss_dB_cm": 2.0,
+          "neff": 2.4,
+          "n_group": 4.0,
+          "center_wavelength_nm": 1310.0,
+          "wavelength_nm": 1310.0
+        }
+      },
+      "DC2": {
+        "type": "dir_coupler",
+        "x": 620,
+        "y": 190,
+        "rot": 0,
+        "settings": {
+          "coupling": 0.5
+        }
+      },
+      "TT": {
+        "type": "opt_term",
+        "x": 800,
+        "y": 178,
+        "rot": 0,
+        "settings": {}
+      },
+      "WG_R1": {
+        "type": "waveguide",
+        "x": 620,
+        "y": 470,
+        "rot": 0,
+        "settings": {
+          "length_m": 0.00015,
+          "loss_dB_cm": 2.0,
+          "neff": 2.4,
+          "n_group": 4.0,
+          "center_wavelength_nm": 1310.0,
+          "wavelength_nm": 1310.0
+        }
+      },
+      "WG_R2": {
+        "type": "waveguide",
+        "x": 200,
+        "y": 470,
+        "rot": 0,
+        "settings": {
+          "length_m": 0.00014997162,
+          "loss_dB_cm": 2.0,
+          "neff": 2.4,
+          "n_group": 4.0,
+          "center_wavelength_nm": 1310.0,
+          "wavelength_nm": 1310.0
+        }
+      },
+      "VDRV": {
+        "type": "vdc",
+        "x": 440,
+        "y": 180,
+        "rot": 0,
+        "settings": {
+          "V": 2.0
+        }
+      },
+      "GND2": {
+        "type": "ground",
+        "x": 440,
+        "y": 250,
+        "rot": 0,
+        "settings": {}
+      },
+      "GND3": {
+        "type": "ground",
+        "x": 430,
+        "y": 30,
+        "rot": 0,
+        "settings": {}
+      },
+      "VRAIL": {
+        "type": "vdc",
+        "x": 440,
+        "y": 360,
+        "rot": 0,
+        "settings": {
+          "V": 4.0
+        }
+      },
+      "GND4": {
+        "type": "ground",
+        "x": 440,
+        "y": 430,
+        "rot": 0,
+        "settings": {}
+      }
+    },
+    "wires": [
+      {
+        "from": "LAS,p1",
+        "to": "DC1,p1"
+      },
+      {
+        "from": "LAS,p2",
+        "to": "GND,p1"
+      },
+      {
+        "from": "DC1,p3",
+        "to": "PN_A,p1"
+      },
+      {
+        "from": "PN_A,p2",
+        "to": "WG_A,p1"
+      },
+      {
+        "from": "WG_A,p2",
+        "to": "DC2,p1"
+      },
+      {
+        "from": "DC1,p4",
+        "to": "PN_B,p1"
+      },
+      {
+        "from": "PN_B,p2",
+        "to": "WG_B,p1"
+      },
+      {
+        "from": "WG_B,p2",
+        "to": "DC2,p2"
+      },
+      {
+        "from": "DC2,p3",
+        "to": "TT,p1"
+      },
+      {
+        "from": "DC2,p4",
+        "to": "WG_R1,p2"
+      },
+      {
+        "from": "WG_R1,p1",
+        "to": "WG_R2,p2"
+      },
+      {
+        "from": "WG_R2,p1",
+        "to": "DC1,p2"
+      },
+      {
+        "from": "PN_A,an",
+        "to": "GND3,p1"
+      },
+      {
+        "from": "PN_A,cat",
+        "to": "VDRV,p1"
+      },
+      {
+        "from": "PN_B,an",
+        "to": "PN_A,cat"
+      },
+      {
+        "from": "VDRV,p2",
+        "to": "GND2,p1"
+      },
+      {
+        "from": "PN_B,cat",
+        "to": "VRAIL,p1"
+      },
+      {
+        "from": "VRAIL,p2",
+        "to": "GND4,p1"
+      }
+    ],
+    "probes": [
+      {
+        "name": "thru",
+        "at": "DC2,p3",
+        "color": "#6ecbf5"
+      },
+      {
+        "name": "ring",
+        "at": "WG_R1,p1",
+        "color": "#e6862c"
+      }
+    ]
+  },
+  "analysis": {
+    "mode": "dcsweep",
+    "instance": "*",
+    "param": "wavelength_nm",
+    "start": 1309.85,
+    "stop": 1310.15,
+    "points": 4001,
+    "step_instance": "VDRV",
+    "step_param": "V",
+    "step_values": [
+      0.0,
+      1.0,
+      2.0,
+      3.0,
+      4.0
+    ]
+  }
+}

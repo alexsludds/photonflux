@@ -556,5 +556,12 @@ def _assemble_complex(result: dict, cfg: dict, log: list):
         log.append("coherent report: set probe_i/probe_q (balanced I/Q) or a "
                    "complex probe")
         return None
-    v = tr.get("complex", tr["values"])
-    return np.asarray(v, complex)
+    v = np.asarray(tr.get("complex", tr["values"]))
+    if not np.iscomplexobj(v):
+        # simulate's traces carry |E|^2 (mW) for optical probes and volts for
+        # electrical ones -- neither is the complex baseband the DSP needs
+        log.append(f"coherent report: probe {probe!r} is a real trace "
+                   f"({tr.get('unit') or '?'}); probe the coherent receiver's "
+                   "I and Q outputs (probe_i / probe_q)")
+        return None
+    return v.astype(complex)

@@ -33,7 +33,6 @@ from typing import Any
 from catalog import CATALOG, build_models
 from progress import RunCancelled
 
-_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 # Flattened subcircuits produce dotted hierarchical refdes/probe names
 # (``X1.WG1``, ``X1.n_out``); accept those in addition to plain names.
 _HIER_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)*$")

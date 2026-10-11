@@ -25,7 +25,6 @@ from ._ngspice import find_libngspice
 
 REPO = Path(__file__).resolve().parents[1]
 MODELS_DIR = REPO / "models"
-OUT_DIR = REPO / "out"
 
 
 def openvaf_ir_path() -> Path:

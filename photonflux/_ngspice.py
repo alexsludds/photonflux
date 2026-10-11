@@ -4,11 +4,11 @@ There is no ngspice *simulation* flow — every circuit is solved by circulax
 (JAX). This binding exists only so that ``cx.sky130_card`` can have ngspice
 resolve the SKY130 PDK (``.lib`` corner stitching, ``{...}`` card expressions,
 W/L bin selection) and hand back the fully-expanded BSIM4 model card via
-``showmod``. It is a ~250-line wrapper that does exactly that and nothing else:
+``showmod`` — plus the op/ac measurements ``webapp/sky130_passives.py`` reads
+the PDK's R/C values with. It does exactly that and nothing else:
 
   * synchronous command execution with captured stdout/stderr,
   * netlist loading via ngSpice_Circ,
-  * OSDI module loading (deduplicated per process),
   * vector extraction into numpy arrays (real and complex),
   * honest error surfacing (ngspice "Error:" lines raise NgSpiceError).
 
@@ -61,7 +61,6 @@ class _vector_info(Structure):
     ]
 
 
-_VF_REAL = 1 << 0
 _VF_COMPLEX = 1 << 1
 
 _SendChar = CFUNCTYPE(c_int, c_char_p, c_int, c_void_p)
@@ -113,11 +112,9 @@ class NgSpice:
         if NgSpice._instance is not None:
             raise RuntimeError("libngspice is a singleton; use NgSpice.get()")
         self._lib = ctypes.CDLL(library_path or find_libngspice())
-        self._log: list[str] = []          # full session transcript
         self._capture: list[str] | None = None
         self._dead = False
         self._has_circuit = False
-        self._osdi_loaded: set[str] = set()
 
         # Callbacks must stay referenced for the lifetime of the process.
         self._cb_print = _SendChar(self._on_print)
@@ -136,9 +133,6 @@ class NgSpice:
         self._lib.ngSpice_Circ.restype = c_int
         self._lib.ngSpice_Circ.argtypes = [POINTER(c_char_p)]
         self._lib.ngSpice_CurPlot.restype = c_char_p
-        self._lib.ngSpice_AllVecs.restype = POINTER(c_char_p)
-        self._lib.ngSpice_AllVecs.argtypes = [c_char_p]
-        self._lib.ngSpice_AllPlots.restype = POINTER(c_char_p)
         self._lib.ngGet_Vec_Info.restype = POINTER(_vector_info)
         self._lib.ngGet_Vec_Info.argtypes = [c_char_p]
 
@@ -149,7 +143,6 @@ class NgSpice:
             if text.startswith(prefix):
                 text = text[len(prefix):]
                 break
-        self._log.append(text)
         if self._capture is not None:
             self._capture.append(text)
         return 0
@@ -183,17 +176,6 @@ class NgSpice:
             )
         return out
 
-    def load_osdi(self, *paths: str | os.PathLike) -> None:
-        """Load OSDI modules (compiled Verilog-A); deduplicated per process."""
-        for p in paths:
-            key = str(Path(p).resolve())
-            if key in self._osdi_loaded:
-                continue
-            if not Path(key).exists():
-                raise FileNotFoundError(f"OSDI module not found: {key}")
-            self.cmd(f"osdi {key}")
-            self._osdi_loaded.add(key)
-
     def load_netlist(self, text: str) -> None:
         """Load a complete SPICE deck (first line = title, must contain .end)."""
         self._check_alive()
@@ -224,16 +206,6 @@ class NgSpice:
         self._check_alive()
         return (self._lib.ngSpice_CurPlot() or b"").decode()
 
-    def vector_names(self, plot: str | None = None) -> list[str]:
-        plot = plot or self.current_plot()
-        raw = self._lib.ngSpice_AllVecs(plot.encode())
-        names = []
-        i = 0
-        while raw and raw[i]:
-            names.append(raw[i].decode())
-            i += 1
-        return names
-
     def vector(self, name: str, plot: str | None = None) -> np.ndarray:
         """Copy one result vector out of ngspice as a numpy array."""
         plot = plot or self.current_plot()
@@ -251,14 +223,6 @@ class NgSpice:
             return np.ctypeslib.as_array(v.v_realdata, shape=(n,)).copy()
         return np.empty(0)
 
-    def vectors(self, plot: str | None = None) -> dict[str, np.ndarray]:
-        plot = plot or self.current_plot()
-        return {name: self.vector(name, plot) for name in self.vector_names(plot)}
-
     def free_plots(self) -> None:
         """Release accumulated plot memory (useful inside long sweeps)."""
         self.cmd("destroy all", check=False)
-
-    @property
-    def transcript(self) -> str:
-        return "\n".join(self._log)

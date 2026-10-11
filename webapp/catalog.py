@@ -3186,8 +3186,7 @@ def register_user_va(stem: str) -> dict:
     text = path.read_text()
     defaults = cx._va_literal_defaults(text)
     # localparams are not user-facing: keep only `parameter` declarations
-    param_names = __import__("re").findall(
-        r"^\s*parameter\s+real\s+(\w+)", text, __import__("re").M)
+    param_names = re.findall(r"^\s*parameter\s+real\s+(\w+)", text, re.M)
     key = f"uva_{stem}"
     CATALOG[key] = {
         "label": f"{stem} (.va)",

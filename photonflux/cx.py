@@ -288,7 +288,7 @@ def terminator():
 def field_to_ri():
     """Adapter: complex field node -> (re, im) real node pair.
 
-    The repo's coherent Verilog-A models (``laser_cw.va``, ``ring_mod.va``)
+    The repo's coherent Verilog-A models (``ring_mod.va``, ``soa.va``, ...)
     carry complex fields as Ereal/Eimag node *pairs*, while circulax's optical
     nodes are single complex unknowns. This tap enforces ``V(re) = Re(V(c))``
     and ``V(im) = Im(V(c))`` (drawing nothing from ``c``), so a VA model's

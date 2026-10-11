@@ -36,6 +36,12 @@ function flowFmt(v) {
   return String(+v.toPrecision(4));
 }
 
+// plain decimals in the human range (0.5, not "500m"); SI prefixes otherwise
+function flowNum(v) {
+  const a = Math.abs(v);
+  return a === 0 || (a >= 1e-3 && a < 1e5) ? String(+v.toPrecision(9)) : fmtNum(v);
+}
+
 // --- text <-> object helpers (the editors are plain "lhs = rhs" lines) -------
 function flowLines(text) {
   return String(text || "").split("\n").map((l) => l.split("#")[0].trim())
@@ -55,7 +61,7 @@ function flowParseAssign(text, what, errs, numeric = false) {
   return out;
 }
 const flowFmtAssign = (obj) => Object.entries(obj || {})
-  .map(([k, v]) => `${k} = ${typeof v === "number" ? fmtNum(v) : v}`).join("\n");
+  .map(([k, v]) => `${k} = ${typeof v === "number" ? flowNum(v) : v}`).join("\n");
 
 function flowParseParams(text, errs) {
   const out = [];
@@ -72,7 +78,7 @@ function flowParseParams(text, errs) {
   return out;
 }
 const flowFmtParams = (ps) => (ps || []).map((p) =>
-  `${p.var || `${p.inst}.${p.param}`} = ${fmtNum(p.min)} : ${fmtNum(p.max)}`)
+  `${p.var || `${p.inst}.${p.param}`} = ${flowNum(p.min)} : ${flowNum(p.max)}`)
   .join("\n");
 
 function flowNewId(doc) {
@@ -85,7 +91,8 @@ function flowNewId(doc) {
 function flowNewDoc(single) {
   return { name: "", vars: {}, set: {},
            steps: [{ id: "s1", kind: "analysis", title: "Step 1",
-                     analysis: single || { mode: "transient" },
+                     analysis: single && single.mode !== "optimize"
+                       ? single : { mode: "transient" },
                      set: {}, outputs: {}, checks: [] }] };
 }
 
@@ -145,9 +152,22 @@ function flowLoadDoc(doc) {
   t.flowSingle = collectAnalysis();
   t.flowResult = null; t.flowView = null;
   if (doc.flow?.stateye) flowApplyStateye(doc.flow.stateye);
+  flowFillVars();
   if (t.flowOn) flowLoadStep();
   flowSyncPanel(); flowRenderSteps(); flowSyncResultsBar();
   if ($("tab-flow").classList.contains("active")) flowRenderTab();
+}
+
+// a flow pushed from a notebook (Session.push of a document with a flow)
+function flowAdoptRemote(remote) {
+  const t = flowTab();
+  if (!t || JSON.stringify(remote) === JSON.stringify(t.flow)) return;
+  if (t.flowOn) flowSaveCards();
+  t.flow = JSON.parse(JSON.stringify(remote));
+  t.flowSel = Math.min(t.flowSel | 0, t.flow.steps.length - 1);
+  flowFillVars();
+  if (t.flowOn) flowLoadStep();
+  flowSyncPanel(); flowRenderSteps();
 }
 
 // tab switch: show this tab's flow (or none)
@@ -157,6 +177,7 @@ function flowCheckout(t) {
     t.flowSel = Math.min(Math.max(0, t.flowSel | 0), t.flow.steps.length - 1);
     flowLoadStep();
   } else t.flowOn = false;
+  flowFillVars();
   flowSyncPanel(); flowRenderSteps(); flowSyncResultsBar();
   if ($("tab-flow").classList.contains("active")) {
     if (t.flowResult) flowRenderTab(); else setResultsTab("plots");
@@ -195,7 +216,7 @@ function flowInnerBoxes(holder, st) {
   const doc = flowDoc();
   holder.innerHTML = "";
   const idx = doc.steps.indexOf(st);
-  const cands = doc.steps.filter((s, i) => s.kind === "analysis" && i < idx);
+  const cands = doc.steps.filter((s, i) => (s.kind || "analysis") === "analysis" && i < idx);
   if (!cands.length) {
     holder.innerHTML = `<span class="dim">add an analysis step before this one</span>`;
     return;
@@ -294,12 +315,6 @@ function flowSaveCards() {
   const t = flowTab(), doc = flowDoc(), st = flowStep();
   if (!t?.flowOn || !doc || !st) return;
   doc.name = $("flow-name").value.trim();
-  const verrs = [];
-  if (!$("flow-vars").hidden) {
-    doc.vars = flowParseAssign($("flow-vars-text").value, "variables", verrs, true);
-    doc.set = flowParseAssign($("flow-set-text").value, "every step sets", verrs);
-    $("flow-vars-err").textContent = verrs.join("; ");
-  }
   st.title = $("flow-step-title").value.trim() || st.id;
   const kind = st.kind || "analysis";
   if (kind === "analysis") {
@@ -349,6 +364,24 @@ function flowSaveCards() {
   flowRenderSteps();
 }
 
+// the vars editor shows the active flow: refill it whenever that changes
+function flowFillVars() {
+  const doc = flowDoc();
+  $("flow-vars-text").value = doc ? flowFmtAssign(doc.vars) : "";
+  $("flow-set-text").value = doc ? flowFmtAssign(doc.set) : "";
+  $("flow-vars-err").textContent = "";
+}
+
+function flowVarsEdited() {
+  const doc = flowDoc();
+  if (!doc || !flowTab()?.flowOn) return;
+  const errs = [];
+  doc.vars = flowParseAssign($("flow-vars-text").value, "variables", errs, true);
+  doc.set = flowParseAssign($("flow-set-text").value, "every step sets", errs);
+  $("flow-vars-err").textContent = errs.join("; ");
+  autosave();
+}
+
 function flowEdited() {
   if (FL.loading || !flowTab()?.flowOn) return;
   clearTimeout(FL.saveTimer);
@@ -373,6 +406,7 @@ function flowSetMode(on) {
     if (!t.flow) t.flow = flowNewDoc(t.flowSingle);
     t.flowOn = true;
     t.flowSel = Math.min(t.flowSel | 0, t.flow.steps.length - 1);
+    flowFillVars();
     flowLoadStep();
   } else {
     flowSaveCards();
@@ -387,7 +421,8 @@ function flowAddStep(kind) {
   if (!doc) return;
   flowSaveCards();
   const id = flowNewId(doc);
-  const before = doc.steps.slice(0, t.flowSel + 1).filter((s) => s.kind === "analysis")
+  const before = doc.steps.slice(0, t.flowSel + 1)
+    .filter((s) => (s.kind || "analysis") === "analysis")
     .map((s) => s.id);
   const probes = state.probes.map((p) => p.name);
   const st = kind === "optimize"
@@ -423,7 +458,8 @@ function flowDelete() {
   const t = flowTab(), doc = flowDoc(), st = flowStep();
   if (!st || doc.steps.length < 2) { setHint("a flow keeps at least one step", true); return; }
   doc.steps.splice(t.flowSel, 1);
-  for (const s of doc.steps) if (s.inner) s.inner = s.inner.filter((i) => i !== st.id);
+  for (const s of doc.steps)
+    if (s.inner) s.inner = [].concat(s.inner).filter((i) => i !== st.id);
   t.flowSel = Math.min(t.flowSel, doc.steps.length - 1);
   flowLoadStep(); flowRenderSteps(); autosave();
 }
@@ -443,7 +479,7 @@ function flowMove(d) {
 // ---------------------------------------------------------------------------
 function flowStepSummary(st, doc) {
   const kind = st.kind || "analysis";
-  const refs = (st.inner || []).map((id) => circled(doc.steps.findIndex((s) => s.id === id)))
+  const refs = [].concat(st.inner || []).map((id) => circled(doc.steps.findIndex((s) => s.id === id)))
     .join("");
   if (kind === "optimize") return `Optimize · re-runs ${refs || "—"}`;
   if (kind === "evaluate")
@@ -469,7 +505,7 @@ function flowRenderSteps() {
     el.className = "flow-step" + (i === t.flowSel ? " sel" : "");
     let status = "";
     if (rec) {
-      const nfail = (rec.checks || []).filter((c) => !c.ok).length;
+      const nfail = (rec.checks || []).filter((c) => !c.ok && !c.info).length;
       status = rec.status === "ok"
         ? (nfail ? `<span class="err">&#10007; ${nfail} check${nfail > 1 ? "s" : ""}</span>`
                  : `<span class="ok">&#10003; ${(rec.time_s || 0).toFixed(1)} s</span>`)
@@ -480,7 +516,7 @@ function flowRenderSteps() {
       : st.kind === "evaluate" ? Object.keys(st.fom || {})
       : Object.keys(st.outputs || {});
     const chips = outs.slice(0, 6).map((n) =>
-      `<span class="flow-chip">${n}${rec?.status === "ok" && n in vars
+      `<span class="flow-chip">${escapeHtml(n)}${rec?.status === "ok" && n in vars
         ? ` ${flowFmt(vars[n])}` : ""}</span>`).join("")
       + (outs.length > 6 ? `<span class="flow-chip">+${outs.length - 6}</span>` : "");
     el.innerHTML = `<span class="rp-num">${i + 1}</span>
@@ -518,10 +554,18 @@ function flowRunAnalysis(kind) {
       return null;
     }
     a[kind === "from" ? "start" : "only"] = st.id;
-    a.prior = { vars: t.flowResult.vars, overrides: t.flowResult.overrides,
-                origin: t.flowResult.origin };
+    a.prior = flowPrior(t.flowResult, t.flow.steps.slice(0, t.flowSel).map((s) => s.id));
   }
   return a;
+}
+
+// the variables/overrides earlier steps produced (knobs come from the doc, so
+// edits to them count; later steps' outputs and optima must not leak back)
+function flowPrior(fr, earlier) {
+  const keep = (obj) => Object.fromEntries(Object.entries(obj || {})
+    .filter(([k]) => earlier.includes(fr.origin?.[k])));
+  return { vars: keep(fr.vars), overrides: keep(fr.overrides),
+           origin: keep(fr.origin) };
 }
 
 // file a flow result on its tab (merging a partial re-run into the last one)
@@ -531,8 +575,9 @@ function flowStoreResult(tab, res, a) {
   if ((a.start || a.only) && tab.flowResult) {
     const prev = Object.fromEntries(tab.flowResult.steps.map((s) => [s.id, s]));
     body.steps = body.steps.map((s) => (s.status === "skipped" && prev[s.id]) ? prev[s.id] : s);
+    body.failed = body.steps.find((s) => s.status === "failed")?.id || null;
     body.passed = !body.failed && body.steps.every((s) =>
-      s.status === "ok" && (s.checks || []).every((c) => c.ok));
+      s.status === "ok" && (s.checks || []).every((c) => c.ok || c.info));
   }
   tab.flowResult = body;
   const withRes = body.steps.filter((s) => s.result);
@@ -738,7 +783,7 @@ function flowRenderTab() {
   // pipeline
   let pipe = "";
   fr.steps.forEach((s, i) => {
-    const nfail = (s.checks || []).filter((c) => !c.ok).length;
+    const nfail = (s.checks || []).filter((c) => !c.ok && !c.info).length;
     const icon = s.status === "ok" ? (nfail ? `<span class="err">&#10007;</span>` : `<span class="ok">&#10003;</span>`)
       : s.status === "failed" ? `<span class="err">&#10007;</span>` : `<span class="dim">&ndash;</span>`;
     const st = byId[s.id] || s;
@@ -791,8 +836,11 @@ function flowRenderTab() {
       return `<tr><td class="mono">${escapeHtml(k)}</td><td>${flowFmt(v)}</td><td class="dim">${from}</td></tr>`;
     }).join("");
   const checks = fr.steps.flatMap((s, i) => (s.checks || []).map((c) =>
-    `<div class="fl-check">${c.ok ? `<span class="ok">&#10003;</span>` : `<span class="err">&#10007;</span>`}
-      <span>${circled(i)} <code>${escapeHtml(c.expr)}</code></span>
+    `<div class="fl-check">${c.ok ? `<span class="ok">&#10003;</span>`
+      : c.info ? `<span class="warn" title="optimizer constraint (not a spec)">!</span>`
+      : `<span class="err">&#10007;</span>`}
+      <span>${circled(i)} <code>${escapeHtml(c.expr)}</code>${c.info
+        ? ` <span class="dim">optimizer</span>` : ""}</span>
       <span class="dim">${c.value !== null && c.value !== undefined ? flowFmt(c.value) : ""}</span></div>`)).join("");
   const verdict = fr.failed ? `<span class="err">a step failed</span>`
     : fr.passed ? `<span class="ok">all checks pass</span>` : `<span class="err">some checks fail</span>`;
@@ -832,11 +880,8 @@ function flowRenderTab() {
   document.querySelectorAll("#flow-card .flow-mode button").forEach((b) =>
     b.addEventListener("click", () => flowSetMode(b.dataset.flow === "on")));
   $("flow-vars-btn").addEventListener("click", () => {
-    const box = $("flow-vars"), doc = flowDoc();
-    if (box.hidden && doc) {
-      $("flow-vars-text").value = flowFmtAssign(doc.vars);
-      $("flow-set-text").value = flowFmtAssign(doc.set);
-    }
+    const box = $("flow-vars");
+    if (box.hidden) flowFillVars();
     box.hidden = !box.hidden;
     $("flow-vars-btn").classList.toggle("active", !box.hidden);
   });
@@ -849,7 +894,8 @@ function flowRenderTab() {
   $("flow-del").addEventListener("click", flowDelete);
   for (const ev of ["input", "change"]) {
     $("runpanel").addEventListener(ev, (e) => {
-      if (e.target.closest("#flow-card") && e.target.closest(".flow-mode")) return;
+      if (e.target.closest(".flow-mode")) return;
+      if (e.target.closest("#flow-vars")) { flowVarsEdited(); return; }
       flowEdited();
     });
   }

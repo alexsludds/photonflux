@@ -53,6 +53,31 @@ def test_expression_rules():
     for bad in ("a.__class__", "a[0]", "(lambda: 1)()", "nope + 1", "open(1)"):
         with pytest.raises(flow.FlowError):
             flow._eval(bad, {"a": 1.0})
+    # an undefined output (NaN) poisons a margin instead of vanishing in min()
+    assert math.isnan(flow._eval("min(a, b)", {"a": 1.0, "b": float("nan")}))
+    # arithmetic failures are flow errors (a step fails, not the whole run),
+    # and integer powers overflow instead of hanging the server
+    for bad in ("1/b", "sqrt(b - 1)", "9**9**9**9"):
+        with pytest.raises(flow.FlowError):
+            flow._eval(bad, {"b": 0.0})
+
+
+def test_nelder_mead_memo_keeps_small_values_distinct():
+    # a capacitance-sized parameter: rounding the memo key would merge every
+    # point into one evaluation and return the start
+    from optimize import nelder_mead
+
+    seen = []
+
+    def f(x):
+        seen.append(float(x[0]))
+        return ((x[0] - 3e-14) / 1e-14) ** 2
+
+    simplex, fs = nelder_mead(f, np.array([8e-14]), np.array([1e-14]),
+                              np.array([1e-13]), 30)
+    best = simplex[int(np.argmin(fs))][0]
+    assert len(set(seen)) == len(seen) > 10      # no repeats, many points
+    assert best == pytest.approx(3e-14, rel=0.05)
 
 
 def test_check_and_penalty():
@@ -158,6 +183,13 @@ def test_flow_errors():
     fr = _run(sch, bad)
     assert [s["status"] for s in fr["steps"]] == ["failed", "not run"]
     assert "no_such_probe" in fr["steps"][0]["error"] and not fr["passed"]
+    # a spec without a comparison would always "pass": rejected up front
+    spec = copy.deepcopy(fl)
+    spec["steps"].append({"id": "ev", "kind": "evaluate", "inner": ["op"],
+                          "probes": {"out": "pout"}, "fom": {"er_db": "-2"}})
+    fr = _run(sch, spec)
+    assert fr["steps"][2]["status"] == "failed"
+    assert "spec" in fr["steps"][2]["error"]
 
 
 # --- figures of merit ------------------------------------------------------------
@@ -183,21 +215,27 @@ def test_score_eye_figures_of_merit():
     assert fom["oma_dbm"] == pytest.approx(10 * np.log10(0.3), abs=0.2)
 
 
-def test_example_48_design_point_meets_spec():
-    # the eye step at the optimum the flow finds (laser 3.2 pm blue of the
-    # resonance it locates, 2.4 V bias, 3 Vpp): the 1000-symbol surrogate
-    # already clears the spec the Evaluate step checks
+def test_example_48_junction_rc_costs_tdecq():
+    # example 48 drives the PN junctions through the driver's output
+    # resistance plus their series resistance: at 106.25 GBd the junction RC
+    # closes the eye. The same 300 um design with an ideal (0 Ohm) drive must
+    # score clearly better -- the bandwidth limit example 47 leaves out.
     pytest.importorskip("stateye", reason="optional 'eye' extra")
     ex = _example("48_cmr_flow_106g")
     fl = ex["flow"]
     assert [s["id"] for s in fl["steps"]] == ["res", "eye", "opt", "eval"]
-    knobs = {**fl["vars"], "detune_pm": 3.22, "vbias": 2.40}
-    fr = _run(ex["schematic"], fl, only="res",
-              prior={"vars": knobs, "overrides": {}})
-    lam_res = fr["vars"]["lam_res"]
-    assert lam_res == pytest.approx(1310.017, abs=2e-3)
-    fr = _run(ex["schematic"], fl, only="eye",
-              prior={"vars": {**knobs, "lam_res": lam_res}, "overrides": {}})
-    v = fr["vars"]
-    assert v["rlm"] > 0.95 and v["er_db"] > 3.5
-    assert v["rel_oma_db"] > -2.0 and v["tdecq_db"] < 1.5
+    out = {}
+    for tag, extra in (("rc", {}), ("ideal", {"r_drv_ohm": 0.0,
+                                              "rs_ohm_mm": 1e-6})):
+        knobs = {**fl["vars"], **extra}
+        fr = _run(ex["schematic"], fl, only="res",
+                  prior={"vars": knobs, "overrides": {}})
+        assert fr["steps"][0]["status"] == "ok", fr["steps"][0]
+        knobs["lam_res"] = fr["vars"]["lam_res"]
+        fr = _run(ex["schematic"], fl, only="eye",
+                  prior={"vars": knobs, "overrides": {}})
+        assert fr["steps"][1]["status"] == "ok", fr["steps"][1]
+        out[tag] = fr["vars"]
+    assert out["rc"]["lam_res"] == pytest.approx(out["ideal"]["lam_res"])
+    assert out["rc"]["tdecq_db"] > out["ideal"]["tdecq_db"] + 1.0
+    assert out["rc"]["rlm"] < out["ideal"]["rlm"]

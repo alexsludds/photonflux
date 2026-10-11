@@ -109,6 +109,62 @@ container image does this, so production runs exactly one process.
   y-axis (and x, where valid) switches between linear / log / dBm, the results
   panel is resizable, and cursors are synced across plots.
 
+## Testbench flows
+
+A **flow** is a testbench's pre-configured chain of analyses, run as one job
+(the Flow card at the top of the Run panel; saved with the testbench as
+`doc["flow"]` next to `doc["analysis"]`). Switch the card to **Flow** and the
+Analysis / Measure / Vary cards edit the *selected step*; **Single analysis**
+brings the tab's own analysis back. Steps share **flow variables**:
+
+* **vars** (the `vars` button): knobs with a starting value
+  (`detune_pm = 1.5`), and the **design mapping** every step applies
+  (`PN_A.length_m = pn_um*1e-6`, `PRBS.v0 = vbias - vswing/2`).
+* **Analysis step**: any single-run analysis (DC, DC sweep, transient, AC,
+  noise, pulse, with sweeps and fx expressions) plus
+  *set for this step* (`*.wavelength_nm = lam_res - detune_pm*1e-3`; `*`
+  writes every instance that has the parameter), *outputs* (`lam_res =
+  xat_min(thru)`, `rlm = rlm(thru)`) that become variables, and *checks*
+  (`notch_db < -3`). Output expressions see the probes, `x`/`t`, the
+  variables, the fx vocabulary plus `xat_min`, `xat_max`, `cross`, and the
+  stateye figures of merit `rlm`, `er_db`, `tdecq`, `tdec`, `oma_dbm`,
+  `rel_oma_db(out, in)`, `il_db(out, in)` (scored exactly like the Eye tab's
+  Measure button, with its settings).
+* **Optimize step**: Nelder-Mead over variables and/or `INST.param` ranges,
+  re-running the chosen *inner* steps per evaluation (so a resonance found by
+  step 1 is re-found for every candidate). The objective is an output name or
+  expression; constraints (`rlm >= 0.96`) are penalties (100x the relative
+  shortfall, in objective units). The optimum carries into later steps.
+  Repeated points (a reflection clipped onto a bound) are not re-simulated.
+* **Evaluate step**: re-runs the inner steps at the current design (the
+  optimum) with the transient stretched over a **full PRBS period** at
+  16 samples/UI, so TDECQ uses OMA<sub>outer</sub>, and scores the built-in
+  figures of merit against specs: relOMA = OMA<sub>outer</sub> / P<sub>in</sub>
+  (P<sub>in</sub> = mean power at the *mod in* probe), OMA [dBm], IL =
+  P<sub>in</sub> / top level, ER, TDECQ (TDEC for NRZ), RLM.
+
+**Run flow** (Cmd+Enter) runs every step; the caret runs from the selected
+step or just that step (Shift / Alt + Cmd+Enter), reusing the last run's
+variables. The progress bar names the stage (`step 3/4 · eval 12/50`) and
+Stop cancels the whole flow. The **Flow** results tab shows the step chain,
+a mini plot per step (sweep with located points marked, eye, optimizer
+history), the scorecard (value the earlier steps measured vs. the evaluated
+one), the variables and every check; **Apply design to schematic** writes the
+final design (flow mapping + optimum + the evaluated step's set) as one
+undoable edit, and **Export report** downloads it as Markdown. The `step`
+select in the results bar picks which step the Waveforms / Eye / Link tabs
+show. Flows run at one process corner.
+
+Headless: `python -m photonflux flow webapp/examples/48_cmr_flow_106g.json`
+(exit 1 when a check fails, so saved testbenches double as regression tests)
+or `Session().flow()` in a notebook (a `FlowResult` with `.vars`,
+`.scorecard()`, `.step(id)`, `.design`).
+
+Example 48 is the worked case: the coupling-modulated ring of example 47 at
+106.25 GBd PAM4, optimized over laser detuning, drive bias, arm imbalance, PN
+length and ring length against RLM > 0.95, TDECQ < 1.5 dB, relOMA > -2 dB,
+ER > 3.5 dB. Its device assumptions are flow variables (see the canvas note).
+
 ## Serial-link (SERDES) workflow
 
 * **PRBS / pattern source**: PRBS7/9/11/15/23/31 (same LFSR taps as the
@@ -518,6 +574,8 @@ Signals, waveforms & link post-processing
   linkpost.py        BER/Q/bathtub link report, RX LS-EQ, pulse/COM, eye metric
   exprs.py           derived-trace expression engine (whitelisted AST)
   optimize.py        Nelder-Mead parameter optimizer + FD sensitivities
+  flow.py            testbench flows: step chains sharing variables, the flow
+                     Optimize / Evaluate steps, stateye figures of merit
 
 LTI channel construction
   lti.py             channel / s2p / fiber-CD model construction
@@ -531,7 +589,8 @@ Tools (standalone, not part of the server)
   tools/wdm_spectrum.py   run example 18 and plot its optical spectra
 
 Frontend & data
-  static/            index.html, app.js (editor), symbols.js (glyphs), style.css
+  static/            index.html, app.js (editor), flow.js (flow editor +
+                     results), symbols.js (glyphs), style.css
   static/vendor/     uPlot 1.6.31 (vendored, no CDN needed)
   examples/*.json    example circuits (schematic + layout + analysis)
   models_user/       uploaded .va models (auto-loaded at startup)

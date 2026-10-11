@@ -756,10 +756,20 @@ class Session:
             if prior is None:
                 raise SessionError("start/only need prior= (a FlowResult) for "
                                    "the variables earlier steps computed")
-            analysis["start" if start else "only"] = start or only
-            analysis["prior"] = {"vars": prior.vars,
-                                 "overrides": prior.overrides,
-                                 "origin": prior.body.get("origin") or {}}
+            target = start or only
+            ids = [st.get("id") for st in flow.get("steps") or []]
+            if target not in ids:
+                raise SessionError(f"no step {target!r} (have: {ids})")
+            # only what the steps before it produced: the knobs come from
+            # the flow, and later steps' outputs must not leak back
+            earlier = set(ids[:ids.index(target)])
+            origin = prior.body.get("origin") or {}
+            keep = lambda d: {k: v for k, v in d.items()  # noqa: E731
+                              if origin.get(k) in earlier}
+            analysis["start" if start else "only"] = target
+            analysis["prior"] = {"vars": keep(prior.vars),
+                                 "overrides": keep(prior.overrides),
+                                 "origin": keep(origin)}
         show = self.progress if progress is None else progress
         bar = _ProgressBar(self) if show else None
         try:

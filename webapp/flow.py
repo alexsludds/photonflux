@@ -66,8 +66,17 @@ FOM_KEYS = ("rel_oma", "rel_oma_db", "oma_dbm", "il_db", "er_db", "tdecq_db",
 _IDENT = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 _NODES = exprs._ALLOWED_NODES + (ast.Compare, ast.Lt, ast.LtE, ast.Gt,
                                  ast.GtE, ast.Eq, ast.NotEq)
+def _nan_safe(fn):
+    """min/max that return NaN when any argument is NaN (an undefined output
+    must not look like a good margin: Python's min(1, nan) is 1)."""
+    def f(*a):
+        vals = [float(v) for v in a]
+        return float("nan") if any(math.isnan(v) for v in vals) else fn(vals)
+    return f
+
+
 _SCALAR_FUNCS = {
-    "abs": abs, "min": min, "max": max, "round": round,
+    "abs": abs, "min": _nan_safe(min), "max": _nan_safe(max), "round": round,
     "sqrt": math.sqrt, "log10": math.log10, "log": math.log, "exp": math.exp,
     "db": lambda v: 20.0 * math.log10(max(abs(v), 1e-300)),
     "dbp": lambda v: 10.0 * math.log10(max(abs(v), 1e-300)),
@@ -110,13 +119,31 @@ def _eval(expr, ctx: dict, funcs: dict | None = None):
                                                if not k.startswith("_")))
                             + ")")
     # a called name is always the function, a bare name always the variable,
-    # so an output may share its function's name (rlm = rlm(thru))
+    # so an output may share its function's name (rlm = rlm(thru)); integer
+    # literals become floats so 9**9**9 overflows instead of hanging
     for node in ast.walk(tree):
         if isinstance(node, ast.Call):
             node.func.id = "__f_" + node.func.id
+        elif (isinstance(node, ast.Constant) and isinstance(node.value, int)
+              and not isinstance(node.value, bool)):
+            node.value = float(node.value)
     ns = {**ctx, **{"__f_" + k: v for k, v in funcs.items()}}
-    return eval(compile(tree, "<flow>", "eval"),  # noqa: S307 — whitelisted
-                {"__builtins__": {}}, ns)
+    try:
+        return eval(compile(tree, "<flow>", "eval"),  # noqa: S307 — whitelisted
+                    {"__builtins__": {}}, ns)
+    except FlowError:
+        raise
+    except (ArithmeticError, ValueError, TypeError) as exc:
+        raise FlowError(f"{text!r}: {type(exc).__name__}: {exc}") from None
+
+
+def _num(expr, ctx: dict) -> float:
+    """An expression that must come out as one real number (NaN allowed)."""
+    v = _eval(expr, ctx)
+    try:
+        return float(v)
+    except (TypeError, ValueError):
+        raise FlowError(f"{expr!r} is not a real number ({v!r})") from None
 
 
 def _var_ctx(vars_: dict) -> dict:
@@ -151,7 +178,7 @@ def check(text: str, vars_: dict) -> dict:
         ok = bool(_eval(text, ctx))
         return {"expr": text, "ok": ok, "value": None}
     lhs_s, op, rhs_s = cmp_
-    lhs, rhs = float(_eval(lhs_s, ctx)), float(_eval(rhs_s, ctx))
+    lhs, rhs = _num(lhs_s, ctx), _num(rhs_s, ctx)
     ok = bool(math.isfinite(lhs) and _CMP[op][1](lhs, rhs))
     return {"expr": text, "ok": ok,
             "value": lhs if math.isfinite(lhs) else None,
@@ -168,7 +195,7 @@ def penalty(constraints: list, vars_: dict) -> float:
                             "or 'name <= value'")
         lhs_s, op, rhs_s = cmp_
         ctx = _var_ctx(vars_)
-        lhs, rhs = float(_eval(lhs_s, ctx)), float(_eval(rhs_s, ctx))
+        lhs, rhs = _num(lhs_s, ctx), _num(rhs_s, ctx)
         if not math.isfinite(lhs):
             return math.inf
         viol = rhs - lhs if op in (ast.Gt, ast.GtE) else lhs - rhs
@@ -207,7 +234,7 @@ def _assignments(flow: dict, overrides: dict, step_set: dict | None,
     for source in ((flow.get("set") or {}), overrides, (step_set or {})):
         for key, expr in source.items():
             inst, param = _split_key(key)
-            val = float(_eval(expr, ctx))
+            val = _num(expr, ctx)
             if not math.isfinite(val):
                 raise FlowError(f"set {key} = {expr}: not a finite number "
                                 "(an output it uses was undefined)")
@@ -265,6 +292,8 @@ def _rlm(levels) -> float:
     """IEEE 802.3 ratio of level mismatch from four levels."""
     p = sorted(levels)
     vm = (p[0] + p[3]) / 2
+    if p[3] - p[0] <= 0:                 # collapsed eye: no level ladder
+        return float("nan")
     es1 = (p[1] - vm) / (p[0] - vm)
     es2 = (p[2] - vm) / (p[3] - vm)
     return float(min(3 * es1, 3 * es2, 2 - 3 * es1, 2 - 3 * es2))
@@ -339,13 +368,10 @@ def _result_ctx(res: dict, sch: dict, vars_: dict, flow: dict):
     ctx = _var_ctx(vars_)
     x = np.asarray(res.get("x") or [0.0], float)
     ctx["x"] = ctx["t"] = x
-    probe_of: dict[int, str] = {}
     for tr in res.get("traces") or []:
         name = tr.get("probe") or tr["name"]
         if _IDENT.fullmatch(name) and name not in ctx:
-            arr = np.asarray(tr["values"], float)
-            ctx[name] = arr
-            probe_of[id(arr)] = name
+            ctx[name] = np.asarray(tr["values"], float)
     for row in res.get("rows") or []:          # DC operating point: scalars
         if _IDENT.fullmatch(row["name"]):
             ctx.setdefault(row["name"], float(row["value"]))
@@ -374,7 +400,7 @@ def _result_ctx(res: dict, sch: dict, vars_: dict, flow: dict):
         return float(x[i] - y[i] * (x[i + 1] - x[i]) / (y[i + 1] - y[i]))
 
     pattern = _pattern(sch)
-    cache: dict[int, dict] = {}
+    cache: dict[int, tuple] = {}   # id -> (array kept alive, score)
 
     def score(y):
         key = id(y)
@@ -382,12 +408,17 @@ def _result_ctx(res: dict, sch: dict, vars_: dict, flow: dict):
             if pattern is None or res.get("kind") != "transient":
                 raise FlowError("figures of merit need a transient with a "
                                 "PRBS source")
-            cache[key] = score_eye(x, np.asarray(y, float), pattern,
-                                   flow.get("stateye"))
-        return cache[key]
+            cache[key] = (y, score_eye(x, np.asarray(y, float), pattern,
+                                       flow.get("stateye")))
+        return cache[key][1]
 
     def mean(v):
-        return float(np.mean(v))
+        """Input power, averaged after the same settling the scorer drops."""
+        v = np.asarray(v, float)
+        if v.ndim == 0:
+            return float(v)
+        keep = x >= SETTLE_UI * float(pattern["ui"]) if pattern else slice(None)
+        return float(np.mean(v[keep]))
 
     def fom(name):
         def f(y, pin=None):
@@ -504,10 +535,11 @@ class _Runner:
         nsym = period + 2 * SETTLE_UI + 16
         pts = nsym * SAMPLES_PER_UI
         if pts > simulate.MAX_FLOW_POINTS:
-            self.log.append(
-                f"evaluate: PRBS-{pat.get('order')} at {SAMPLES_PER_UI} "
-                f"samples/UI needs {pts} points; capped at "
-                f"{simulate.MAX_FLOW_POINTS}")
+            raise FlowError(
+                f"a full PRBS-{pat.get('order')} period at {SAMPLES_PER_UI} "
+                f"samples/UI needs {pts} points (limit "
+                f"{simulate.MAX_FLOW_POINTS}); use PRBS-13 or shorter, or "
+                "record = as the step is set up")
         return {**analysis, "t_stop": nsym * ui, "points": pts,
                 "max_points": simulate.MAX_FLOW_POINTS}
 
@@ -586,7 +618,7 @@ class _Runner:
             entry = {"x": [float(v) for v in x]}
             try:
                 v2, res, _ = self.chain(ids, v2, o2)
-                obj = float(_eval(objective, _var_ctx(v2)))
+                obj = _num(objective, _var_ctx(v2))
                 pen = penalty(constraints, v2)
             except FlowError as exc:
                 if not first_err:
@@ -617,7 +649,9 @@ class _Runner:
                                if first_err else ""))
         v2, o2 = best["vars"], best["overrides"]
         bx = {name: float(xi) for (_, name), xi in zip(keys, best["x"])}
-        checks = [check(c, v2) for c in constraints]
+        # informational: the optimizer's own (margined) constraints show in
+        # the step's checks but the flow's verdict is the specs' business
+        checks = [{**check(c, v2), "info": True} for c in constraints]
         feasible = all(c["ok"] for c in checks)
         self.log.append(
             f"optimize: best {objective} = {v2.get(objective, 'n/a')} after "
@@ -630,7 +664,7 @@ class _Runner:
                              "max": float(b), "start": float(s),
                              "value": bx[name]}
                             for (kind, name), a, b, s in zip(keys, lo, hi, x0)],
-                        "constraint_checks": checks}
+                        "checks": checks}
 
     def run_evaluate(self, step, vars_, overrides):
         ids = self.inner_ids(step)
@@ -643,10 +677,18 @@ class _Runner:
         if unknown:
             raise FlowError(f"evaluate: unknown figure(s) of merit {unknown}; "
                             f"choose from {', '.join(FOM_KEYS)}")
+        for k, s_ in spec.items():
+            if s_ and (_comparison(f"{k} {s_}") is None
+                       or _comparison(f"{k} {s_}")[1] in (ast.Eq, ast.NotEq)):
+                raise FlowError(f"evaluate: spec {k} {s_!r} — write it as "
+                                "'>= value' or '<= value'")
         before = {k: vars_.get(k) for k in spec}
         record = step.get("record", "full_period")
         v2, res, sch = self.chain(ids, vars_, overrides,
                                   record if record == "full_period" else None)
+        pattern = _pattern(sch)
+        if not pattern or not pattern.get("ui"):
+            raise FlowError("evaluate needs a PRBS source")
         traces = {(tr.get("probe") or tr["name"]): tr
                   for tr in reversed(res.get("traces") or [])}
         if out_p not in traces:
@@ -658,9 +700,9 @@ class _Runner:
             if in_p not in traces:
                 raise FlowError(f"evaluate: no probe {in_p!r} in the result")
             t = np.asarray(res["x"], float)
-            keep = t >= SETTLE_UI * float(_pattern(sch)["ui"])
+            keep = t >= SETTLE_UI * float(pattern["ui"])
             p_in = float(np.mean(np.asarray(traces[in_p]["values"])[keep]))
-        sc = score_eye(res["x"], traces[out_p]["values"], _pattern(sch),
+        sc = score_eye(res["x"], traces[out_p]["values"], pattern,
                        self.flow.get("stateye"))
         for line in sc["log"]:
             self.log.append(f"  stateye: {line}")
@@ -679,7 +721,7 @@ class _Runner:
     # --- the whole flow --------------------------------------------------------
     def run(self, start: str | None, only: str | None,
             prior: dict) -> dict:
-        from progress import PROGRESS
+        from progress import PROGRESS, RunCancelled
 
         ids = [s.get("id") for s in self.steps]
         if not self.steps:
@@ -733,8 +775,12 @@ class _Runner:
                 checks = info.pop("checks", None)
                 if checks is None:
                     checks = [check(c, vars2) for c in step.get("checks") or []]
-            except FlowError as exc:
-                rec.update(status="failed", error=str(exc),
+            except RunCancelled:
+                raise
+            except Exception as exc:   # FlowError, or a bug: fail this step
+                msg = (str(exc) if isinstance(exc, FlowError)
+                       else f"{type(exc).__name__}: {exc}")
+                rec.update(status="failed", error=msg,
                            time_s=time.perf_counter() - t0)
                 self.log.append(f"  FAILED: {exc}")
                 out.append(rec)
@@ -752,11 +798,13 @@ class _Runner:
             self.log.append(
                 f"  done in {rec['time_s']:.1f}s"
                 + "".join(f"; {c['expr']}: {'pass' if c['ok'] else 'FAIL'}"
+                          + (" (optimizer constraint)" if c.get("info") else "")
                           for c in checks))
             out.append(rec)
         ran = [r for r in out if r.get("status") == "ok"]
         passed = (failed is None and bool(ran)
-                  and all(c["ok"] for r in ran for c in r.get("checks") or []))
+                  and all(c["ok"] for r in ran for c in r.get("checks") or []
+                          if not c.get("info")))
         return {"steps": out, "vars": vars_, "overrides": overrides,
                 "origin": origin, "passed": passed, "failed": failed,
                 "design": self.design(vars_, overrides)}

@@ -590,7 +590,12 @@ function applyRemoteDoc(doc) {
     if (!(selection && selection.kind === "inst" &&
           state.instances[selection.id]))
       selection = null;
-    if (doc.analysis) applyAnalysis(doc.analysis);
+    // in flow mode the Run panel shows a step: the doc's analysis is the
+    // tab's stashed single analysis, and a pushed flow replaces the tab's
+    if (tabs[activeTab]?.flowOn) {
+      if (doc.analysis) tabs[activeTab].flowSingle = doc.analysis;
+    } else if (doc.analysis) applyAnalysis(doc.analysis);
+    if (doc.flow) flowAdoptRemote(doc.flow);
     if (doc.title && tabs[activeTab] && tabs[activeTab].title !== doc.title) {
       tabs[activeTab].title = doc.title;
       renderTabStrip();
@@ -2991,8 +2996,8 @@ function showLog(res) {
   $("log-pre").innerHTML = lines.join("\n") || "(no log)";
 }
 
-const escapeHtml = (s) => s.replace(/[&<>]/g, (c) =>
-  ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
+const escapeHtml = (s) => String(s).replace(/[&<>"']/g, (c) =>
+  ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 
 function setResultsTab(tab) {
   document.querySelectorAll(".rtab").forEach((b) =>

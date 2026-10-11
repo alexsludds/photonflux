@@ -19,6 +19,19 @@ def cmd_doctor(_args) -> int:
     return 0 if all(c.ok for c in doctor() if "PDK" not in c.name) else 1
 
 
+def _finite(obj):
+    """JSON-safe copy: NaN / inf -> None (bare NaN is not valid JSON)."""
+    import math
+
+    if isinstance(obj, float):
+        return obj if math.isfinite(obj) else None
+    if isinstance(obj, dict):
+        return {k: _finite(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple)):
+        return [_finite(v) for v in obj]
+    return obj
+
+
 def _fmt(v) -> str:
     return "—" if v is None else f"{v:.6g}"
 
@@ -49,7 +62,7 @@ def cmd_flow(args) -> int:
     res = simulate.run({"schematic": doc.get("schematic") or doc,
                         "analysis": analysis})
     if args.json:
-        Path(args.json).write_text(json.dumps(res))
+        Path(args.json).write_text(json.dumps(_finite(res), allow_nan=False))
     if not res.get("ok"):
         print(f"flow failed: {res.get('error')}", file=sys.stderr)
         return 1
@@ -60,8 +73,9 @@ def cmd_flow(args) -> int:
         print(f"  {i}. {s['title']:<34} {s['status']:<8} {t}"
               + (f"  {s['error']}" if s.get("error") else ""))
         for c in s.get("checks") or []:
-            print(f"       {'pass' if c['ok'] else 'FAIL'}  {c['expr']:<24} "
-                  f"{_fmt(c.get('value'))}")
+            verdict = "pass" if c["ok"] else ("warn" if c.get("info") else "FAIL")
+            print(f"       {verdict}  {c['expr']:<24} {_fmt(c.get('value'))}"
+                  + ("  (optimizer constraint)" if c.get("info") else ""))
     print("  variables: " + ", ".join(f"{k}={_fmt(v)}"
                                       for k, v in fr["vars"].items()))
     print("PASS" if fr["passed"] else "FAIL")

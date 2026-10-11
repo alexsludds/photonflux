@@ -146,7 +146,9 @@ def nelder_mead(f, x0, lo, hi, iters: int):
 
     def g(x):
         calls["proposals"] += 1
-        key = tuple(np.round(np.asarray(x, float), 12))
+        # exact match: a clipped point is bit-identical to the bound, and
+        # rounding would merge distinct small-SI values (1e-14 F, ...)
+        key = tuple(np.asarray(x, float).tolist())
         if key not in memo:
             calls["n"] += 1
             memo[key] = f(x)

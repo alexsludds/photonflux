@@ -507,6 +507,7 @@ body { display: flex; flex-direction: column; }
 .dim { color: var(--text-dim); }
 .ok { color: var(--ok); }
 .err { color: var(--err); }
+.warn { color: var(--optical); font-weight: 700; }
 .rp-num-flow { background: var(--select); }
 .flow-mode { display: flex; background: var(--bg); border: 1px solid var(--border);
   border-radius: 6px; padding: 2px; gap: 2px; }

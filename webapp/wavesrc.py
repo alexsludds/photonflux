@@ -325,9 +325,11 @@ def noise_bank(inst: str, seeds: int, span: float, bw: float,
 
     Each instance gets an independent, reproducible stream (seeded from the
     master seed + a stable hash of the instance name). Samples are spaced
-    dt_n = 1/(2*bw) and linearly interpolated by the components, so the
-    realised noise is white to ~bw with unit variance; scale by
-    sqrt(PSD/(2*dt_n)) for a target one-sided density.
+    dt_n = 1/(2*bw) and linearly interpolated by the components; scaled by
+    sqrt(PSD/(2*dt_n)) the process has exactly the target one-sided PSD at
+    low frequency, shaped by the interpolation kernel as sinc^4(f*dt_n):
+    -0.45 dB at bw/4, -1.8 dB at bw/2, -7.8 dB at bw. Pick bw at least twice
+    the receiver bandwidth so the band it integrates is flat.
     """
     dt_n = 1.0 / (2.0 * max(bw, 1e6))
     n = max(int(np.ceil(span / dt_n)) + 4, 16)

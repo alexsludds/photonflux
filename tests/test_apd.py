@@ -8,9 +8,10 @@ receiver equations:
 
 * DC: ``I = M(R P + Idk_bulk) + Idk_surf`` — the primary photocurrent and the
   bulk dark current are multiplied, the surface dark current is not.
-* transient shot noise: multi-seed variance = ``2 q I_prim M^2 F(M) BW`` with
-  the McIntyre excess-noise factor ``F(M) = k M + (2 - 1/M)(1 - k)`` — the same
-  noise-bank machinery the PIN photodiode uses (``_photodiode_noisy``).
+* transient shot noise: the in-band (low-frequency) current PSD of the
+  multi-seed transient = ``2 q I_prim M^2 F(M)`` with the McIntyre
+  excess-noise factor ``F(M) = k M + (2 - 1/M)(1 - k)`` — the same noise-bank
+  machinery the PIN photodiode uses (``_photodiode_noisy``).
 * sensitivity vs M: the thermal-limited -> excess-noise-limited crossover gives
   an interior noise-optimal ``M*``.
 
@@ -104,12 +105,13 @@ def test_apd_dc_dark_current_split(sim):
 
 
 # ---------------------------------------------------------------------------
-# transient shot noise: variance = 2 q I_prim M^2 F(M) BW
+# transient shot noise: in-band PSD = 2 q I_prim M^2 F(M)
 # ---------------------------------------------------------------------------
-def test_apd_shot_noise_variance(sim):
-    """Multi-seed transient output-current variance matches the analytic
-    multiplied shot noise 2 q I M^2 F(M) BW (acceptance criterion 2), and is
-    distinguishable from the no-excess-noise (F = 1) case."""
+def test_apd_shot_noise_psd(sim):
+    """The multi-seed transient output-current PSD, averaged over the band a
+    receiver integrates (<= bw/5), matches the analytic multiplied shot noise
+    2 q I M^2 F(M) (acceptance criterion 2), and is distinguishable from the
+    no-excess-noise (F = 1) case."""
     R, P, M, k, r_load, bw = 0.8, 1e-3, 12.0, 0.3, 1000.0, 50e9
     res = sim.run({
         "schematic": _receiver_sch(R=R, M=M, k_ion=k, power=P, r_load=r_load),
@@ -120,16 +122,21 @@ def test_apd_shot_noise_variance(sim):
     traces = [t for t in res["traces"] if t.get("probe") == "vout"]
     assert len(traces) == 12, "expected one trace per noise seed"
     V = np.array([t["values"] for t in traces])          # (seeds, points)
-    var = float(np.var(V[:, 1:]))                         # pool seeds x time
+    dt = float(np.diff(res["x"]).mean())
+    # one-sided current PSD [A^2/Hz], periodogram averaged over the seeds
+    i_n = (V[:, 1:] - V[:, 1:].mean(axis=1, keepdims=True)) / r_load
+    psd = 2.0 * dt / i_n.shape[1] * np.abs(np.fft.rfft(i_n, axis=1)) ** 2
+    f = np.fft.rfftfreq(i_n.shape[1], dt)
+    in_band = psd.mean(axis=0)[(f > 0) & (f <= bw / 5)].mean()
 
     F = _excess_noise(M, k)
     i_prim = R * P
-    analytic = 2.0 * Q_E * i_prim * M * M * F * bw * r_load ** 2
-    assert var == pytest.approx(analytic, rel=0.12)
+    analytic = 2.0 * Q_E * i_prim * M * M * F
+    # the interpolated bank is flat to within 0.3 dB over [0, bw/5]
+    assert in_band == pytest.approx(analytic, rel=0.15)
     # the excess-noise factor is really wired: F(M) ~ 4.9 here, so the measured
-    # variance must sit far above the no-excess-noise (F = 1) shot floor
-    no_excess = 2.0 * Q_E * i_prim * M * M * 1.0 * bw * r_load ** 2
-    assert var > 3.0 * no_excess
+    # PSD must sit far above the no-excess-noise (F = 1) shot floor
+    assert in_band > 3.0 * 2.0 * Q_E * i_prim * M * M
 
 
 # ---------------------------------------------------------------------------

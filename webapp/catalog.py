@@ -768,12 +768,13 @@ CATALOG: dict[str, dict] = {
                "noise bandwidth). Put it inside an SOA laser cavity, set the "
                "SOA's p_seed to 0, and the laser starts from NOISE — every "
                "cavity mode is seeded, so mode competition and the winning "
-               "line are emergent (example 37). Physical level: S = "
-               "n_sp*h*nu*(G-1) ~ -144 dBm/Hz for a 20 dB SOA. ACTIVE ONLY "
+               "line are emergent (example 37). Physical level, one "
+               "polarization: S = n_sp*h*nu*(G-1) ~ -135 dBm/Hz for a 20 dB "
+               "SOA with n_sp = 2 at 1310 nm. ACTIVE ONLY "
                "when the transient's noise seeds >= 1; otherwise a "
                "transparent pass-through. Directed: pin read, pout driven.",
         "ports": _ports("pin:o pout:o"),
-        "params": [_p("s_ase_dbm_hz", -144.0, "dBm/Hz", "ASE density")],
+        "params": [_p("s_ase_dbm_hz", -135.0, "dBm/Hz", "ASE density")],
     },
     "wmirror": {
         "label": "Mirror 2x2 (VA, waves)",
@@ -2802,15 +2803,17 @@ def _fiber_nl_field(poles, res, d, gamma: float, dz: float, n_seg: int):
 # transient-noise variants: same physics + a baked per-instance noise bank
 # (unit-variance Gaussian rows, one per seed; runtime param seed_idx picks
 # the row so N seeds re-run without recompiling). Scale for a one-sided PSD
-# S is sqrt(S/(2*dt_n)) — see wavesrc.noise_bank.
+# S is sqrt(S/(2*dt_n)): the linearly interpolated bank then has exactly S at
+# low frequency, rolling off as sinc^4 above (see wavesrc.noise_bank).
 # ---------------------------------------------------------------------------
 
 def _noise_reader(bank, dt_n):
     import jax.numpy as jnp
 
-    # sqrt(3/2) restores the variance lost to linear interpolation between
-    # samples (mean of f^2 + (1-f)^2 over a segment is 2/3)
-    bank_c = jnp.asarray(bank) * 1.22474487
+    # No variance "restoration" for the interpolation: the 1/3 of the sample
+    # variance it removes lies above ~bw (the sinc^4 roll-off), while the
+    # in-band PSD a receiver integrates is already exactly S.
+    bank_c = jnp.asarray(bank)
     tn = jnp.arange(bank.shape[1]) * dt_n
 
     def nval(t, seed_idx):
@@ -2842,9 +2845,8 @@ def _cw_laser_noisy(bank, dt_n):
     assert bank.shape[0] % 2 == 0, "cwn noise bank must have an even row count"
     n_seeds = max(bank.shape[0] // 2, 1)
     tn = jnp.arange(bank.shape[1]) * dt_n
-    # RIN: white samples, sqrt(3/2) restores the variance lost to linear
-    # interpolation between bank samples (see _noise_reader).
-    rin_c = jnp.asarray(bank) * 1.22474487
+    # RIN: white samples, linearly interpolated (see _noise_reader)
+    rin_c = jnp.asarray(bank)
     # Phase walk: cumulative sum of the *raw* unit-variance increments — the
     # sampled walk points are exact, so no interp-variance restoration is
     # applied. Anchor each walk at phi(0) = 0 so the DC solve is phase-clean.
@@ -3054,7 +3056,7 @@ def _ase_src_plain():
         signals: Signals,
         s: States,
         t: float,
-        s_ase_dbm_hz: float = -144.0,
+        s_ase_dbm_hz: float = -135.0,
     ) -> tuple[dict, dict]:
         return {"pin": 0.0, "pout": s.i_out,
                 "i_out": signals.pout - signals.pin}, {}
@@ -3064,13 +3066,15 @@ def _ase_src_plain():
 
 def _ase_src_noisy(bank, dt_n):
     """Broadband ASE injector: E_out = E_in + n(t), n complex white Gaussian
-    noise of one-sided power density s_ase_dbm_hz split between quadratures
-    (sigma_q = sqrt(S/(4*dt_n)) per sample). The bank carries TWO rows per
-    seed (real/imag streams) — see the ase branch of _make_noisy."""
+    noise of optical power density s_ase_dbm_hz (per Hz of optical bandwidth,
+    the OSA reading). The envelope's two-sided baseband PSD is the optical
+    PSD, |n|^2 = S/dt_n over the +-1/(2 dt_n) span, so each quadrature takes
+    sigma_q = sqrt(S/(2*dt_n)). The bank carries TWO rows per seed (real/imag
+    streams) — see the ase branch of _make_noisy."""
     import jax.numpy as jnp
     from circulax.components.base_component import Signals, States, source
 
-    bank_c = jnp.asarray(bank) * 1.22474487   # interp variance restoration
+    bank_c = jnp.asarray(bank)
     tn = jnp.arange(bank.shape[1]) * dt_n
     n_seeds = max(bank.shape[0] // 2, 1)
 
@@ -3079,10 +3083,10 @@ def _ase_src_noisy(bank, dt_n):
         signals: Signals,
         s: States,
         t: float,
-        s_ase_dbm_hz: float = -144.0,
+        s_ase_dbm_hz: float = -135.0,
         seed_idx: float = 0.0,
     ) -> tuple[dict, dict]:
-        sigma = jnp.sqrt(10.0 ** (s_ase_dbm_hz / 10.0) * 1e-3 / (4.0 * dt_n))
+        sigma = jnp.sqrt(10.0 ** (s_ase_dbm_hz / 10.0) * 1e-3 / (2.0 * dt_n))
         k = jnp.clip(jnp.asarray(seed_idx).astype(jnp.int32), 0, n_seeds - 1)
         nr = jnp.interp(t, tn, jnp.take(bank_c, 2 * k, axis=0))
         ni = jnp.interp(t, tn, jnp.take(bank_c, 2 * k + 1, axis=0))

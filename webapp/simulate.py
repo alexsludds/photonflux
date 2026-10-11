@@ -268,6 +268,19 @@ def schematic_to_netlist(sch: dict, wave_span: float = DEFAULT_WAVE_SPAN,
                 ltis[lkey] = payload
                 cx_instances[name] = {"component": lkey}
                 settings = {}
+            elif ctype == "pn_phase_shifter_tw":
+                # the section count is structural (states per section), so
+                # each count is its own model; 0 = one section per <= 100 um
+                import catalog as _cat
+
+                length_m = (float(settings["length_um"]) * 1e-6
+                            if "length_um" in settings   # mapped already
+                            else float(settings.get("length_m", 1e-3)))
+                n_sec = _cat.tw_sections(settings.pop("n_sections", 0),
+                                         length_m)
+                key = f"pn_tw@{n_sec}"
+                ltis[key] = {"pn_tw": n_sec}
+                cx_instances[name] = {"component": key}
             elif (noise_cfg and ctype == "cw_laser"
                   and (float(settings.get("rin_db", 0.0)) < 0
                        or float(settings.get("linewidth_hz", 0.0)) > 0)):

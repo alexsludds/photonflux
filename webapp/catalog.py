@@ -49,6 +49,21 @@ def _ports(spec: str) -> list[dict]:
 # NB: symbol geometry (pins' x/y offsets, drawing) lives in the frontend,
 # keyed by the same type id; the backend only cares about ports/params.
 
+TW_SECTION_UM = 100.0   # traveling-wave PN shifter: longest auto section
+
+
+def tw_sections(n_sections, length_m: float) -> int:
+    """Section count of a traveling-wave PN shifter: as set (up to 32), or
+    for 0 one section per <= 100 um, so a section's optical transit stays
+    <= 1.3 ps (Pade delay and ladder accurate to ~60 GHz); 4..16 sections."""
+    import math
+
+    n = int(float(n_sections or 0))
+    if n > 0:
+        return min(n, 32)
+    return max(4, min(16, math.ceil(float(length_m) * 1e6 / TW_SECTION_UM)))
+
+
 CATALOG: dict[str, dict] = {
     # --- photonic sources & modulators ------------------------------------
     "cw_laser": {
@@ -192,6 +207,54 @@ CATALOG: dict[str, dict] = {
             _p("dloss_dB_cm", 1.5, "dB/cm", "Loss drop at vref"),
             _p("cj0_ff_um", 0.3, "fF/um", "Junction cap. at 0 V"),
             _p("rleak", 1e9, "Ohm", "Junction leakage"),
+            _p("neff", 2.4, "", "n_eff"),
+            _p("n_group", 4.0, "", "n_group"),
+            _p("center_wavelength_nm", 1310.0, "nm", "Center wavelength"),
+            _p("wavelength_nm", 1310.0, "nm", "Operating wavelength"),
+        ],
+    },
+    "pn_phase_shifter_tw": {
+        "label": "PN Phase Shifter, Traveling-Wave",
+        "category": "Modulators",
+        "stiff": True,     # sub-ps ladder / transit states: default to BDF2
+        "doc": "Traveling-wave depletion PN phase shifter: the same junction "
+               "physics as PN-Junction Phase Shifter (sqrt depletion law for "
+               "n_eff, loss and charge), distributed over n_sections "
+               "sections (0 = one per 100 um) under a transmission-line "
+               "electrode. "
+               "Drive e_in and terminate e_out (a resistor to an AC ground "
+               "at the bias): the driver sees the loaded line, not the "
+               "junction capacitance, so the bandwidth is set by the loaded "
+               "line's RF loss (junction series resistance + conductor loss) "
+               "and by RF/optical walk-off, both modelled. Electrode: "
+               "unloaded z0_ohm and n_rf, flat conductor loss rf_loss_dB_cm; "
+               "every section loads it with rs_ohm_mm / length in series with "
+               "its junction (Cj0 per um at 0 V). The optical phase of each "
+               "section reaches p2 delayed by its optical transit "
+               "(n_group), so light sees each section's voltage when it "
+               "passes it; propagation is p1 -> p2 with e_in at the p1 end. "
+               "polarity +1: the electrode contacts the n side (cathode) and "
+               "ref the p side; -1: the electrode contacts the p side. "
+               "Accurate while one section's optical transit (length * "
+               "n_group / n_sections / c) is well under 1 / (2 pi f_max).",
+        "ports": _ports("p1:o p2:o e_in:e e_out:e ref:e"),
+        "params": [
+            _p("length_m", 1000e-6, "m", "Length",
+               map={"to": "length_um", "scale": 1e6}),
+            _p("vpil_vcm", 2.0, "V*cm", "VpiL (0 to vref)"),
+            _p("vref", 2.0, "V", "VpiL reference bias"),
+            _p("vbi", 0.85, "V", "Built-in voltage"),
+            _p("loss_dB_cm", 12.0, "dB/cm", "Optical loss at 0 V"),
+            _p("dloss_dB_cm", 1.5, "dB/cm", "Loss drop at vref"),
+            _p("cj0_ff_um", 0.3, "fF/um", "Junction cap. at 0 V"),
+            _p("rs_ohm_mm", 10.0, "Ohm*mm", "Junction series R x length"),
+            _p("rleak", 1e9, "Ohm", "Junction leakage"),
+            _p("z0_ohm", 60.0, "Ohm", "Unloaded electrode Z0"),
+            _p("n_rf", 2.4, "", "Unloaded RF index"),
+            _p("rf_loss_dB_cm", 2.0, "dB/cm", "Electrode conductor loss"),
+            _p("polarity", 1.0, "", "Electrode on n (+1) / p (-1) side"),
+            _p("n_sections", 0, "", "Sections (0 = auto, <=100 um)",
+               rebuild=True),
             _p("neff", 2.4, "", "n_eff"),
             _p("n_group", 4.0, "", "n_group"),
             _p("center_wavelength_nm", 1310.0, "nm", "Center wavelength"),
@@ -2343,6 +2406,119 @@ def _pn_phase_shifter():
     return PNPhaseShifter
 
 
+def _pn_phase_shifter_tw(n_sec: int = 10):
+    """Traveling-wave depletion PN phase shifter, distributed over n_sec
+    sections.
+
+    Electrode: an RLC transmission-line ladder (unloaded z0_ohm / n_rf, flat
+    conductor loss rf_loss_dB_cm) from e_in to e_out; every section is loaded
+    by its own junction -- series resistance rs_ohm_mm / dz into the same
+    abrupt-junction charge as the lumped part -- so the loaded impedance, the
+    RF slow-down and the junction-RC loss all come out of the physics.
+
+    Optics: each section's phase / loss change (from its own junction
+    voltage) is accumulated along the guide through a chain of first-order
+    Pade all-pass delays of one section's optical transit (dz * n_group / c),
+    so light leaving p2 at time t has seen section k at the time it passed
+    it. RF / optical walk-off is therefore real, not a pole. Propagation is
+    p1 -> p2 (e_in at the p1 end, co-propagating); light entering p2 sees the
+    same, co-propagating, modulation. The static path is quasi-static like
+    Waveguide (a constant transit delay is dropped).
+    """
+    import jax.numpy as jnp
+    from circulax.components.base_component import Signals, States, component
+    from circulax.s_transforms import s_to_y
+
+    c0 = 299792458.0
+    n = int(n_sec)
+    states = tuple([f"v{k}" for k in range(n)] + [f"u{k}" for k in range(n)]
+                   + [f"i{k}" for k in range(n + 1)]
+                   + [f"x{k}" for k in range(1, n)])
+
+    @component(ports=("p1", "p2", "e_in", "e_out", "ref"), states=states)
+    def PNPhaseShifterTW(signals: Signals, s: States, length_um: float = 1000.0,
+                         vpil_vcm: float = 2.0, vref: float = 2.0,
+                         vbi: float = 0.85, loss_dB_cm: float = 12.0,
+                         dloss_dB_cm: float = 1.5, cj0_ff_um: float = 0.3,
+                         rs_ohm_mm: float = 10.0, rleak: float = 1e9,
+                         z0_ohm: float = 60.0, n_rf: float = 2.4,
+                         rf_loss_dB_cm: float = 2.0, polarity: float = 1.0,
+                         neff: float = 2.4, n_group: float = 4.0,
+                         center_wavelength_nm: float = 1310.0,
+                         wavelength_nm: float = 1310.0) -> tuple[dict, dict]:
+        dz = length_um * 1e-6 / n                      # section length [m]
+        l_sec = z0_ohm * n_rf / c0 * dz                # unloaded line L, C
+        c_sec = n_rf / (z0_ohm * c0) * dz
+        r_sec = 2.0 * z0_ohm * rf_loss_dB_cm * 100.0 / 8.685889638 * dz
+        rs = rs_ohm_mm / (dz * 1e3)                    # junction series R
+        cj0 = cj0_ff_um * 1e-15 * dz * 1e6
+        tau = dz * n_group / c0                        # optical transit
+        g_ref = jnp.sqrt(1.0 + jnp.maximum(vref, 1e-3) / vbi) - 1.0
+        dn_ref = center_wavelength_nm * 1e-7 * vref / (2.0 * vpil_vcm)
+
+        vr_node = jnp.real(signals.ref)
+        nodes = ([jnp.real(signals.e_in)]
+                 + [jnp.real(getattr(s, f"v{k}")) for k in range(n)]
+                 + [jnp.real(signals.e_out)])
+        f: dict = {}
+        q: dict = {}
+        for b in range(n + 1):                 # series R-L branches
+            half = 0.5 if b in (0, n) else 1.0
+            ib = jnp.real(getattr(s, f"i{b}"))
+            f[f"i{b}"] = half * r_sec * ib - (nodes[b] - nodes[b + 1])
+            q[f"i{b}"] = half * l_sec * ib
+        f["e_in"] = jnp.real(getattr(s, "i0"))
+        f["e_out"] = -jnp.real(getattr(s, f"i{n}"))
+        f_ref, q_ref = 0.0, 0.0
+        mods = []
+        for k in range(n):                     # shunt line C + junction
+            v, u = nodes[k + 1], jnp.real(getattr(s, f"u{k}"))
+            vr = polarity * (u - vr_node)      # junction reverse bias
+            x = 1.0 + vr / vbi
+            xm = 0.1
+            sq = jnp.where(x > xm, jnp.sqrt(jnp.maximum(x, xm)),
+                           jnp.sqrt(xm) + (x - xm) / (2.0 * jnp.sqrt(xm)))
+            g = sq - 1.0
+            gn = g / g_ref
+            ij = (v - u) / rs
+            ileak = vr / (rleak * n)
+            qj = 2.0 * cj0 * vbi * g
+            f[f"v{k}"] = (jnp.real(getattr(s, f"i{k + 1}"))
+                          - jnp.real(getattr(s, f"i{k}")) + ij)
+            q[f"v{k}"] = c_sec * (v - vr_node)
+            f[f"u{k}"] = -ij + polarity * ileak
+            q[f"u{k}"] = polarity * qj
+            f_ref = f_ref - polarity * ileak
+            q_ref = q_ref - polarity * qj - c_sec * (v - vr_node)
+            # this section's field change: log-amplitude and phase vs 0 V
+            dloss = (jnp.maximum(loss_dB_cm - dloss_dB_cm * gn, 0.0)
+                     - loss_dB_cm) * dz * 100.0
+            dphi = 2.0 * jnp.pi * dn_ref * gn * dz / (wavelength_nm * 1e-9)
+            mods.append(-dloss * jnp.log(10.0) / 20.0 - 1j * dphi)
+        f["ref"], q["ref"] = f_ref, q_ref
+        # accumulate along the guide: a_k = D[a_{k-1}] + m_k, D = one
+        # section's transit as a Pade(1,1) all-pass, 2 x - in with
+        # (tau/2) x' + x = in
+        acc = mods[0]
+        for k in range(1, n):
+            xk = getattr(s, f"x{k}")
+            f[f"x{k}"] = xk - acc
+            q[f"x{k}"] = 0.5 * tau * xk
+            acc = (2.0 * xk - acc) + mods[k]
+        n0 = neff + (neff - n_group) / center_wavelength_nm * (
+            wavelength_nm - center_wavelength_nm)
+        phi0 = 2.0 * jnp.pi * n0 * length_um / wavelength_nm * 1000.0
+        T = (10.0 ** (-loss_dB_cm * length_um / 1e4 / 20.0)
+             * jnp.exp(-1j * phi0) * jnp.exp(acc))
+        S = jnp.array([[0.0, T], [T, 0.0]], dtype=jnp.complex128)
+        iv = s_to_y(S) @ jnp.array([signals.p1, signals.p2],
+                                   dtype=jnp.complex128)
+        f["p1"], f["p2"] = iv[0], iv[1]
+        return f, q
+
+    return PNPhaseShifterTW
+
+
 def _lti_vt(A, B, C, D, zin: float = 0.0):
     """Electrical LTI voltage-transfer block from a real state-space.
 
@@ -3024,7 +3200,9 @@ def build_models(sky130_geoms: dict[str, tuple[str, float, float, str]] | None =
     for key, (kind, bank, dt_n) in (noisy or {}).items():
         models[key] = _NOISY_BUILDERS[kind](bank, dt_n)
     for key, payload in (ltis or {}).items():
-        if "real" in payload:
+        if "pn_tw" in payload:
+            models[key] = _pn_phase_shifter_tw(payload["pn_tw"])
+        elif "real" in payload:
             A, B, C, D, zin = payload["real"]
             models[key] = _lti_vt(A, B, C, D, zin)
         elif "cplx_drop" in payload:

@@ -185,6 +185,31 @@ S.pn_phase_shifter = {
     <line class="${OPT}" x1="80" y1="30" x2="100" y2="30"/>`,
 };
 
+S.pn_phase_shifter_tw = {
+  // traveling-wave PN shifter: the same doped rib as the lumped part, but
+  // under a long transmission-line electrode fed at e_in (p1 end) and
+  // terminated at e_out; the wave arrow and the section taps say "TW"
+  w: 140, h: 60,
+  pins: { p1: [0, 30], p2: [140, 30], e_in: [20, 0], e_out: [120, 0], ref: [70, 60] },
+  label: [0, -6], pinLabels: true,
+  draw: () => `
+    <line class="${OPT}" x1="0" y1="30" x2="14" y2="30"/>
+    <rect class="${EL} body-fill" x="14" y="16" width="112" height="30"/>
+    <line class="${OPT}" x1="14" y1="31" x2="126" y2="31" stroke-width="2.4"/>
+    <text x="17" y="27" style="font-size:9px">p</text>
+    <text x="17" y="43" style="font-size:9px">n</text>
+    <rect class="${EL}" x="20" y="6" width="100" height="4"/>
+    <line class="${EL}" x1="20" y1="0" x2="20" y2="6"/>
+    <line class="${EL}" x1="120" y1="0" x2="120" y2="6"/>
+    ${[34, 52, 70, 88, 106].map((x) =>
+      `<line class="${EL}" x1="${x}" y1="10" x2="${x}" y2="16" stroke-width="1"/>`).join("")}
+    <path class="${EL}" d="M58 3 h22 m0 0 l-4 -2.5 m4 2.5 l-4 2.5" stroke-width="1" fill="none"/>
+    <text x="96" y="27" style="font-size:9px;font-weight:700">TW</text>
+    <rect class="${EL}" x="60" y="46" width="20" height="4"/>
+    <line class="${EL}" x1="70" y1="50" x2="70" y2="60"/>
+    <line class="${OPT}" x1="126" y1="30" x2="140" y2="30"/>`,
+};
+
 S.ring_mod = {
   w: 100, h: 80,
   pins: { pin: [0, 70], pout: [100, 70], vp: [20, 0], vn: [50, 0], gnd: [80, 0] },
@@ -995,6 +1020,7 @@ const HEADLINE_PARAM = {
   edfa: "g0_db",
   ring_mod_inj: "tau_c", mzm_seg: "vpi", ring_selfheat: "rth_k_w",
   phase_shifter: "vpi", pn_phase_shifter: "length_m",
+  pn_phase_shifter_tw: "length_m",
   waveguide: "length_m", splitter: "split_ratio", dir_coupler: "coupling",
   grating: "center_wavelength_nm", opt_filter: "center_nm", opt_mirror: "R",
   opt_atten: "atten_db",

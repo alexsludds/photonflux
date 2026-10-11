@@ -6,7 +6,7 @@
     "notes": [
       {
         "x": 40,
-        "y": -230,
+        "y": -300,
         "title": "Coupling-modulated ring \u2014 what this testbench does",
         "lines": [
           "A microring whose bus coupler is itself an MZI: 50/50",
@@ -22,7 +22,8 @@
           "over-coupled (broad, -11 dB) through critical (null) to",
           "under-coupled (narrow, -7 dB) while the resonance stays",
           "within 3 pm: the junctions modulate the coupling, not",
-          "the round-trip phase. ring = intracavity power.",
+          "the round-trip phase. Probe ring (hidden) is the",
+          "intracavity power: untick its Hide from plots to see it.",
           "",
           "Set DC1.coupling = DC2.coupling = 0.3 and re-run: the",
           "drive now leaks into the ring phase, so the notch walks",
@@ -290,7 +291,8 @@
       {
         "name": "ring",
         "at": "WG_R1,p1",
-        "color": "#e6862c"
+        "color": "#e6862c",
+        "hide": true
       }
     ]
   },

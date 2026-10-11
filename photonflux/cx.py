@@ -14,7 +14,7 @@ from real Verilog-A:
       ``showmod``). Two backends:
 
       * ``backend="osdi"`` (default): the BSIM4.8 Verilog-A compiled to an
-        OSDI binary by the ChipFlow openvaf fork (``bin/openvaf-ir``) and
+        OSDI binary by the cdaunt openvaf fork (``bin/openvaf-ir``) and
         evaluated natively inside circulax's Newton loop — the same physics
         ngspice would run, exact to the card. Not differentiable through the
         FET's own parameters (the photonics still are).
@@ -768,7 +768,7 @@ def sky130_fet(
 
 
 def openvaf_ir_path() -> Path:
-    """The ChipFlow-fork openvaf binary used for OSDI FET compilation.
+    """The cdaunt-fork openvaf binary (OSDI FET compilation, bosdi VA lowering).
 
     Override with ``PHOTONFLUX_OPENVAF_IR``. See ``toolchain.openvaf_ir_path``.
     """
@@ -782,8 +782,8 @@ def _bsim4_osdi() -> Path:
     binary = openvaf_ir_path()
     if not binary.exists():
         raise FileNotFoundError(
-            f"{binary} not found — the SKY130 FET path needs the ChipFlow "
-            "openvaf fork (github.com/robtaylor/OpenVAF, branch vajax). Build "
+            f"{binary} not found — the SKY130 FET path needs the cdaunt "
+            "openvaf fork (github.com/cdaunt/OpenVAF). Build "
             "and install it in one step:\n"
             "    scripts/build-openvaf.sh\n"
             "then check the toolchain with `python -m photonflux doctor`. To "
@@ -893,7 +893,7 @@ def _hash(*parts: str) -> str:
 def _compile_va(va_path: Path, **kwargs: Any) -> Any:
     """bosdi's VA front end. Since 0.1.7 it shells out to an OpenVAF binary
     found via $OPENVAF_IR (no more openvaf-py binding); default that to our
-    ChipFlow-fork binary, which supports the --dump-json it needs."""
+    bin/openvaf-ir, the cdaunt fork whose --dump-json bosdi targets."""
     import os
 
     from bosdi.va import compile_va

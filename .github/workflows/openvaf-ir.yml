@@ -1,4 +1,4 @@
-# Builds the Linux openvaf-ir (BSIM4 -> OSDI compiler) once and publishes it as
+# Builds the Linux openvaf-ir (bosdi's VA front end + BSIM4 -> OSDI) once and publishes it as
 # the `openvaf-ir` release asset, so the repo-root Dockerfile downloads it
 # instead of compiling Rust + LLVM 18 on every build. Main only: the asset is
 # what main's image uses, so branches must not overwrite it.
@@ -30,7 +30,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          notes="ChipFlow OpenVAF fork (vajax) @ $(cat dist/openvaf-ir.commit), built from ${GITHUB_SHA}. Downloaded by the Dockerfile; not a photonflux release."
+          notes="cdaunt OpenVAF fork @ $(cat dist/openvaf-ir.commit), built from ${GITHUB_SHA}. Downloaded by the Dockerfile; not a photonflux release."
           if gh release view openvaf-ir >/dev/null 2>&1; then
             gh release upload openvaf-ir dist/openvaf-ir-linux-x86_64 --clobber
             gh release edit openvaf-ir --notes "$notes"

@@ -76,8 +76,9 @@ SETUPTOOLS_SCM_PRETEND_VERSION_FOR_BOSDI=0.1.9.dev0+g0327afb0855715a670165cdbc87
 .venv-circulax/bin/pip install volare
 .venv-circulax/bin/python -m volare enable --pdk sky130 <commit>   # -> ~/.volare/sky130A
 
-# openvaf-ir — required for every SKY130 FET example/circuit: the FET path
-# needs the ChipFlow `vajax` OpenVAF fork, which has no wheel. Build + install it as bin/openvaf-ir in one step:
+# openvaf-ir — required for every circuit: bosdi lowers each Verilog-A model
+# with it and the SKY130 FET path compiles BSIM4 with it. It is the cdaunt
+# OpenVAF fork, which has no wheel. Build + install it as bin/openvaf-ir in one step:
 scripts/build-openvaf.sh                             # needs Rust + LLVM 18
 
 # verify the toolchain is complete before running anything
@@ -237,14 +238,14 @@ Native arm64 for local dev; the container rebuilds the native pieces for Linux.
 
 | component | role | source |
 |---|---|---|
-| `bin/openvaf-ir` | Verilog-A → OSDI for circulax (BSIM4-correct) | [robtaylor/OpenVAF](https://github.com/robtaylor/OpenVAF) branch `vajax` |
+| `bin/openvaf-ir` | Verilog-A front end for bosdi (`--dump-json`) and Verilog-A → OSDI (BSIM4-correct) | [cdaunt/OpenVAF](https://github.com/cdaunt/OpenVAF) @ `89a1f79` |
 | `libngspice` | SKY130 PDK card extraction only (no simulation) | Homebrew (apt in the container) |
 | SKY130 PDK | CMOS transistors | volare (`~/.volare/sky130A`) |
 | `.venv-circulax` | circulax 0.2.4 + bosdi ([#34](https://github.com/gdsfactory/bosdi/pull/34) head) + JAX | pip |
 
 ### Rebuilding openvaf-ir
 
-`scripts/build-openvaf.sh` does all of the below — clone the `vajax` fork,
+`scripts/build-openvaf.sh` does all of the below — fetch the pinned fork commit,
 locate LLVM 18, build, and install `bin/openvaf-ir` (idempotent; `--force`
 to rebuild). It needs Rust (https://rustup.rs) and LLVM 18
 (`brew install llvm@18`). The manual recipe, if you want to run it by hand
@@ -254,15 +255,16 @@ to rebuild). It needs Rust (https://rustup.rs) and LLVM 18
 ```bash
 brew install llvm@18 ngspice libngspice
 
-git clone -b vajax https://github.com/robtaylor/OpenVAF && cd OpenVAF
+git clone https://github.com/cdaunt/OpenVAF && cd OpenVAF
+git checkout 89a1f798c0768f30743ef7e9bf6cca6eebd24307
 LLVM_SYS_181_PREFIX=/opt/homebrew/opt/llvm@18 LLVM_SYS_181_PREFER_DYNAMIC=1 \
 cargo build --release -p openvaf-driver --bin openvaf-r --features llvm18
 # install the produced binary as bin/openvaf-ir
 ```
 
-(The ChipFlow fork already carries the `-syslibroot $(xcrun --show-sdk-path)
--lSystem` linker fix needed so modern `ld` links the `.osdi` dylibs. The
-container build in `Dockerfile` does the Linux equivalent from source.)
+(On macOS the fork links the `.osdi` dylibs through clang, which supplies the
+SDK and `-lSystem`. The Linux binary for the container is built by
+[`docker/openvaf-ir.Dockerfile`](docker/openvaf-ir.Dockerfile) in CI.)
 
 ## Writing a new photonic model
 

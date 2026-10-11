@@ -5,8 +5,8 @@
 # that can run a container (GitHub Codespaces via ghcr.io, Google Cloud Run,
 # a VPS, …). The whole app is one origin, so there is no CORS/frontend change.
 #
-# The SKY130 FET path needs a Linux `openvaf-ir` (the ChipFlow OpenVAF fork,
-# branch `vajax`, which has no upstream release) and freshly-compiled Linux
+# bosdi's Verilog-A lowering and the SKY130 FET path need a Linux `openvaf-ir`
+# (the cdaunt OpenVAF fork, which has no upstream release) and freshly-compiled Linux
 # `.osdi`. Compiling openvaf-ir takes Rust + LLVM 18, so CI builds it once
 # (docker/openvaf-ir.Dockerfile, .github/workflows/openvaf-ir.yml) and this
 # image downloads that release asset (OPENVAF_IR_URL).

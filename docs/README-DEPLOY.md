@@ -18,7 +18,7 @@ Everything is in the repo-root [`Dockerfile`](../Dockerfile) + build-time
 | circulax 0.2.4 | PyPI (pure-python) | the solver |
 | **bosdi** | **built from source** | Verilog-A → JAX lowering and the OSDI loader. Pinned to the head of [gdsfactory/bosdi#34](https://github.com/gdsfactory/bosdi/pull/34) (`BOSDI_REF`), built in the Dockerfile's `bosdi-wheel` stage (Rust + C++); back to the PyPI wheel once released |
 | libngspice0 | apt | SKY130 model-card extraction |
-| **openvaf-ir** | **`openvaf-ir` release asset** | ChipFlow fork `robtaylor/OpenVAF@vajax`, LLVM 18 — built once by CI ([`openvaf-ir.yml`](../.github/workflows/openvaf-ir.yml)), downloaded via `OPENVAF_IR_URL` |
+| **openvaf-ir** | **`openvaf-ir` release asset** | `cdaunt/OpenVAF@89a1f79`, LLVM 18 — built once by CI ([`openvaf-ir.yml`](../.github/workflows/openvaf-ir.yml)), downloaded via `OPENVAF_IR_URL` |
 | SKY130 PDK | volare | pinned `open_pdks c6d73a35…` |
 | photonic `models/__jax__/*.py` + Linux `*.osdi` | warmup | pre-compiled into the image |
 

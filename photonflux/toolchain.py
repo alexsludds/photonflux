@@ -3,7 +3,7 @@ libngspice (SKY130 card extraction only), and the SKY130 PDK.
 
 Everything is overridable via environment variables:
 
-  PHOTONFLUX_OPENVAF_IR  path to the openvaf-ir binary (ChipFlow OpenVAF fork)
+  PHOTONFLUX_OPENVAF_IR  path to the openvaf-ir binary (cdaunt OpenVAF fork)
   PHOTONFLUX_INCLUDE     Verilog-A include directory (discipline.h, ...)
   NGSPICE_LIBRARY_PATH   libngspice shared library (PDK card extraction)
   SKY130_NGSPICE_LIB     sky130.lib.spice (wins over PDK_ROOT / volare)
@@ -28,10 +28,10 @@ OUT_DIR = REPO / "out"
 
 
 def openvaf_ir_path() -> Path:
-    """The ChipFlow-fork openvaf binary used to compile Verilog-A to OSDI.
+    """The cdaunt-fork openvaf binary: Verilog-A to OSDI, and bosdi's front end.
 
     Override with ``PHOTONFLUX_OPENVAF_IR``. Built from
-    github.com/robtaylor/OpenVAF (branch ``vajax``); see the README.
+    github.com/cdaunt/OpenVAF (pinned in scripts/build-openvaf.sh); see the README.
     """
     env = os.environ.get("PHOTONFLUX_OPENVAF_IR")
     if env:

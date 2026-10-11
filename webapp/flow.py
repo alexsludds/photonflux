@@ -475,7 +475,8 @@ class _Runner:
         self.base, self.flow, self.log = base, flow, log
         self.steps = list(flow.get("steps") or [])
         self.by_id = {s["id"]: s for s in self.steps}
-        self.label = ""
+        self.step_tag = ""     # "step 3/4" (progress label)
+        self.step_title = ""
         self.design_set: dict | None = None   # set of the step the design is read at
         self.design_tr = False
 
@@ -608,7 +609,8 @@ class _Runner:
         def f(x):
             x = np.clip(x, lo, hi)
             n = len(history) + 1
-            PROGRESS.set_label(f"{self.label} · eval {n}/{iters}")
+            PROGRESS.set_label(f"{self.step_tag}, eval {n}/{iters}, "
+                               f"{self.step_title}")
             v2, o2 = dict(vars_), dict(overrides)
             for (kind, name), xi in zip(keys, x):
                 if kind == "var":
@@ -758,9 +760,9 @@ class _Runner:
                 rec["status"] = "not run"
                 out.append(rec)
                 continue
-            self.label = (f"step {k + 1}/{len(self.steps)} · "
-                          f"{rec['title']}")
-            PROGRESS.set_label(self.label)
+            self.step_tag = f"step {k + 1}/{len(self.steps)}"
+            self.step_title = rec["title"]
+            PROGRESS.set_label(f"{self.step_tag}, {self.step_title}")
             t0 = time.perf_counter()
             self.log.append(f"[{k + 1}] {rec['title']} ({kind})")
             try:

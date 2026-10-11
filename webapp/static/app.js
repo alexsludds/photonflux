@@ -2494,8 +2494,8 @@ function startProgressPoll() {
     try { p = await (await fetch("/api/progress")).json(); }
     catch { return; }
     if (stopped || !p || !p.active) return;
-    // a flow names its stage ("step 3/4 · Optimize · eval 12/30")
-    const stage = p.label ? `${p.label} · ` : "";
+    // a flow names its stage ("step 3/4, eval 12/30, <step title>")
+    const stage = p.label ? `${p.label}, ` : "";
     if (p.frac > 0 || p.phase === "solving") {
       seenFrac = true;
       bar.classList.remove("indeterminate");

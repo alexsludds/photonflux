@@ -145,7 +145,7 @@ brings the tab's own analysis back. Steps share **flow variables**:
 
 **Run flow** (Cmd+Enter) runs every step; the caret runs from the selected
 step or just that step (Shift / Alt + Cmd+Enter), reusing the last run's
-variables. The progress bar names the stage (`step 3/4 · eval 12/50`) and
+variables. The progress bar names the stage (`step 3/4, eval 12/50, <step title>`) and
 Stop cancels the whole flow. The **Flow** results tab shows the step chain,
 a mini plot per step (sweep with located points marked, eye, optimizer
 history), the scorecard (value the earlier steps measured vs. the evaluated

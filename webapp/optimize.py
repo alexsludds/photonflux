@@ -140,7 +140,9 @@ def nelder_mead(f, x0, lo, hi, iters: int):
     Clipping to the box makes the simplex propose the same point again (a
     reflection past a bound lands on it); those repeats are answered from a
     memo and do not count against ``iters`` -- each evaluation is a full
-    simulation. A cap on proposals keeps a collapsed simplex from looping."""
+    simulation. Proposals past the budget are rejected unevaluated, so ``f``
+    runs at most ``iters`` times; a cap on proposals keeps a collapsed simplex
+    from looping."""
     calls = {"n": 0, "proposals": 0}
     memo: dict = {}
 
@@ -150,6 +152,8 @@ def nelder_mead(f, x0, lo, hi, iters: int):
         # rounding would merge distinct small-SI values (1e-14 F, ...)
         key = tuple(np.asarray(x, float).tolist())
         if key not in memo:
+            if calls["n"] >= iters:     # budget spent mid-iteration: no new
+                return np.inf           # simulation, the point is rejected
             calls["n"] += 1
             memo[key] = f(x)
         return memo[key]

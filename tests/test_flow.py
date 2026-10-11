@@ -77,6 +77,7 @@ def test_nelder_mead_memo_keeps_small_values_distinct():
                               np.array([1e-13]), 30)
     best = simplex[int(np.argmin(fs))][0]
     assert len(set(seen)) == len(seen) > 10      # no repeats, many points
+    assert len(seen) <= 30                        # never past the budget
     assert best == pytest.approx(3e-14, rel=0.05)
 
 

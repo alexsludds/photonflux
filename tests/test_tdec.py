@@ -273,6 +273,41 @@ def test_measure_pam4_reference_ffe_recovers_isi(needs_pam4):
         eq["tdecq_outer"] < raw["tdecq_outer"]
 
 
+def test_tdecq_reference_follows_the_lane_rate():
+    """200G/lane takes P802.3dj Clause 180, 100G/lane 802.3cd."""
+    dj, cd = tdec.tdecq_reference(106.25e9), tdec.tdecq_reference(53.125e9)
+    assert tdec.tdecq_reference(113.4375e9) == dj
+    assert (dj["ser"], dj["ffe_taps"], dj["ffe_pre"], dj["dfe_taps"],
+            dj["limits"]) == (4.56e-4, 15, 3, 1, "802.3dj")
+    assert (cd["ser"], cd["ffe_taps"], cd["ffe_pre"], cd["dfe_taps"],
+            cd["limits"]) == (4.8e-4, 5, 1, 0, None)
+
+
+def test_measure_pam4_defaults_at_200g_lane(needs_pam4):
+    """At 106.25 GBd the defaults are 802.3dj's -- 15-tap FFE + one DFE
+    tap inside the D3.2 limits, SER 4.56e-4 -- while ffe_taps=0 stays
+    unequalized (no silent DFE-only equalizer)."""
+    import stateye
+    from photonflux.signals import pam4_gray
+
+    baud = 106.25e9
+    dt = 1.0 / baud / SPS
+    sym = np.roll(pam4_gray(np.tile(prbs(13), 2)), 64)
+    lv = PAM4_LEVELS[sym]
+    isi = lv + 0.3 * (np.concatenate([[lv[0]], lv[:-1]]) - lv.mean())
+    p = np.repeat(isi, SPS) + 0.002 * np.random.default_rng(1).standard_normal(
+        isi.size * SPS)
+    raw = tdec.measure_pam4(p, dt, baud, ffe_taps=0, strict=False)
+    eq = tdec.measure_pam4(p, dt, baud, symbols=sym)
+    assert "ffe_taps" not in raw and raw["tdecq_ser"] == 4.56e-4
+    assert len(eq["ffe_taps"]) == 15 and len(eq["dfe_b"]) == 1
+    assert eq["tdecq_ser"] == 4.56e-4
+    assert stateye.tap_limit_violations(eq["ffe_taps"], 3, eq["dfe_b"]) == []
+    assert np.isfinite(eq["tdecq_outer"])
+    assert not np.isfinite(raw["tdecq_outer"]) or \
+        eq["tdecq_outer"] < raw["tdecq_outer"]
+
+
 def test_fractional_samples_per_ui_is_resampled(needs_pam4):
     """stateye assumes whole samples/UI; a 24.93-sample grid used to score
     a clean eye at ~28 dB TDECQ (and 24.5 crashed). The bridge resamples."""

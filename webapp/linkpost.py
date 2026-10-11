@@ -44,7 +44,8 @@ def _uniform(t, v, ui, osr=16):
 def _tdecq_report(t, values, pattern: dict, ui: float, cfg: dict,
                   log: list) -> dict | None:
     """IEEE TDECQ of a PAM-4 *optical* probe via stateye, raw and through
-    the 5-tap reference FFE designed on the known source pattern.
+    the lane rate's reference equalizer (802.3dj: 15-tap FFE + 1 DFE tap;
+    802.3cd: 5-tap FFE) designed on the known source pattern.
 
     TDECQ proper uses OMA_outer, which needs a run of 7 threes and 6 zeros
     (a full PRBS-13Q). Shorter canvas records fall back to TDECQ on the
@@ -61,12 +62,17 @@ def _tdecq_report(t, values, pattern: dict, ui: float, cfg: dict,
     p = np.interp(tu, t, np.asarray(values, float))
     nsym = int(np.ceil((tu[-1] - tu[0]) / ui)) + 1
     sym = np.rint(_tx_fracs(pattern, nsym) * 3).astype(int)
-    s_noise = float(cfg.get("tdecq_s_noise", 0.005))   # as mrm_pam4_tdecq.py
+    # S credits measured scope noise back to the transmitter; a simulated
+    # probe has none
+    s_noise = float(cfg.get("tdecq_s_noise", 0.0))
+    ser = cfg.get("tdecq_ser")
+    ref = tdec.tdecq_reference(1.0 / ui)
     kw = dict(s_noise_mW=s_noise,
-              ser=float(cfg.get("tdecq_ser", 4.8e-4)), strict=False)
+              ser=ref["ser"] if ser in (None, "", "auto") else float(ser),
+              strict=False)
     try:
         raw = tdec.measure_pam4(p, dt, 1.0 / ui, ffe_taps=0, **kw)
-        eq = tdec.measure_pam4(p, dt, 1.0 / ui, ffe_taps=5, symbols=sym, **kw)
+        eq = tdec.measure_pam4(p, dt, 1.0 / ui, symbols=sym, **kw)
     except Exception as exc:  # noqa: BLE001 -- an optional report line must
         # never take the transient result down with it
         log.append(f"link report: TDECQ unavailable "
@@ -82,14 +88,18 @@ def _tdecq_report(t, values, pattern: dict, ui: float, cfg: dict,
     if not np.isfinite(v_eq):
         log.append("link report: TDECQ undefined (eye closed)")
         return None
-    log.append(f"link report: TDECQ {v_eq:.3f} dB with the 5-tap reference "
-               f"FFE (C_eq {eq['ceq']:.3f}), {v_raw:.3f} dB unequalized"
+    b = eq.get("dfe_b") or []
+    log.append(f"link report: TDECQ {v_eq:.3f} dB with the {ref['standard']} "
+               f"reference equalizer ({len(eq['ffe_taps'])}-tap FFE"
+               + (f" + DFE b {b[0]:.3f}" if b else "")
+               + f", C_eq {eq['ceq']:.3f}), {v_raw:.3f} dB unequalized"
                + ("" if fam == "outer" else
                   "; OMA_outer needs a full PRBS-13Q record, so this is "
                   "TDECQ on the crossing-point OMA"))
     return {"tdecq_db": v_eq, "tdecq_raw_db": v_raw, "family": fam,
             "s_noise_mw": s_noise, "ser": kw["ser"],
-            "ceq": eq["ceq"], "ffe_taps": eq["ffe_taps"],
+            "ceq": eq["ceq"], "ffe_taps": eq["ffe_taps"], "dfe_b": b,
+            "standard": ref["standard"],
             "oma_mw": float(eq.get(f"oma_{fam}", np.nan))}
 
 

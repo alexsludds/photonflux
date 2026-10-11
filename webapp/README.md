@@ -165,9 +165,14 @@ Example 48 is the worked case: the coupling-modulated ring of example 47 at
 length and ring length against RLM > 0.95, TDECQ < 1.5 dB, relOMA > -2 dB,
 ER > 3.5 dB. Its device assumptions are flow variables (see the canvas note):
 with lumped junctions driven through 50 Ohm the junction RC caps it well
-short of the spec (relOMA -4.9 dB, TDECQ 2.4 dB). Example 49 runs the same
-flow on traveling-wave PN arms: TDECQ 1.3 dB, RLM 0.95 and ER 4.9 dB pass,
-relOMA -3.1 dB still misses -- the 2 Vpp swing, not bandwidth, now limits.
+short of the spec (relOMA -4.9 dB, TDECQ 2.4 dB; scored through a 5-tap FFE
+with S = 0.005 mW, before the flows switched to the 802.3 reference settings
+and S = 0). Example 49 runs the flow on traveling-wave PN arms with real
+optical transit (`transit` = delayed), a 10 um / 0.3 dB/cm feedback delay
+line and both couplers as knobs: relOMA -5.6 dB, TDECQ 2.3 dB, RLM 0.92,
+ER 1.9 dB all miss. The ring's photon lifetime (~6 UI) now limits; with
+quasi-static optics the same design had scored near relOMA -3.6 dB /
+TDECQ 1.4 dB.
 
 ## Serial-link (SERDES) workflow
 
@@ -187,16 +192,23 @@ relOMA -3.1 dB still misses -- the 2 Vpp swing, not bandwidth, now limits.
   families fold together.
   Its **stateye** row scores whatever eye is shown (`POST /api/eyemeasure`,
   `webapp/eyemeasure.py`): PAM4 -> IEEE TDECQ, raw and through the reference
-  FFE; NRZ -> TDEC and OMA - TDEC. Settings: reference-receiver bandwidth
-  (x baud, or off) and order, FFE taps and pre-cursors, DFE taps (802.3dj
-  D2.1: one, 0 <= b <= 0.3), how the taps adapt (noise-aware MMSE block
-  solve, normalized LMS with step mu and passes, TDECQ-optimal Nelder-Mead
-  on TDECQ itself -- the 802.3 definition, slow, with live "evaluation i/n"
-  progress -- or manual taps), the P802.3dj D2.1 Table 180-15 reference-
-  equalizer limits (on by default: the search stays inside them, MMSE/LMS
-  taps are projected into them), training on the PRBS source's pattern or
-  decision-directed,
-  target SER/BER, scope noise S, and the histogram grid. "show scored eye"
+  equalizer; NRZ -> TDEC and OMA - TDEC. Settings: reference-receiver
+  bandwidth (x baud, or off) and order, FFE taps and pre-cursors, DFE taps,
+  how the taps adapt (noise-aware MMSE block solve -- what P802.3dj D3.1+
+  specifies --, normalized LMS with step mu and passes, TDECQ-optimal
+  Nelder-Mead on TDECQ itself -- the Clause 121 definition, slow, with live
+  "evaluation i/n" progress -- or manual taps), the P802.3dj D3.2 Table
+  180-16 reference-equalizer limits (w(0) >= 0.9 - b(1), the pre/post
+  difference including the DFE tap, 0 <= b <= 0.33; on by default at
+  200G/lane -- 802.3cd sets none at 100G/lane -- the search stays inside
+  them, MMSE/LMS taps are projected into them), training
+  on the PRBS source's pattern or decision-directed,
+  target SER/BER, scope noise S, and the histogram grid. FFE taps,
+  pre-cursors, DFE taps and target SER default to "auto": the lane rate's
+  standard -- 802.3dj at 200G/lane (15 taps, 3 pre, 1 DFE, SER 4.56e-4),
+  802.3cd at 100G/lane (5 taps, 1 pre, no DFE, SER 4.8e-4). S defaults to
+  0: 802.3 credits scope noise back to the transmitter, and a simulated
+  trace has none. "show scored eye"
   draws the eye stateye measured (after the reference receiver and FFE,
   time-aligned to the probe).
 * **Link tab / BER report**: pick a received probe in the Link tab's
@@ -254,7 +266,13 @@ traces a 2001-point spectrum in about a second.
 * **Waveguide**: first-order dispersion via the group index
   (`n(lam) = neff + (neff - n_group)(lam - lam_c)/lam_c`) plus dB/cm loss.
   Interferometer FSR comes out as lam^2/(n_group dL) — the group index, not
-  n_eff, which is the standard trap.
+  n_eff, which is the standard trap. `transit` = quasi-static (default)
+  applies the transmission instantly; `delayed` adds the real group delay
+  L n_g / c in both directions (Pade all-pass stages of <= 0.5 ps, group
+  delay within ~1 % to 60 GHz; past 64 stages, ~2.4 mm, the stages grow
+  and the run log warns), so a ring closed by such guides has its round
+  trip and photon lifetime (`tests/test_transit.py`). Identical at DC;
+  about 3x the transient cost in example 49.
 * **Y-splitter**: lossless 1x2, `split_ratio` to p2. It is reciprocal —
   wire a second one in reverse (feed p2/p3, take p1) and it is the coherent
   combiner of an MZI; power missing at destructive interference is the
@@ -468,7 +486,8 @@ strength in the other.
   ring's Q ~ 80k sets the catch — RLM >= 0.94 only within +-0.5 pm of
   drift. The optics are quasi-static (steady-state waveguides), so the eye
   shows level placement, not photon-lifetime bandwidth
-  (`tests/test_pn_phase_shifter.py` pins it).
+  (`tests/test_pn_phase_shifter.py` pins it); set `transit` = delayed on
+  the ring's parts for the real round trip, as example 49 does.
 * **PN phase shifter, traveling-wave** (`pn_phase_shifter_tw`, its own
   long symbol with the electrode strip): the lumped part's junction physics
   distributed under a transmission-line electrode. Drive `e_in` (at the `p1`
@@ -483,7 +502,10 @@ strength in the other.
   modelled rather than approximated by a pole. `n_sections` 0 picks one
   section per <= 100 um (accurate to ~60 GHz). At DC it equals the lumped
   part; `tests/test_pn_phase_shifter_tw.py` pins the line impedance and delay
-  and the walk-off. Example 49 is example 48 with traveling-wave arms.
+  and the walk-off. `transit` = delayed carries the field itself through
+  every section (instead of only the phase change), so the part adds its
+  full group delay, as Waveguide does. Example 49 is example 48 with
+  traveling-wave arms and real optical transit.
 * **Bring your own .va**: the palette's "Upload .va" button compiles any
   Verilog-A file through openvaf/bosdi into a placeable JAX component
   (ports from the module, parameters with their defaults). Uploads persist

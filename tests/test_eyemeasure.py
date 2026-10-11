@@ -19,21 +19,21 @@ UI = 1.0 / BAUD
 FAST = {"nx": 128, "ny": 512}
 
 
-def _trace(mode, nsym=600, post=0.25, noise=0.002):
-    pat = {"mode": mode, "order": 13, "seed": 1, "ui": UI}
+def _trace(mode, nsym=600, post=0.25, noise=0.002, ui=UI):
+    pat = {"mode": mode, "order": 13, "seed": 1, "ui": ui}
     fr = wavesrc._symbols(pat, nsym)
     lv = 0.1 + 0.3 * fr
     isi = lv + post * (np.concatenate([[lv[0]], lv[:-1]]) - lv.mean())
-    t = np.arange(int(nsym * SPS)) * UI / SPS
-    v = isi[np.minimum((t / UI).astype(int), nsym - 1)]
+    t = np.arange(int(nsym * SPS)) * ui / SPS
+    v = isi[np.minimum((t / ui).astype(int), nsym - 1)]
     v = v + noise * np.random.default_rng(0).standard_normal(v.size)
     return t, v, pat
 
 
-def _payload(mode, cfg):
-    t, v, pat = _trace(mode)
-    return {"t": t.tolist(), "values": v.tolist(), "unit": "mW", "ui": UI,
-            "levels": 4 if mode == "pam4" else 2, "skip_s": 10 * UI,
+def _payload(mode, cfg, ui=UI):
+    t, v, pat = _trace(mode, ui=ui)
+    return {"t": t.tolist(), "values": v.tolist(), "unit": "mW", "ui": ui,
+            "levels": 4 if mode == "pam4" else 2, "skip_s": 10 * ui,
             "pattern": pat, "cfg": {**FAST, "s_noise": 0.005, **cfg}}
 
 
@@ -55,6 +55,23 @@ def test_no_equalizer_scores_the_raw_eye():
     assert r["ok"] and r["tdecq_db"] == r["tdecq_raw_db"] and r["taps"] == []
 
 
+def test_auto_settings_at_200g_lane():
+    """At 106.25 GBd "auto" is the 802.3dj reference -- 15-tap FFE (3 pre)
+    + 1 DFE tap inside the D3.2 limits, SER 4.56e-4 -- and FFE taps 0 is
+    unequalized: no DFE-only equalizer sneaks in."""
+    ui = 1.0 / 106.25e9
+    r = eyemeasure.measure(_payload("pam4", {}, ui=ui))
+    assert r["ok"], r.get("error")
+    assert r["standard"] == "802.3dj" and r["ser_target"] == 4.56e-4
+    assert len(r["taps"]) == 15 and len(r["dfe_b"]) == 1
+    assert r["violations"] == []
+    from stateye.equalization import tap_limit_violations
+    assert tap_limit_violations(r["taps"], 3, r["dfe_b"]) == []
+    off = eyemeasure.measure(_payload("pam4", {"taps": 0}, ui=ui))
+    assert off["ok"] and off["dfe_b"] == [] and off["taps"] == []
+    assert off["tdecq_db"] == off["tdecq_raw_db"]
+
+
 def test_nrz_reports_tdec():
     r = eyemeasure.measure(_payload("nrz", {"ber": 1e-12}))
     assert r["ok"], r.get("error")
@@ -69,11 +86,11 @@ def test_bad_input_is_a_clean_error():
 
 
 def test_dfe_and_802_3dj_limits():
-    """A DFE tap comes back in the standard's normalization, inside 0..0.3;
-    with limits on, the reported equalizer is a legal 802.3dj one."""
+    """A DFE tap comes back in the standard's normalization, inside
+    0..0.33; the reported equalizer is a legal 802.3dj one."""
     r = eyemeasure.measure(_payload("pam4", {"method": "mmse", "dfe": 1}))
     assert r["ok"], r.get("error")
-    assert len(r["dfe_b"]) == 1 and 0.0 <= r["dfe_b"][0] <= 0.3
+    assert len(r["dfe_b"]) == 1 and 0.0 <= r["dfe_b"][0] <= 0.33
     assert r["violations"] == []
     from stateye.equalization import tap_limit_violations
     assert tap_limit_violations(r["taps"], 1, r["dfe_b"]) == []

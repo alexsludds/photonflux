@@ -11,14 +11,21 @@ Bessel-Thomson at baud/2) and into `stateye` (``photonflux.tdec.measure_pam4``)
 twice:
 
     unequalized     ffe_taps=0
-    reference FFE   5-tap T-spaced FFE (1 pre-cursor), MMSE-designed on the
-                    known PRBS-13Q, noise enhancement C_eq fed into TDECQ
+    reference EQ    the lane rate's 802.3 reference equalizer, MMSE-designed
+                    on the known PRBS-13Q, noise enhancement C_eq fed into
+                    TDECQ: 802.3dj at 200G/lane (15-tap FFE, 3 pre-cursors,
+                    + 1 DFE tap; SER 4.56e-4), 802.3cd at 100G/lane (5-tap
+                    FFE, 1 pre-cursor; SER 4.8e-4)
+
+S (the O/E + scope noise 802.3 credits back to the transmitter) defaults to
+0: the simulated waveform carries no scope noise.
 
 A ring is a Lorentzian, so equal drive steps give unequal optical steps: the
 level-mismatch ratio RLM is reported too, and ``--rlm`` pre-distorts the four
 drive levels so the *static* optical levels come out equally spaced.
 
     python examples/mrm_pam4_tdecq.py                   # 53.125 GBd, 100G/lane
+    python examples/mrm_pam4_tdecq.py --baud 106.25e9   # 200G/lane, 802.3dj
     python examples/mrm_pam4_tdecq.py --baud 26.5625e9  # 50G/lane
     python examples/mrm_pam4_tdecq.py --rlm --detune -40
 
@@ -182,13 +189,18 @@ def main() -> None:
     ap.add_argument("--rlm", action="store_true",
                     help="pre-distort the drive levels for equal optical steps")
     ap.add_argument("--spu", type=int, default=32, help="samples per symbol")
-    ap.add_argument("--s-noise", type=float, default=0.005,
-                    help="TDECQ S: O/E + scope noise std [mW]")
-    ap.add_argument("--ser", type=float, default=4.8e-4,
-                    help="target SER (4.8e-4: 802.3 100G/lane)")
-    ap.add_argument("--ffe-taps", type=int, default=5)
-    ap.add_argument("--dfe", type=int, default=0,
-                    help="DFE taps after the FFE (802.3dj D2.1: 1)")
+    ap.add_argument("--s-noise", type=float, default=0.0,
+                    help="TDECQ S: O/E + scope noise std [mW] (credited back "
+                    "to the transmitter; 0 for a simulated waveform)")
+    ap.add_argument("--ser", type=float, default=None,
+                    help="target SER (default: 4.56e-4 802.3dj at 200G/lane, "
+                    "4.8e-4 802.3cd at 100G/lane)")
+    ap.add_argument("--ffe-taps", type=int, default=None,
+                    help="reference FFE length (default: 15 802.3dj, 5 802.3cd)")
+    ap.add_argument("--ffe-pre", type=int, default=None,
+                    help="pre-cursor taps (default: 3 802.3dj, 1 802.3cd)")
+    ap.add_argument("--dfe", type=int, default=None,
+                    help="DFE taps after the FFE (default: 1 802.3dj, 0 802.3cd)")
     ap.add_argument("--adapt", choices=("mmse", "lms", "optimal"),
                     default="mmse", help="how the equalizer taps adapt")
     ap.add_argument("--max-evals", type=int, default=40,
@@ -220,14 +232,17 @@ def main() -> None:
               flush=True)
 
     eq = tdec.measure_pam4(p, dt, spec.baud, ffe_taps=args.ffe_taps,
+                           ffe_pre=args.ffe_pre,
                            dfe_taps=args.dfe, ffe_method=args.adapt,
                            ffe_max_evals=args.max_evals, symbols=sym,
                            progress=progress, **kw)
-    print("\nTDECQ (reference Rx: BT4 at baud/2, SER "
-          f"{args.ser:g}, S = {args.s_noise} mW)")
+    std = tdec.tdecq_reference(spec.baud)["standard"]
+    eq_tag = (f"{len(eq.get('ffe_taps') or [])}-tap FFE"
+              + (f"+DFE{len(eq['dfe_b'])}" if eq.get("dfe_b") else ""))
+    print(f"\nTDECQ ({std} reference; Rx BT4 at baud/2, SER "
+          f"{eq['tdecq_ser']:g}, S = {args.s_noise} mW)")
     report("unequalized", raw)
-    report(f"{args.ffe_taps}-tap FFE" + (f"+DFE{args.dfe}" if args.dfe else ""),
-           eq)
+    report(eq_tag, eq)
     if eq.get("ffe_taps"):
         rms = (f"   (rms error {eq['ffe_rms_error_before']:.4f} -> "
                f"{eq['ffe_rms_error_after']:.4f} mW)"
@@ -250,8 +265,7 @@ def main() -> None:
             figs.append(m.eye.plot(show=False))
         fig, axes = plt.subplots(1, 2, figsize=(12, 4.6), constrained_layout=True)
         for ax, f, (tag, m) in zip(axes, figs,
-                                   (("unequalized", raw),
-                                    (f"{args.ffe_taps}-tap FFE", eq))):
+                                   (("unequalized", raw), (eq_tag, eq))):
             f.canvas.draw()
             ax.imshow(np.asarray(f.canvas.buffer_rgba()))
             ax.set_axis_off()

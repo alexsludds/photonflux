@@ -100,7 +100,9 @@ def measure(payload: dict) -> dict:
     t_scored = tu[0] + common["settle_ui"] * ui
     try:
         if nlv == 2:
-            m = tdec.measure(p, dt, baud, ber=float(cfg.get("ber", 1e-12)),
+            ber = cfg.get("ber")
+            m = tdec.measure(p, dt, baud, ber=1e-12 if ber in (None, "", "auto")
+                             else float(ber),
                              oma_type=str(cfg.get("oma_type", "4140")),
                              **common)
             fam = m.oma_type
@@ -125,12 +127,22 @@ def measure(payload: dict) -> dict:
 
         method = str(cfg.get("method", "mmse"))
         manual = floats("manual") if method == "manual" else None
+        if method == "manual" and not manual:
+            return {"ok": False, "error": "manual equalizer: enter the FFE "
+                    "taps (e.g. -0.05, 1.1, -0.05)"}
         dfe_manual = floats("manual_dfe") if method == "manual" else None
-        n_dfe = len(dfe_manual) if method == "manual" else int(cfg.get("dfe", 0))
-        pam = dict(common, ser=float(cfg.get("ser", 4.8e-4)))
+        # "auto" (or blank) = the standard's value for this lane rate:
+        # P802.3dj at 200G/lane, 802.3cd at 100G/lane
+        ref = tdec.resolve_reference(
+            baud, ser=cfg.get("ser"),
+            ffe_taps=len(manual) if manual else cfg.get("taps"),
+            ffe_pre=cfg.get("pre"),
+            dfe_taps=len(dfe_manual) if method == "manual" else cfg.get("dfe"),
+            ffe_limits="auto" if cfg.get("limits", True) else None)
+        n_taps, n_pre, n_dfe = ref["ffe_taps"], ref["ffe_pre"], ref["dfe_taps"]
+        pam = dict(common, ser=ref["ser"])
         _status("unequalized eye")
         raw = tdec.measure_pam4(p, dt, baud, ffe_taps=0, **pam)
-        n_taps = len(manual) if manual else int(cfg.get("taps", 5))
 
         def progress(i, n, v, best):
             this = ("outside 802.3dj limits" if v >= 100.0
@@ -141,13 +153,13 @@ def measure(payload: dict) -> dict:
         _status("adapting the equalizer" if method != "optimal"
                 else "TDECQ search: starting")
         eq = raw if n_taps == 0 and n_dfe == 0 else tdec.measure_pam4(
-            p, dt, baud, ffe_taps=n_taps, ffe_pre=int(cfg.get("pre", 1)),
+            p, dt, baud, ffe_taps=n_taps, ffe_pre=n_pre,
             ffe_method=method, symbols=symbols,
             ffe_mu=float(cfg.get("mu", 0.05)),
             ffe_passes=int(cfg.get("passes", 5)), ffe_manual=manual,
             ffe_max_evals=int(cfg.get("max_evals", 40)),
             dfe_taps=n_dfe, dfe_manual=dfe_manual,
-            ffe_limits="802.3dj" if cfg.get("limits", True) else None,
+            ffe_limits=ref["limits"],
             oma_reference={"outer": raw.get("oma_outer"),
                            "xp": raw.get("oma_xp")},
             progress=progress, **pam)
@@ -195,4 +207,5 @@ def measure(payload: dict) -> dict:
             "rms_before": _num(eq.get("ffe_rms_error_before")),
             "rms_after": _num(eq.get("ffe_rms_error_after")),
             "levels": levels, "ser_target": pam["ser"],
+            "standard": ref["standard"],
             "scored": _scored(eq, t_scored, tu, p, ui), "log": log}

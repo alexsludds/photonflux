@@ -3065,25 +3065,31 @@ function syncTdecqControls() {
       || (el.classList.contains("tq-manual") && m !== "manual");
   });
   $("tq-ser").title = nlv === 4
-    ? "Target symbol error rate (802.3 100G/lane: 4.8e-4)"
+    ? "Target symbol error rate. auto = the lane rate's standard: 4.56e-4 (802.3dj, 200G/lane), 4.8e-4 (802.3cd, 100G/lane)"
     : "Target BER for TDEC";
-  if (nlv !== 4 && $("tq-ser").value === "4.8e-4") $("tq-ser").value = "1e-12";
-  if (nlv === 4 && $("tq-ser").value === "1e-12") $("tq-ser").value = "4.8e-4";
+  const ser = $("tq-ser").value.trim().toLowerCase();
+  if (nlv !== 4 && (ser === "auto" || ser === "")) $("tq-ser").value = "1e-12";
+  if (nlv === 4 && ser === "1e-12") $("tq-ser").value = "auto";
 }
 $("tq-method").addEventListener("change", syncTdecqControls);
 $("eye-mod").addEventListener("change", syncTdecqControls);
 
-// the Eye tab's stateye settings (a flow's figures of merit use them too)
+// the Eye tab's stateye settings (a flow's figures of merit use them too);
+// "auto" passes through: the server picks the lane rate's 802.3 value
 function stateyeCfg(nlv) {
   const rxbw = $("tq-rxbw").value.trim().toLowerCase();
+  const auto = (id, parse, bad = 0) => {
+    const v = $(id).value.trim().toLowerCase();
+    return v === "auto" || v === "" ? "auto" : (parse(v) || bad);
+  };
   return {
     rx_bw: rxbw === "auto" ? (nlv === 4 ? 0.5 : 0.75) : (rxbw === "off" ? "off" : parseFloat(rxbw)),
     rx_order: parseInt($("tq-rxorder").value) || 4,
-    taps: parseInt($("tq-taps").value) || 0,
-    dfe: parseInt($("tq-dfe").value) || 0,
+    taps: auto("tq-taps", parseInt),
+    dfe: auto("tq-dfe", parseInt),
     manual_dfe: $("tq-manual-dfe").value,
     limits: $("tq-limits").checked,
-    pre: parseInt($("tq-pre").value) || 0,
+    pre: auto("tq-pre", parseInt),
     method: $("tq-method").value,
     mu: parseFloat($("tq-mu").value) || 0.05,
     passes: parseInt($("tq-passes").value) || 5,
@@ -3093,7 +3099,9 @@ function stateyeCfg(nlv) {
     s_noise: parseFloat($("tq-snoise").value) || 0,
     nx: parseInt($("tq-grid").value.split("x")[0]),
     ny: parseInt($("tq-grid").value.split("x")[1]),
-    [nlv === 4 ? "ser" : "ber"]: parseFloat($("tq-ser").value),
+    // the field holds "auto" until the eye is NRZ: TDEC's BER then is 1e-12
+    [nlv === 4 ? "ser" : "ber"]: nlv === 4 ? auto("tq-ser", parseFloat, "auto")
+      : (parseFloat($("tq-ser").value) || 1e-12),
   };
 }
 
@@ -3163,7 +3171,7 @@ async function measureEye() {
       &nbsp;|&nbsp; OMA<sub>${r.family}</sub> ${fmtSI(r.oma)}${u}
       &nbsp;|&nbsp; ${taps}
       &nbsp;|&nbsp; levels ${r.levels.map((x) => x === null ? "—" : fmtSI(x)).join(" / ")}${u}
-      <span class="tq-dim">(${secs} s)</span>${notes}`;
+      <span class="tq-dim">(${r.standard ? `${r.standard} reference, ` : ""}SER ${r.ser_target}; ${secs} s)</span>${notes}`;
   }
   const rxTxt = cfg.rx_bw === "off" ? "no ref Rx" : `BT${cfg.rx_order} ref Rx at ${cfg.rx_bw}×baud`;
   const eqTxt = r.format === "NRZ" ? "no equalizer"
@@ -3618,8 +3626,9 @@ function renderLink() {
           <tr><th>TDECQ</th><td><b>${rep.tdecq.tdecq_db.toFixed(2)} dB</b>
             <span class="link-hint">(${rep.tdecq.tdecq_raw_db.toFixed(2)} dB unequalized${
               rep.tdecq.family === "outer" ? "" : "; crossing-point OMA — run a full PRBS-13Q for OMA_outer"})</span></td></tr>
-          <tr><th>TDECQ ref. FFE</th><td>${fmtTaps(rep.tdecq.ffe_taps)}
-            <span class="link-hint">(C<sub>eq</sub> ${rep.tdecq.ceq.toFixed(3)};
+          <tr><th>TDECQ ref. EQ</th><td>${fmtTaps(rep.tdecq.ffe_taps)}${
+              (rep.tdecq.dfe_b || []).length ? ` + DFE b ${fmtTaps(rep.tdecq.dfe_b)}` : ""}
+            <span class="link-hint">(${rep.tdecq.standard ? `${rep.tdecq.standard}; ` : ""}C<sub>eq</sub> ${rep.tdecq.ceq.toFixed(3)};
             BT4 ref Rx at baud/2, SER ${rep.tdecq.ser}, S ${fmtSI(rep.tdecq.s_noise_mw * 1e-3)}W)</span></td></tr>` : ""}
           <tr><th>RX FFE taps</th><td>${fmtTaps(rep.ffe_taps)}${eqMode}</td></tr>
           <tr><th>RX DFE taps</th><td>${fmtTaps(rep.dfe_taps)}</td></tr>

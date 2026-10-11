@@ -64,6 +64,26 @@ def tw_sections(n_sections, length_m: float) -> int:
     return max(4, min(16, math.ceil(float(length_m) * 1e6 / TW_SECTION_UM)))
 
 
+TRANSIT_STAGE_S = 0.5e-12   # optical transit: longest Pade all-pass stage
+TRANSIT_MAX_STAGES = 64     # per guide (Waveguide) or per section (TW part)
+
+
+def transit_on(value) -> bool:
+    """A part's ``transit`` setting: "delayed" (or 1) = real optical transit."""
+    return str(value).strip().lower() in ("delayed", "1", "1.0", "true")
+
+
+def transit_stages(length_m: float, n_group: float, n_div: int = 1) -> int:
+    """Pade stages per division of a guide (n_div = 1: the whole guide) so
+    no stage delays more than 0.5 ps: group delay within 1 % to ~60 GHz.
+    Capped at TRANSIT_MAX_STAGES (Waveguide past ~2.4 mm at n_g 4): the
+    stages then grow and the netlister logs the loss of accuracy."""
+    import math
+
+    tau = float(length_m) * float(n_group) / 299792458.0 / max(1, n_div)
+    return max(1, min(TRANSIT_MAX_STAGES, math.ceil(tau / TRANSIT_STAGE_S)))
+
+
 CATALOG: dict[str, dict] = {
     # --- photonic sources & modulators ------------------------------------
     "cw_laser": {
@@ -236,7 +256,14 @@ CATALOG: dict[str, dict] = {
                "polarity +1: the electrode contacts the n side (cathode) and "
                "ref the p side; -1: the electrode contacts the p side. "
                "Accurate while one section's optical transit (length * "
-               "n_group / n_sections / c) is well under 1 / (2 pi f_max).",
+               "n_group / n_sections / c) is well under 1 / (2 pi f_max). "
+               "transit = quasi-static (default) drops the constant transit "
+               "delay; delayed carries the field itself through every "
+               "section (Pade all-pass stages of <= 0.5 ps), each section "
+               "multiplying in its own phase / loss, so the part adds its "
+               "real group delay (a ring through it has its real round "
+               "trip); light entering p2 then sees the sections in reverse "
+               "order. Identical at DC.",
         "ports": _ports("p1:o p2:o e_in:e e_out:e ref:e"),
         "params": [
             _p("length_m", 1000e-6, "m", "Length",
@@ -259,6 +286,8 @@ CATALOG: dict[str, dict] = {
             _p("n_group", 4.0, "", "n_group"),
             _p("center_wavelength_nm", 1310.0, "nm", "Center wavelength"),
             _p("wavelength_nm", 1310.0, "nm", "Operating wavelength"),
+            _p("transit", "quasi-static", "", "Optical transit",
+               rebuild=True, kind="enum", choices=["quasi-static", "delayed"]),
         ],
     },
     "laser_dml": {
@@ -1061,7 +1090,12 @@ CATALOG: dict[str, dict] = {
                "meters (SI suffixes work: 100u, 1.5m, 2). wavelength_nm is "
                "a live parameter — DC-sweep it with instance \"*\" to trace "
                "spectral responses; interferometer FSR follows the *group* "
-               "index: $\\text{FSR} = \\lambda^2/(n_g\\,\\Delta L)$.",
+               "index: $\\text{FSR} = \\lambda^2/(n_g\\,\\Delta L)$. "
+               "transit = quasi-static (default) applies the transmission "
+               "instantly; delayed adds the group delay "
+               "$L\\,n_g/c$ in each direction (Pade all-pass stages of "
+               "<= 0.5 ps), so a ring closed by it has its real round trip "
+               "and photon lifetime. Identical at DC.",
         "ports": _ports("p1:o p2:o"),
         "params": [
             # UI is SI meters; circulax wants um -> mapped in simulate.py
@@ -1072,6 +1106,8 @@ CATALOG: dict[str, dict] = {
             _p("n_group", 4.0, "", "n_group"),
             _p("center_wavelength_nm", 1310.0, "nm", "Center wavelength"),
             _p("wavelength_nm", 1310.0, "nm", "Operating wavelength"),
+            _p("transit", "quasi-static", "", "Optical transit",
+               rebuild=True, kind="enum", choices=["quasi-static", "delayed"]),
         ],
     },
     "splitter": {
@@ -2406,7 +2442,70 @@ def _pn_phase_shifter():
     return PNPhaseShifter
 
 
-def _pn_phase_shifter_tw(n_sec: int = 10):
+def _transit_stage(f: dict, q: dict, x, name: str, z, tau):
+    """One Pade(1,1) all-pass delay of ``tau`` on the complex envelope z:
+    (tau/2) x' + x = z, out = 2 x - z. Exact magnitude; the group delay is
+    tau at DC and ~1 % short at 2 pi f tau = 0.17."""
+    f[name] = x - z
+    q[name] = 0.5 * tau * x
+    return 2.0 * x - z
+
+
+def _transit_ports(f: dict, s, signals, Ts, fwd, bwd) -> None:
+    """Close a delayed two-port in the power-wave form the nodal solver uses
+    (node V = a + b, port current I = a - b): the incident waves
+    a = V - b run through ``fwd`` / ``bwd`` (the delay chains) and leave the
+    far port as b = Ts * chain(a); b1, b2 are algebraic states."""
+    b1, b2 = s.b1, s.b2
+    f["b2"] = b2 - Ts * fwd(signals.p1 - b1)
+    f["b1"] = b1 - Ts * bwd(signals.p2 - b2)
+    f["p1"] = signals.p1 - 2.0 * b1
+    f["p2"] = signals.p2 - 2.0 * b2
+
+
+def _waveguide_transit(n_st: int):
+    """Waveguide with its real group delay: the quasi-static part's
+    transmission at the operating wavelength (phase, loss) times a chain of
+    n_st Pade all-pass stages of length * n_group / (n_st c) per direction.
+    At DC identical to OpticalWaveguide."""
+    import jax.numpy as jnp
+    from circulax.components.base_component import Signals, States, component
+
+    c0 = 299792458.0
+    n = int(n_st)
+    states = tuple([f"f{k}" for k in range(n)] + [f"r{k}" for k in range(n)]
+                   + ["b1", "b2"])
+
+    @component(ports=("p1", "p2"), states=states)
+    def WaveguideTransit(signals: Signals, s: States, length_um: float = 100.0,
+                         loss_dB_cm: float = 1.0, neff: float = 2.4,
+                         n_group: float = 4.0,
+                         center_wavelength_nm: float = 1310.0,
+                         wavelength_nm: float = 1310.0) -> tuple[dict, dict]:
+        n0 = neff + (neff - n_group) / center_wavelength_nm * (
+            wavelength_nm - center_wavelength_nm)
+        phi = 2.0 * jnp.pi * n0 * length_um / wavelength_nm * 1000.0
+        Ts = (10.0 ** (-loss_dB_cm * length_um / 1e4 / 20.0)
+              * jnp.exp(-1j * phi))
+        tau = length_um * 1e-6 * n_group / c0 / n
+        f: dict = {}
+        q: dict = {}
+
+        def chain(prefix):
+            def run(z):
+                for k in range(n):
+                    z = _transit_stage(f, q, getattr(s, f"{prefix}{k}"),
+                                       f"{prefix}{k}", z, tau)
+                return z
+            return run
+
+        _transit_ports(f, s, signals, Ts, chain("f"), chain("r"))
+        return f, q
+
+    return WaveguideTransit
+
+
+def _pn_phase_shifter_tw(n_sec: int = 10, n_stage: int = 0):
     """Traveling-wave depletion PN phase shifter, distributed over n_sec
     sections.
 
@@ -2424,6 +2523,11 @@ def _pn_phase_shifter_tw(n_sec: int = 10):
     p1 -> p2 (e_in at the p1 end, co-propagating); light entering p2 sees the
     same, co-propagating, modulation. The static path is quasi-static like
     Waveguide (a constant transit delay is dropped).
+
+    n_stage > 0 (transit = delayed): the field itself crosses every section
+    through n_stage Pade stages and is multiplied by that section's phase /
+    loss change, so the part carries its full group delay; light entering
+    p2 meets the sections in reverse order.
     """
     import jax.numpy as jnp
     from circulax.components.base_component import Signals, States, component
@@ -2431,9 +2535,15 @@ def _pn_phase_shifter_tw(n_sec: int = 10):
 
     c0 = 299792458.0
     n = int(n_sec)
+    m = int(n_stage)
     states = tuple([f"v{k}" for k in range(n)] + [f"u{k}" for k in range(n)]
-                   + [f"i{k}" for k in range(n + 1)]
-                   + [f"x{k}" for k in range(1, n)])
+                   + [f"i{k}" for k in range(n + 1)])
+    if m:
+        states += tuple([f"f{k}_{j}" for k in range(n) for j in range(m)]
+                        + [f"r{k}_{j}" for k in range(n) for j in range(m)]
+                        + ["b1", "b2"])
+    else:
+        states += tuple(f"x{k}" for k in range(1, n))
 
     @component(ports=("p1", "p2", "e_in", "e_out", "ref"), states=states)
     def PNPhaseShifterTW(signals: Signals, s: States, length_um: float = 1000.0,
@@ -2496,6 +2606,29 @@ def _pn_phase_shifter_tw(n_sec: int = 10):
             dphi = 2.0 * jnp.pi * dn_ref * gn * dz / (wavelength_nm * 1e-9)
             mods.append(-dloss * jnp.log(10.0) / 20.0 - 1j * dphi)
         f["ref"], q["ref"] = f_ref, q_ref
+        n0 = neff + (neff - n_group) / center_wavelength_nm * (
+            wavelength_nm - center_wavelength_nm)
+        phi0 = 2.0 * jnp.pi * n0 * length_um / wavelength_nm * 1000.0
+        Ts = (10.0 ** (-loss_dB_cm * length_um / 1e4 / 20.0)
+              * jnp.exp(-1j * phi0))
+        if m:
+            # the field crosses section k (m stages), then takes its change
+            gains = [jnp.exp(mk) for mk in mods]
+
+            def chain(prefix, order):
+                def run(z):
+                    for k in order:
+                        for j in range(m):
+                            z = _transit_stage(
+                                f, q, getattr(s, f"{prefix}{k}_{j}"),
+                                f"{prefix}{k}_{j}", z, tau / m)
+                        z = z * gains[k]
+                    return z
+                return run
+
+            _transit_ports(f, s, signals, Ts, chain("f", range(n)),
+                           chain("r", range(n - 1, -1, -1)))
+            return f, q
         # accumulate along the guide: a_k = D[a_{k-1}] + m_k, D = one
         # section's transit as a Pade(1,1) all-pass, 2 x - in with
         # (tau/2) x' + x = in
@@ -2505,11 +2638,7 @@ def _pn_phase_shifter_tw(n_sec: int = 10):
             f[f"x{k}"] = xk - acc
             q[f"x{k}"] = 0.5 * tau * xk
             acc = (2.0 * xk - acc) + mods[k]
-        n0 = neff + (neff - n_group) / center_wavelength_nm * (
-            wavelength_nm - center_wavelength_nm)
-        phi0 = 2.0 * jnp.pi * n0 * length_um / wavelength_nm * 1000.0
-        T = (10.0 ** (-loss_dB_cm * length_um / 1e4 / 20.0)
-             * jnp.exp(-1j * phi0) * jnp.exp(acc))
+        T = Ts * jnp.exp(acc)
         S = jnp.array([[0.0, T], [T, 0.0]], dtype=jnp.complex128)
         iv = s_to_y(S) @ jnp.array([signals.p1, signals.p2],
                                    dtype=jnp.complex128)
@@ -3201,7 +3330,10 @@ def build_models(sky130_geoms: dict[str, tuple[str, float, float, str]] | None =
         models[key] = _NOISY_BUILDERS[kind](bank, dt_n)
     for key, payload in (ltis or {}).items():
         if "pn_tw" in payload:
-            models[key] = _pn_phase_shifter_tw(payload["pn_tw"])
+            models[key] = _pn_phase_shifter_tw(payload["pn_tw"],
+                                               payload.get("stages", 0))
+        elif "wg_transit" in payload:
+            models[key] = _waveguide_transit(payload["wg_transit"])
         elif "real" in payload:
             A, B, C, D, zin = payload["real"]
             models[key] = _lti_vt(A, B, C, D, zin)

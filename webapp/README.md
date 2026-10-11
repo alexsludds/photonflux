@@ -229,14 +229,15 @@ TDECQ 1.4 dB.
   toolbar to enable photodiode **shot noise** (2qI on the instantaneous
   current), laser **RIN** (set `rin_db` < 0 on a CW laser, dB/Hz), and TIA
   input-referred noise. N seeds re-run the compiled circuit (one compile,
-  N solves); the eye and BER report pool all seeds. Band-limited white
-  noise, variance-exact.
+  N solves); the eye and BER report pool all seeds. The noise PSD equals the
+  set density at low frequency and rolls off as sinc^4 (-1.8 dB at half the
+  noise bandwidth), so set the bandwidth to at least twice the receiver's.
 * **Noise analysis (small-signal)**: output-referred V/sqrt(Hz) at a probe
   via one adjoint solve per frequency; sources are resistor thermal 4kT/R
   (incl. PDK resistors), TIA `in_noise`, and diode shot at the operating
   point, with a per-source breakdown and integrated Vrms. (SKY130 FET
   channel noise is not modelled yet; optical chains: use transient seeds.)
-* **Optimize**: Nelder-Mead over up to 4 instance parameters
+* **Optimize**: Nelder-Mead over up to 8 instance parameters
   (`INST.param=min:max, ...`), objective `expr:<name>` (a scalar from the
   fx panel), `eye:<probe>`, `ber:<probe>` (minimized) or `fom`; runs the
   inner transient per evaluation (compile-time parameters recompile through

@@ -2566,6 +2566,9 @@ async function runSim(runKind) {
       // instances of them (namespaced refdes, spliced ports, baked params)
       ...(state.subcircuits && Object.keys(state.subcircuits).length
         ? { subcircuits: state.subcircuits } : {}),
+      // the server fills the same UI into pattern sources inside subcircuit
+      // bodies (simulate.with_global_ui), which the map above never reaches
+      globals: { baud: globalBaud() },
       corner: globalCorner(),
     },
     analysis,

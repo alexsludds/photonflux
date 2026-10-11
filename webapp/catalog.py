@@ -2809,8 +2809,9 @@ def _noise_reader(bank, dt_n):
     import jax.numpy as jnp
 
     # No variance "restoration" for the interpolation: the 1/3 of the sample
-    # variance it removes lies above ~bw (the sinc^4 roll-off), while the
-    # in-band PSD a receiver integrates is already exactly S.
+    # variance it removes is the sinc^4 roll-off of the PSD across the band,
+    # whose low-frequency level is already exactly S -- scaling by sqrt(3/2)
+    # lifted that flat part, where a receiver integrates, by 1.5x.
     bank_c = jnp.asarray(bank)
     tn = jnp.arange(bank.shape[1]) * dt_n
 

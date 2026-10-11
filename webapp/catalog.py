@@ -160,6 +160,44 @@ CATALOG: dict[str, dict] = {
             },
         },
     },
+    "pn_phase_shifter": {
+        "label": "PN-Junction Phase Shifter",
+        "category": "Modulators",
+        "doc": "Depletion-mode PN-junction phase shifter: a doped rib "
+               "waveguide whose junction (an = p side, cat = n side) sits "
+               "under the guided mode. Reverse bias $V_R = V_{cat} - V_{an}$ "
+               "widens the depletion region, removing free carriers, so "
+               "$n_{eff}$ rises and the free-carrier loss falls, both "
+               "following the abrupt-junction depletion width: "
+               "$\\Delta n \\propto \\sqrt{1 + V_R/V_{bi}} - 1$ (sublinear in "
+               "voltage). vpil_vcm is the average efficiency over "
+               "0 -> vref at center_wavelength_nm: "
+               "$\\Delta\\phi(v_{ref}) = \\pi\\,v_{ref} L / V_\\pi L$. "
+               "The electrode is the junction charge "
+               "$Q = 2 C_{j0} L V_{bi} (\\sqrt{1 + V_R/V_{bi}} - 1)$, i.e. "
+               "$C_j = C_{j0} L/\\sqrt{1 + V_R/V_{bi}}$, plus leakage; add "
+               "contact/series resistance as a resistor. Reciprocal like "
+               "Waveguide (same neff/n_group/wavelength_nm, so it joins an "
+               "instance \"*\" wavelength sweep). Depletion only: no "
+               "injection or forward conduction; past V_R = -0.9 vbi the "
+               "square-root law is continued linearly.",
+        "ports": _ports("p1:o p2:o an:e cat:e"),
+        "params": [
+            _p("length_m", 500e-6, "m", "Length",
+               map={"to": "length_um", "scale": 1e6}),
+            _p("vpil_vcm", 1.5, "V*cm", "VpiL (0 to vref)"),
+            _p("vref", 2.0, "V", "VpiL reference bias"),
+            _p("vbi", 0.85, "V", "Built-in voltage"),
+            _p("loss_dB_cm", 15.0, "dB/cm", "Loss at 0 V"),
+            _p("dloss_dB_cm", 1.5, "dB/cm", "Loss drop at vref"),
+            _p("cj0_ff_um", 0.3, "fF/um", "Junction cap. at 0 V"),
+            _p("rleak", 1e9, "Ohm", "Junction leakage"),
+            _p("neff", 2.4, "", "n_eff"),
+            _p("n_group", 4.0, "", "n_group"),
+            _p("center_wavelength_nm", 1310.0, "nm", "Center wavelength"),
+            _p("wavelength_nm", 1310.0, "nm", "Operating wavelength"),
+        ],
+    },
     "laser_dml": {
         "label": "DML Laser (VA)",
         "category": "Lasers",
@@ -2257,6 +2295,54 @@ def _opt_mirror():
     return OptMirror
 
 
+def _pn_phase_shifter():
+    """Depletion PN phase shifter: OpticalWaveguide whose n_eff and loss
+    follow the junction reverse bias, plus the junction's nonlinear charge.
+
+    Shape of every bias dependence is the abrupt-junction depletion width,
+    g(V_R) = sqrt(1 + V_R/vbi) - 1 (zero at 0 V), normalised so the phase at
+    vref matches vpil_vcm. Below x = 1 + V_R/vbi = 0.1 (well into forward
+    bias) the square root is continued along its tangent so Newton never
+    sees a NaN.
+    """
+    import jax.numpy as jnp
+    from circulax.components.base_component import Signals, States, component
+    from circulax.s_transforms import s_to_y
+
+    @component(ports=("p1", "p2", "an", "cat"))
+    def PNPhaseShifter(signals: Signals, s: States, length_um: float = 500.0,
+                       vpil_vcm: float = 1.5, vref: float = 2.0,
+                       vbi: float = 0.85, loss_dB_cm: float = 15.0,
+                       dloss_dB_cm: float = 1.5, cj0_ff_um: float = 0.3,
+                       rleak: float = 1e9, neff: float = 2.4,
+                       n_group: float = 4.0,
+                       center_wavelength_nm: float = 1310.0,
+                       wavelength_nm: float = 1310.0) -> tuple[dict, dict]:
+        vr = jnp.real(signals.cat - signals.an)
+        x = 1.0 + vr / vbi
+        xm = 0.1
+        sq = jnp.where(x > xm, jnp.sqrt(jnp.maximum(x, xm)),
+                       jnp.sqrt(xm) + (x - xm) / (2.0 * jnp.sqrt(xm)))
+        g = sq - 1.0
+        gn = g / (jnp.sqrt(1.0 + jnp.maximum(vref, 1e-3) / vbi) - 1.0)
+        # dphi(vref) = pi*vref*L/VpiL  <=>  dn(vref) = lambda*vref/(2*VpiL)
+        dn = center_wavelength_nm * 1e-7 * vref / (2.0 * vpil_vcm) * gn
+        n = (neff + (neff - n_group) / center_wavelength_nm
+             * (wavelength_nm - center_wavelength_nm) + dn)
+        phi = 2.0 * jnp.pi * n * length_um / wavelength_nm * 1000.0
+        loss = jnp.maximum(loss_dB_cm - dloss_dB_cm * gn, 0.0)
+        T = 10.0 ** (-loss * length_um / 1e4 / 20.0) * jnp.exp(-1j * phi)
+        S = jnp.array([[0.0, T], [T, 0.0]], dtype=jnp.complex128)
+        Y = s_to_y(S)
+        iv = Y @ jnp.array([signals.p1, signals.p2], dtype=jnp.complex128)
+        ileak = vr / rleak
+        qj = 2.0 * cj0_ff_um * 1e-15 * length_um * vbi * g
+        return ({"p1": iv[0], "p2": iv[1], "cat": ileak, "an": -ileak},
+                {"cat": qj, "an": -qj})
+
+    return PNPhaseShifter
+
+
 def _lti_vt(A, B, C, D, zin: float = 0.0):
     """Electrical LTI voltage-transfer block from a real state-space.
 
@@ -2876,6 +2962,7 @@ def build_models(sky130_geoms: dict[str, tuple[str, float, float, str]] | None =
         "dir_coupler": DirectionalCoupler,
         "grating": _grating_r(),
         "opt_mirror": _opt_mirror(),
+        "pn_phase_shifter": _pn_phase_shifter(),
         "opt_term": cx.terminator(),
         "opt_atten": cx.attenuator(),
         "photodiode": _photodiode(),

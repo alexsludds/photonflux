@@ -165,6 +165,26 @@ S.phase_shifter = {
     <line class="${EL}" x1="70" y1="0" x2="70" y2="18"/>`,
 };
 
+S.pn_phase_shifter = {
+  // doped rib waveguide: p region above the core, n region below, the
+  // junction (and the guided mode) along the middle. Anode contacts the p
+  // side on top, cathode the n side underneath.
+  w: 100, h: 60,
+  pins: { p1: [0, 30], p2: [100, 30], an: [50, 0], cat: [50, 60] },
+  label: [0, -6], pinLabels: true,
+  draw: () => `
+    <line class="${OPT}" x1="0" y1="30" x2="20" y2="30"/>
+    <rect class="${EL} body-fill" x="20" y="12" width="60" height="36"/>
+    <line class="${OPT}" x1="20" y1="30" x2="80" y2="30" stroke-width="2.4"/>
+    <text x="25" y="25" style="font-size:10px">p</text>
+    <text x="25" y="44" style="font-size:10px">n</text>
+    <rect class="${EL}" x="40" y="8" width="20" height="4"/>
+    <rect class="${EL}" x="40" y="48" width="20" height="4"/>
+    <line class="${EL}" x1="50" y1="0" x2="50" y2="8"/>
+    <line class="${EL}" x1="50" y1="52" x2="50" y2="60"/>
+    <line class="${OPT}" x1="80" y1="30" x2="100" y2="30"/>`,
+};
+
 S.ring_mod = {
   w: 100, h: 80,
   pins: { pin: [0, 70], pout: [100, 70], vp: [20, 0], vn: [50, 0], gnd: [80, 0] },
@@ -974,7 +994,7 @@ const HEADLINE_PARAM = {
   tw_gain_seg: "i_op_ma", tw_seg: "kappa_pm", phase_pad: "phi0_rad",
   edfa: "g0_db",
   ring_mod_inj: "tau_c", mzm_seg: "vpi", ring_selfheat: "rth_k_w",
-  phase_shifter: "vpi",
+  phase_shifter: "vpi", pn_phase_shifter: "length_m",
   waveguide: "length_m", splitter: "split_ratio", dir_coupler: "coupling",
   grating: "center_wavelength_nm", opt_filter: "center_nm", opt_mirror: "R",
   opt_atten: "atten_db",

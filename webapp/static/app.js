@@ -13,7 +13,7 @@ const PROBE_COLORS = ["#fbbf24", "#6ecbf5", "#4ade80", "#f472d0", "#f87171",
 
 const ID_PREFIX = {
   cw_laser: "LAS", mzm: "MZM", pulse_mod: "MOD", ring_mod: "RING",
-  phase_shifter: "PS",
+  phase_shifter: "PS", pn_phase_shifter: "PN",
   waveguide: "WG", splitter: "SPL", dir_coupler: "DC", photodiode: "PD",
   apd: "APD",
   vdc: "V", vpulse: "VP", vsin: "VS", idc: "I", resistor: "R",

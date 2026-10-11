@@ -1,8 +1,9 @@
 """photonflux.cx — Verilog-A photonics and SKY130 FETs as circulax components.
 
-These tests need the circulax stack (``pip install circulax[verilog-a]
-openvaf-py`` into the venv) and the ChipFlow openvaf fork at
-``bin/openvaf-ir``; they self-skip otherwise. Run with:
+These tests need the circulax stack (``pip install circulax[verilog-a]``
+into the venv) and the cdaunt openvaf fork at
+``bin/openvaf-ir``, which every VA model needs; the SKY130 tests self-skip
+without it. Run with:
 
     .venv-circulax/bin/python -m pytest tests/test_cx.py -v
 

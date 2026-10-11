@@ -15,11 +15,10 @@ Everything is in the repo-root [`Dockerfile`](../Dockerfile) + build-time
 | Piece | Source | Notes |
 |---|---|---|
 | jaxlib, klujax, diffrax, sax | PyPI (manylinux) | pulled by `circulax` |
-| circulax 0.2.1 | PyPI (pure-python) | the solver |
-| openvaf-py 0.1.5 | PyPI (manylinux) | Verilog-A front-end binding |
-| **bosdi 0.1.5** | **GitHub release wheel** | *not on PyPI* — installed from `gdsfactory/bosdi` release `v0.1.5` (manylinux_2_28_x86_64) |
+| circulax 0.2.4 | PyPI (pure-python) | the solver |
+| **bosdi** | **built from source** | Verilog-A → JAX lowering and the OSDI loader. Pinned to the head of [gdsfactory/bosdi#34](https://github.com/gdsfactory/bosdi/pull/34) (`BOSDI_REF`), built in the Dockerfile's `bosdi-wheel` stage (Rust + C++); back to the PyPI wheel once released |
 | libngspice0 | apt | SKY130 model-card extraction |
-| **openvaf-ir** | **`openvaf-ir` release asset** | ChipFlow fork `robtaylor/OpenVAF@vajax`, LLVM 18 — built once by CI ([`openvaf-ir.yml`](../.github/workflows/openvaf-ir.yml)), downloaded via `OPENVAF_IR_URL` |
+| **openvaf-ir** | **`openvaf-ir` release asset** | `cdaunt/OpenVAF@89a1f79`, LLVM 18 — built once by CI ([`openvaf-ir.yml`](../.github/workflows/openvaf-ir.yml)), downloaded via `OPENVAF_IR_URL` |
 | SKY130 PDK | volare | pinned `open_pdks c6d73a35…` |
 | photonic `models/__jax__/*.py` + Linux `*.osdi` | warmup | pre-compiled into the image |
 
@@ -76,8 +75,9 @@ image build, **read the warmup summary in the build log** — it prints
 ```
 
 If the FET lines FAIL but the photonic ones pass, the image still ships and all
-photonics works; only SKY130 examples are affected. The photonic path needs
-no native toolchain at runtime. (`webapp/warmup.py` already tolerates FET failures; set `WARMUP_STRICT=1`
+photonics works; only SKY130 examples are affected. Both paths need
+`bin/openvaf-ir` when a model is not in the warmed cache: bosdi lowers new
+Verilog-A with it. (`webapp/warmup.py` already tolerates FET failures; set `WARMUP_STRICT=1`
 to make any failure fail the build instead.)
 
 ## Option A — Google Cloud Run (public URL, $0 but needs billing)
@@ -173,6 +173,6 @@ docker logs <id>        # confirm /api/run 200s, no missing-binary/PDK errors
   auto-reloads on `.py` edits by default (a supervisor re-spawns the server), so
   a browser refresh shows the latest code. The image sets `PHOTONFLUX_RELOAD=0`
   to run a single plain process; every other new behavior is opt-in via env.
-- **Pinned versions:** circulax 0.2.1 · bosdi 0.1.5 · openvaf-py 0.1.5 ·
+- **Pinned versions:** circulax 0.2.4 · bosdi `BOSDI_REF` ·
   SKY130 `open_pdks c6d73a35f524070e85faff4a6a9eef49553ebc2b` · LLVM 18 ·
   ngspice/libngspice (Debian). Bump the `ARG`s in the Dockerfile to move them.

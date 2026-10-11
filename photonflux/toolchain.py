@@ -3,7 +3,7 @@ libngspice (SKY130 card extraction only), and the SKY130 PDK.
 
 Everything is overridable via environment variables:
 
-  PHOTONFLUX_OPENVAF_IR  path to the openvaf-ir binary (ChipFlow OpenVAF fork)
+  PHOTONFLUX_OPENVAF_IR  path to the openvaf-ir binary (cdaunt OpenVAF fork)
   PHOTONFLUX_INCLUDE     Verilog-A include directory (discipline.h, ...)
   NGSPICE_LIBRARY_PATH   libngspice shared library (PDK card extraction)
   SKY130_NGSPICE_LIB     sky130.lib.spice (wins over PDK_ROOT / volare)
@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import os
 import subprocess
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -28,10 +29,10 @@ OUT_DIR = REPO / "out"
 
 
 def openvaf_ir_path() -> Path:
-    """The ChipFlow-fork openvaf binary used to compile Verilog-A to OSDI.
+    """The cdaunt-fork openvaf binary: Verilog-A to OSDI, and bosdi's front end.
 
     Override with ``PHOTONFLUX_OPENVAF_IR``. Built from
-    github.com/robtaylor/OpenVAF (branch ``vajax``); see the README.
+    github.com/cdaunt/OpenVAF (pinned in scripts/build-openvaf.sh); see the README.
     """
     env = os.environ.get("PHOTONFLUX_OPENVAF_IR")
     if env:
@@ -52,6 +53,28 @@ def openvaf_ir_version() -> str:
         capture_output=True, text=True, timeout=30,
     )
     return out.stdout.strip() or out.stderr.strip()
+
+
+_DUMP_JSON_PROBE = """`include "disciplines.vams"
+module probe(a, b);
+  inout a, b;
+  electrical a, b;
+  analog I(a, b) <+ V(a, b);
+endmodule
+"""
+
+
+def openvaf_ir_dumps_json() -> bool:
+    """Whether openvaf-ir emits the --dump-json MIR (schema_version 1) bosdi
+    lowers Verilog-A from. An older robtaylor@vajax build runs but fails this."""
+    with tempfile.TemporaryDirectory() as tmp:
+        probe = Path(tmp) / "probe.va"
+        probe.write_text(_DUMP_JSON_PROBE)
+        out = subprocess.run(
+            [str(openvaf_ir_path()), "--dump-json", str(probe)],
+            capture_output=True, text=True, timeout=60,
+        )
+    return '"schema_version": 1' in out.stdout
 
 
 def sky130_lib() -> Path:
@@ -91,7 +114,12 @@ def doctor() -> list[Check]:
     p = openvaf_ir_path()
     if p.exists():
         try:
-            checks.append(Check("openvaf-ir", True, f"{p}  ({openvaf_ir_version()})"))
+            if openvaf_ir_dumps_json():
+                checks.append(Check("openvaf-ir", True, f"{p}  ({openvaf_ir_version()})"))
+            else:
+                checks.append(Check("openvaf-ir", False,
+                                    f"{p} lacks bosdi's --dump-json (old fork build); "
+                                    "rebuild with scripts/build-openvaf.sh --force"))
         except Exception as e:  # binary exists but does not run
             checks.append(Check("openvaf-ir", False, f"{p} exists but failed: {e}"))
     else:

@@ -5,13 +5,13 @@
 # that can run a container (GitHub Codespaces via ghcr.io, Google Cloud Run,
 # a VPS, …). The whole app is one origin, so there is no CORS/frontend change.
 #
-# The SKY130 FET path needs a Linux `openvaf-ir` (the ChipFlow OpenVAF fork,
-# branch `vajax`, which has no upstream release) and freshly-compiled Linux
+# bosdi's Verilog-A lowering and the SKY130 FET path need a Linux `openvaf-ir`
+# (the cdaunt OpenVAF fork, which has no upstream release) and freshly-compiled Linux
 # `.osdi`. Compiling openvaf-ir takes Rust + LLVM 18, so CI builds it once
 # (docker/openvaf-ir.Dockerfile, .github/workflows/openvaf-ir.yml) and this
 # image downloads that release asset (OPENVAF_IR_URL).
-# The photonic models need no native toolchain at runtime: `bosdi`/`openvaf-py`
-# lower them to pure-Python JAX (cached under models/__jax__/), and the warmup
+# The photonic models need no native toolchain at runtime: `bosdi` lowers
+# them to pure-Python JAX (cached under models/__jax__/), and the warmup
 # step pre-populates that cache.
 #
 # NOTE: this image has not been built on this (arm64, no-daemon) machine. The
@@ -22,6 +22,26 @@ ARG PY_VER=3.12
 ARG OPENVAF_IR_URL=https://github.com/alexsludds/photonflux/releases/download/openvaf-ir/openvaf-ir-linux-x86_64
 # SKY130 PDK pin — matches the local dev box (open_pdks commit).
 ARG SKY130_PDK_COMMIT=c6d73a35f524070e85faff4a6a9eef49553ebc2b
+# bosdi pin: the head of gdsfactory/bosdi#34 (va_component accepts circulax
+# 0.2.4's delay-history argument). Unreleased, so it is built from source
+# below; switch back to a PyPI "bosdi==" pin once a release includes it.
+ARG BOSDI_REF=0327afb0855715a670165cdbc871ddd290226250
+
+# ===========================================================================
+# bosdi wheel: Rust static lib + nanobind C++ shim, built from BOSDI_REF
+# ===========================================================================
+FROM python:${PY_VER}-slim AS bosdi-wheel
+ARG BOSDI_REF
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        build-essential curl git ca-certificates \
+    && rm -rf /var/lib/apt/lists/* \
+    && curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs -o /tmp/rustup.sh \
+    && sh /tmp/rustup.sh -y --profile minimal && rm /tmp/rustup.sh
+ENV PATH=/root/.cargo/bin:$PATH
+# The fork lacks bosdi's release tags, so pin the version setuptools-scm reports.
+RUN SETUPTOOLS_SCM_PRETEND_VERSION_FOR_BOSDI="0.1.9.dev0+g${BOSDI_REF}" \
+    pip wheel --no-cache-dir --no-deps -w /wheels \
+      "bosdi @ git+https://github.com/alexsludds/bosdi@${BOSDI_REF}"
 
 # ===========================================================================
 # Runtime: python + circulax/JAX + libngspice + PDK + warmed caches
@@ -45,13 +65,13 @@ ENV HOME=/home/user
 WORKDIR /app
 
 # --- Python deps -----------------------------------------------------------
-# bosdi is NOT on PyPI; install its Linux wheel from the GitHub release first so
-# circulax's `bosdi>=0.1.3` requirement is already satisfied. Then circulax
-# (pure-python) pulls jax/jaxlib/diffrax/klujax (all manylinux) from PyPI.
-RUN pip install --no-cache-dir \
-      "https://github.com/gdsfactory/bosdi/releases/download/v0.1.5/bosdi-0.1.5-cp312-cp312-manylinux_2_28_x86_64.whl" \
-    && pip install --no-cache-dir \
-      "circulax==0.2.1" "openvaf-py==0.1.5" volare numpy matplotlib
+# circulax (pure-python) pulls jax/jaxlib/diffrax/klujax (all manylinux) from
+# PyPI; bosdi comes from the wheel stage above (it no longer needs the
+# openvaf-py binding).
+COPY --from=bosdi-wheel /wheels /tmp/wheels
+RUN pip install --no-cache-dir /tmp/wheels/bosdi-*.whl \
+      "circulax==0.2.4" volare numpy matplotlib \
+    && rm -rf /tmp/wheels
 
 # --- app source + Linux openvaf-ir (overwrites the vendored Mac binary) -----
 COPY . /app

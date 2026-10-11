@@ -31,7 +31,7 @@ tqdm colorama`. `--no-build-isolation` needs `setuptools`, `wheel`, `Cython` and
 `numpy` already present in the target environment.
 
 Verified against Python 3.12.2 / NumPy 2.5.1 / Cython 3.2.9 / matplotlib 3.11.0,
-coexisting with JAX 0.7.2 + circulax 0.2.1 in one venv.
+coexisting with JAX 0.7.2 + circulax 0.2.4 in one venv.
 
 ### Caveats
 

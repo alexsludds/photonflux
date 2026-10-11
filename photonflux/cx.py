@@ -1,8 +1,8 @@
 """circulax bridge: Verilog-A models and SKY130 PDK transistors as JAX components.
 
 Two entry points, both returning circulax ``CircuitComponent`` classes built by
-`bosdi <https://pypi.org/project/bosdi/>`_ (``pip install circulax[verilog-a]
-openvaf-py``) from real Verilog-A:
+`bosdi <https://pypi.org/project/bosdi/>`_ (``pip install circulax[verilog-a]``)
+from real Verilog-A:
 
   ``cx.va("photodiode")``
       any ``models/*.va`` compiled straight to a differentiable JAX component.
@@ -14,7 +14,7 @@ openvaf-py``) from real Verilog-A:
       ``showmod``). Two backends:
 
       * ``backend="osdi"`` (default): the BSIM4.8 Verilog-A compiled to an
-        OSDI binary by the ChipFlow openvaf fork (``bin/openvaf-ir``) and
+        OSDI binary by the cdaunt openvaf fork (``bin/openvaf-ir``) and
         evaluated natively inside circulax's Newton loop — the same physics
         ngspice would run, exact to the card. Not differentiable through the
         FET's own parameters (the photonics still are).
@@ -768,7 +768,7 @@ def sky130_fet(
 
 
 def openvaf_ir_path() -> Path:
-    """The ChipFlow-fork openvaf binary used for OSDI FET compilation.
+    """The cdaunt-fork openvaf binary (OSDI FET compilation, bosdi VA lowering).
 
     Override with ``PHOTONFLUX_OPENVAF_IR``. See ``toolchain.openvaf_ir_path``.
     """
@@ -782,8 +782,8 @@ def _bsim4_osdi() -> Path:
     binary = openvaf_ir_path()
     if not binary.exists():
         raise FileNotFoundError(
-            f"{binary} not found — the SKY130 FET path needs the ChipFlow "
-            "openvaf fork (github.com/robtaylor/OpenVAF, branch vajax). Build "
+            f"{binary} not found — the SKY130 FET path needs the cdaunt "
+            "openvaf fork (github.com/cdaunt/OpenVAF). Build "
             "and install it in one step:\n"
             "    scripts/build-openvaf.sh\n"
             "then check the toolchain with `python -m photonflux doctor`. To "
@@ -890,14 +890,48 @@ def _hash(*parts: str) -> str:
     return h.hexdigest()[:16]
 
 
+def _bosdi_openvaf() -> Path | None:
+    """The OpenVAF binary bosdi's VA front end runs: $OPENVAF_IR, else our
+    bin/openvaf-ir (the cdaunt fork whose --dump-json bosdi targets), else
+    bosdi's own fallback, openvaf-r on PATH."""
+    import os
+    import shutil
+
+    if os.environ.get("OPENVAF_IR"):
+        return Path(os.environ["OPENVAF_IR"])
+    if openvaf_ir_path().exists():
+        return openvaf_ir_path()
+    found = shutil.which("openvaf-r")
+    return Path(found) if found else None
+
+
+def _compile_va(va_path: Path, **kwargs: Any) -> Any:
+    """bosdi's VA front end. Since 0.1.7 it shells out to an OpenVAF binary
+    (no more openvaf-py binding), found via $OPENVAF_IR."""
+    import os
+
+    from bosdi.va import compile_va
+
+    binary = _bosdi_openvaf()
+    if binary is None:
+        raise FileNotFoundError(
+            f"{openvaf_ir_path()} not found — bosdi lowers Verilog-A with the "
+            "cdaunt openvaf fork. Build and install it in one step:\n"
+            "    scripts/build-openvaf.sh\n"
+            "or set PHOTONFLUX_OPENVAF_IR (or OPENVAF_IR) to its path."
+        )
+    os.environ.setdefault("OPENVAF_IR", str(binary))
+    return compile_va(str(va_path), **kwargs)
+
+
 def _bsim4_param_names() -> frozenset[str]:
     """All BSIM4 VA parameter names, from a cached bare lowering."""
     cache = CACHE_DIR / f"bsim4_params_{_hash(BSIM4_VA.read_text())}.json"
     if cache.exists():
         return frozenset(json.loads(cache.read_text()))
-    from bosdi.va import compile_va, lower
+    from bosdi.va import lower
 
-    dump = compile_va(str(BSIM4_VA), allow_analog_in_cond=True)
+    dump = _compile_va(BSIM4_VA, allow_analog_in_cond=True)
     dev = lower(dump.modules[0], class_name="Probe")
     names = sorted({p[0] for p in dev.params})
     CACHE_DIR.mkdir(parents=True, exist_ok=True)
@@ -1002,8 +1036,15 @@ def _lower_cached(
     NB the cache key covers the VA text and lowering inputs but NOT this
     module's emitted-source repairs (_fix_branch_aliases/_harden_emitted):
     after changing repair logic, delete the affected models/__jax__/*.py."""
-    import bosdi
+    from importlib.metadata import PackageNotFoundError, version
 
+    try:
+        bosdi_version = version("bosdi")  # bosdi has no __version__
+    except PackageNotFoundError:  # a source tree on sys.path
+        bosdi_version = "?"
+    # the front end's MIR shapes the emitted code too; key on the binary like
+    # _bsim4_osdi does, so rebuilding openvaf-ir invalidates the cache
+    binary = _bosdi_openvaf()
     va_text = va_path.read_text()
     literal_defaults = _va_literal_defaults(va_text)
     key = _hash(
@@ -1014,15 +1055,16 @@ def _lower_cached(
         json.dumps(runtime_defaults or {}, sort_keys=True),
         json.dumps(literal_defaults, sort_keys=True),
         repr(sorted(sorted(p) for p in collapse_pairs) if collapse_pairs else None),
-        getattr(bosdi, "__version__", "?"),
+        bosdi_version,
+        str(binary.stat().st_mtime_ns) if binary and binary.exists() else "",
     )
     cache = CACHE_DIR / f"{class_name.lower()}_{key}.py"
     if not cache.exists():
         import bosdi.va.lowering as _lowering
-        from bosdi.va import compile_va, emit_source, lower
+        from bosdi.va import emit_source, lower
         from bosdi.va.va_defaults import ParamSpec, parse_va_defaults
 
-        dump = compile_va(str(va_path), allow_analog_in_cond=allow_analog_in_cond)
+        dump = _compile_va(va_path, allow_analog_in_cond=allow_analog_in_cond)
         cm = dump.modules[0]
         defaults = parse_va_defaults(va_text)
         # repair bosdi's missed localparams / scale-suffixed literals first;

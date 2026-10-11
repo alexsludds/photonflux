@@ -1,7 +1,8 @@
 # syntax=docker/dockerfile:1
 # ---------------------------------------------------------------------------
-# Linux x86_64 build of `openvaf-ir` — the ChipFlow OpenVAF fork (branch
-# `vajax`) that compiles BSIM4 to OSDI correctly. It has no released binary and
+# Linux x86_64 build of `openvaf-ir` — the cdaunt OpenVAF fork: bosdi's
+# Verilog-A front end (--dump-json) and a BSIM4-correct OSDI compiler. Keep
+# OPENVAF_REF in step with scripts/build-openvaf.sh. It has no released binary and
 # needs Rust + LLVM 18, so it is built once in CI
 # (.github/workflows/openvaf-ir.yml) and published as a GitHub release asset
 # that the main Dockerfile downloads. Build locally with:
@@ -10,10 +11,12 @@
 # ---------------------------------------------------------------------------
 
 ARG LLVM_VER=18
-ARG OPENVAF_REF=vajax
+ARG OPENVAF_REPO=https://github.com/cdaunt/OpenVAF
+ARG OPENVAF_REF=89a1f798c0768f30743ef7e9bf6cca6eebd24307
 
 FROM rust:1-bookworm AS ovbuild
 ARG LLVM_VER
+ARG OPENVAF_REPO
 ARG OPENVAF_REF
 RUN apt-get update && apt-get install -y --no-install-recommends \
         git curl ca-certificates lsb-release wget gnupg software-properties-common \
@@ -28,12 +31,13 @@ RUN curl -fsSL https://apt.llvm.org/llvm.sh -o /tmp/llvm.sh \
 # openvaf/target/build.rs shells out to unversioned `clang` and `llvm-lib`
 # (it builds the Windows UCRT import libs on every host).
 ENV PATH=/usr/lib/llvm-${LLVM_VER}/bin:$PATH
-RUN git clone --depth 1 -b ${OPENVAF_REF} https://github.com/robtaylor/OpenVAF /src/openvaf
+RUN git init -q /src/openvaf && cd /src/openvaf \
+    && git fetch -q --depth 1 ${OPENVAF_REPO} ${OPENVAF_REF} && git checkout -q FETCH_HEAD
 WORKDIR /src/openvaf
 # Static LLVM link so openvaf-ir is self-contained and the runtime image needs
 # no libLLVM: the fork pins llvm-sys to `prefer-dynamic`, so flip it to
 # `force-static` (the smoke stage fails if libLLVM is still a dependency).
-RUN grep -rl --include=Cargo.toml '"prefer-dynamic"' . | xargs sed -i 's/"prefer-dynamic"/"force-static"/' \
+RUN grep -rl --include=Cargo.toml '"prefer-dynamic"' . | xargs -r sed -i 's/"prefer-dynamic"/"force-static"/' \
     && LLVM_SYS_181_PREFIX=/usr/lib/llvm-${LLVM_VER} \
     cargo build --release -p openvaf-driver --bin openvaf-r --features llvm${LLVM_VER} \
     && cp target/release/openvaf-r /openvaf-ir \
@@ -47,6 +51,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 COPY --from=ovbuild /openvaf-ir /usr/local/bin/openvaf-ir
 RUN ldd /usr/local/bin/openvaf-ir && ! ldd /usr/local/bin/openvaf-ir | grep -q 'not found'
+# ...and must emit the --dump-json MIR bosdi lowers Verilog-A from.
+RUN printf '%s\n' '`include "disciplines.vams"' 'module probe(a, b);' \
+        '  inout a, b;' '  electrical a, b;' '  analog I(a, b) <+ V(a, b);' \
+        'endmodule' > /tmp/probe.va \
+    && openvaf-ir --dump-json /tmp/probe.va | grep -q '"schema_version": 1'
 
 FROM scratch AS out
 COPY --from=smoke /usr/local/bin/openvaf-ir /openvaf-ir-linux-x86_64

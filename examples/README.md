@@ -83,7 +83,8 @@ in this directory is the interactive tour of the bridge itself.
 
 ```bash
 python3 -m venv .venv-circulax
-.venv-circulax/bin/pip install "circulax[verilog-a]" openvaf-py
+.venv-circulax/bin/pip install "circulax[verilog-a]"
+# then the pinned bosdi build — see "Quick start" in the top-level README
 .venv-circulax/bin/pip install -e .           # photonflux (for cx)
 .venv-circulax/bin/python examples/photodiode_tia.py
 ```

@@ -631,7 +631,8 @@ class _Runner:
                  if math.isfinite(obj) else math.inf)
             entry.update(obj=obj if math.isfinite(obj) else None,
                          J=J if math.isfinite(J) else None,
-                         feasible=bool(pen == 0 and math.isfinite(obj)))
+                         feasible=(bool(pen == 0 and math.isfinite(obj))
+                                   if constraints else None))
             history.append(entry)
             self.log.append(
                 f"  eval {n}: " + ", ".join(
@@ -639,7 +640,8 @@ class _Runner:
                 + f" -> {objective} {obj:.4g}"
                 + ("" if pen == 0 else f", penalty {pen:.3g}"))
             if J < best["J"]:
-                best.update(J=J, x=np.array(x), vars=v2, overrides=o2, res=res)
+                best.update(J=J, obj=obj, x=np.array(x), vars=v2, overrides=o2,
+                            res=res)
             return J
 
         nelder_mead(f, np.asarray(x0, float), lo, hi, iters)
@@ -654,10 +656,11 @@ class _Runner:
         checks = [{**check(c, v2), "info": True} for c in constraints]
         feasible = all(c["ok"] for c in checks)
         self.log.append(
-            f"optimize: best {objective} = {v2.get(objective, 'n/a')} after "
+            f"optimize: best {objective} = {best['obj']:.6g} after "
             f"{len(history)} evaluations"
             + ("" if feasible else " — constraints NOT met"))
         return v2, o2, {"result": best["res"], "outputs": bx,
+                        "best_objective": best["obj"],
                         "history": history, "objective": objective,
                         "maximize": maximize, "params": [
                             {"name": name, "kind": kind, "min": float(a),

@@ -1,33 +1,31 @@
 {
   "title": "Coupling-modulated ring, 106.25 GBd PAM4 flow",
   "group": "Lasers & modulators",
-  "description": "Example 47's coupling-modulated ring at 106.25 GBd PAM4 with a four-step testbench flow: find the resonance at the drive bias, run a PAM4 eye at a laser detuning, optimize detuning, arm imbalance and drive bias for relOMA under RLM / TDECQ / ER constraints, then evaluate the best design over a full PRBS-13Q period against the spec (RLM > 0.95, TDECQ < 1.5 dB, relOMA > -2 dB, ER > 3.5 dB)",
+  "description": "Example 47's coupling-modulated ring at 106.25 GBd PAM4 with realistic O-band PN and driver assumptions (junction RC through the driver and series resistance) and a four-step flow: find the resonance at the drive bias, PAM4 eye, optimize detuning / bias / arm imbalance / PN length / ring length for the worst spec margin, evaluate over a full PRBS-13Q period against RLM > 0.95, TDECQ < 1.5 dB, relOMA > -2 dB, ER > 3.5 dB. The flow shows the spec is out of reach for a lumped junction at 2 Vpp",
   "schematic": {
     "notes": [
       {
         "x": 40,
-        "y": -340,
+        "y": -360,
         "title": "Coupling-modulated ring at 106.25 GBd — a testbench flow",
         "lines": [
-          "Example 47's ring (MZI coupler of two 400 um PN shifters,",
-          "series push-pull) at 106.25 GBd PAM4. Run panel -> Flow:",
-          "1 Find resonance: DC wavelength sweep with the drive",
-          "  parked at vbias (the sqrt-law PN moves the resonance",
-          "  with bias) -> lam_res.",
-          "2 PAM4 eye: LAS at lam_res - detune_pm; 1000 symbols;",
-          "  stateye -> rlm, er_db, rel_oma_db, il_db, tdecq_db.",
-          "3 Optimize: detune_pm and vbias, re-running 1+2 per",
-          "  evaluation: maximize relOMA s.t. RLM >= 0.96,",
-          "  TDECQ <= 1.3 dB, ER >= 4 dB (margin over the spec).",
-          "4 Evaluate: the optimum over a full PRBS-13Q period",
-          "  (OMA_outer) with the Eye tab's stateye settings, against",
+          "Example 47's ring at 106.25 GBd PAM4 with realistic drive and",
+          "PN assumptions, all flow variables (Flow card -> vars):",
+          "O-band lateral PN: VpiL 2.0 V*cm, 12 dB/cm, Cj0 0.3 fF/um,",
+          "series R 10 Ohm*mm; driver 50 Ohm, 2 Vpp, 5 ps edges, 0.02 UI",
+          "RJ/SJ/DJ. RDRV = driver + PN series R, so the junction RC",
+          "limits bandwidth (example 47 drives the junctions ideally).",
+          "1 Find resonance at the drive bias (1 nm sweep, > one FSR).",
+          "2 PAM4 eye, 1000 symbols: rlm, er_db, rel_oma_db, il_db, tdecq_db.",
+          "3 Optimize detune, bias, arm imbalance, PN and ring length for",
+          "  the worst normalized spec margin, re-running 1 + 2 each time.",
+          "4 Evaluate the optimum over a full PRBS-13Q period against",
           "  RLM > 0.95, TDECQ < 1.5 dB, relOMA > -2 dB, ER > 3.5 dB.",
-          "Drive: 3 Vpp (vswing; 2 Vpp tops out near relOMA -3 dB),",
-          "5 ps edges, 0.02 UI RJ/SJ/DJ (the 0.05 UI defaults alone",
-          "cost ~2 dB of TDECQ). Optimum: ~3.2 pm blue, vbias ~2.4 V",
-          "-> relOMA -1.79 dB, RLM 0.96, TDECQ 0.63 dB, ER 7.4 dB.",
-          "Quasi-static optics, as in example 47 (no photon lifetime).",
-          "Add dL_nm (arm imbalance) to the optimizer to explore it."
+          "Verdict: NOT met. At 2 Vpp the static levels cap relOMA near",
+          "-3 dB (600 um PN); the RC (~25 GHz at 300 um, 50 Ohm) costs",
+          "1.5-4 dB of TDECQ, so length trades OMA for TDECQ: about",
+          "-5 dB relOMA at 3.5 dB TDECQ. Still optimistic: quasi-static",
+          "optics (no photon lifetime; Q 1e4-1e5 is 10-60 ps vs 9.4 ps UI)."
         ]
       }
     ],
@@ -64,7 +62,7 @@
         "y": 70,
         "rot": 0,
         "settings": {
-          "length_m": 0.0003,
+          "length_m": 0.00025,
           "vpil_vcm": 2.0,
           "vref": 2.0,
           "vbi": 0.85,
@@ -97,7 +95,7 @@
         "y": 290,
         "rot": 0,
         "settings": {
-          "length_m": 0.0003,
+          "length_m": 0.00025,
           "vpil_vcm": 2.0,
           "vref": 2.0,
           "vbi": 0.85,
@@ -146,7 +144,7 @@
         "y": 470,
         "rot": 0,
         "settings": {
-          "length_m": 0.00015,
+          "length_m": 7.5e-05,
           "loss_dB_cm": 2.0,
           "neff": 2.4,
           "n_group": 4.0,
@@ -160,7 +158,7 @@
         "y": 470,
         "rot": 0,
         "settings": {
-          "length_m": 0.00015,
+          "length_m": 7.5e-05,
           "loss_dB_cm": 2.0,
           "neff": 2.4,
           "n_group": 4.0,
@@ -342,11 +340,11 @@
   "flow": {
     "name": "Resonance → PAM4 eye → optimize → evaluate",
     "vars": {
-      "detune_pm": 1.5,
+      "detune_pm": 2.0,
       "dL_nm": 250.0,
       "vbias": 2.0,
-      "pn_um": 300.0,
-      "ring_um": 300.0,
+      "pn_um": 250.0,
+      "ring_um": 150.0,
       "vswing": 2.0,
       "r_drv_ohm": 50.0,
       "rs_ohm_mm": 10.0,

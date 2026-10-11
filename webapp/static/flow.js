@@ -762,8 +762,9 @@ function flowPlotHistory(st, rec) {
   rec.history.forEach((e, i) => {
     if (e.obj === null || e.obj === undefined) return;
     const u = n > 1 ? i / (n - 1) : 0.5, v = (e.obj - y0) / (y1 - y0);
+    // feasibility only means something when the step has constraints
     svg += `<circle cx="${f.sx(u).toFixed(1)}" cy="${f.sy(v).toFixed(1)}" r="2.2"
-      class="${e.feasible ? "fl-ok" : "fl-bad"}"/>`;
+      class="${e.feasible === true ? "fl-ok" : e.feasible === false ? "fl-bad" : "fl-pt"}"/>`;
     if (e.J !== null && e.J < bestJ) { bestJ = e.J; best = e.obj; }
     if (best !== null) line.push([u, (best - y0) / (y1 - y0)]);
   });
@@ -771,7 +772,10 @@ function flowPlotHistory(st, rec) {
     + fsvgText(2, f.sy(0.95) + 3, flowFmt(y1)) + fsvgText(2, f.sy(0.05), flowFmt(y0))
     + fsvgText(FSVG.l, FSVG.H - 3, "eval 1") + fsvgText(FSVG.W - FSVG.r, FSVG.H - 3, String(n), "fl-ax", "end")
     + "</svg>";
-  return { svg, cap: `${rec.objective} per evaluation · green = meets the constraints · line = best` };
+  const obj = rec.objective.length > 28 ? "objective" : rec.objective;
+  const legend = (rec.history || []).some((e) => e.feasible === true || e.feasible === false)
+    ? " · green = meets the constraints" : "";
+  return { svg, cap: `${obj} per evaluation${legend} · line = best` };
 }
 
 function flowRenderTab() {

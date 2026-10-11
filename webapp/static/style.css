@@ -611,6 +611,7 @@ body { display: flex; flex-direction: column; }
 .fl-ax { fill: var(--text-dim); font-size: 9px; }
 .fl-ok { fill: var(--ok); }
 .fl-bad { fill: var(--text-dim); opacity: .7; }
+.fl-pt { fill: var(--electrical); opacity: .8; }
 .fl-best { fill: none; stroke: var(--ok); stroke-width: 1.5; vector-effect: non-scaling-stroke; }
 .fl-h { font-weight: 600; font-size: 12px; margin-top: 2px; }
 .fl-table { border-collapse: collapse; width: 100%; font-size: 12px; }

@@ -13,19 +13,18 @@
           "electrode (PN Phase Shifter, Traveling-Wave): a 10-section RLC",
           "ladder (unloaded Z0 60 Ohm, n_rf 2.4, 2 dB/cm) loaded by the",
           "junction (Cj0 0.3 fF/um, 10 Ohm*mm series R), fed through the",
-          "50 Ohm driver at e_in and terminated in 40 Ohm into the bias",
-          "(VTERM = vbias). vswing is the swing on the line: the PRBS EMF",
-          "is scaled by (r_drv + r_term) / r_term. Push-pull: PN_A's line",
-          "is its n side (ref = ground), PN_B's line its p side (ref = 4 V).",
-          "The optical phase of each section reaches the output after its",
-          "optical transit, so RF/optical walk-off is modelled (loaded",
-          "n_rf ~3.6 vs n_group 4.0 here). Same flow and spec as 48; PN",
-          "length now runs 200-1500 um.",
-          "Verdict (50 evals; PN 495 um, ring 172 um): TDECQ 1.34 dB, RLM",
-          "0.954, ER 4.9 dB pass; relOMA -3.1 dB misses -2 dB. Bandwidth",
-          "no longer limits (lumped 48: TDECQ 2.4 dB, relOMA -4.9 dB): the",
-          "2 Vpp swing and VpiL do -- the static ceiling at 2 Vpp is ~-3 dB.",
-          "The driver now delivers 2 Vpp into the line (4.5 V EMF here).",
+          "driver at e_in and terminated into the bias (VTERM = vbias).",
+          "Driver: fixed 4 Vpp EMF behind 50 Ohm (2 Vpp into a matched 50",
+          "Ohm load), so the line swing follows Z0 and the termination.",
+          "Push-pull: PN_A's line is its n side (ref = ground), PN_B's its",
+          "p side (ref = 4 V). Each section's optical phase reaches the",
+          "output after its optical transit: RF/optical walk-off modelled.",
+          "Optimizer: detune, bias, arm imbalance, PN and ring length, the",
+          "electrode's unloaded Z0 (30-80 Ohm) and the termination (20-80",
+          "Ohm), from the earlier optimum. Z0 moves at fixed n_rf and",
+          "conductor loss (a real CPW loses more at high Z0).",
+          "Earlier run (2 Vpp on the line, Z0 60, R_T 40): TDECQ 1.34 dB,",
+          "RLM 0.954, ER 4.9 dB pass; relOMA -3.1 dB misses -2 dB.",
           "Still quasi-static ring optics (no photon lifetime)."
         ]
       }
@@ -418,27 +417,25 @@
   "flow": {
     "name": "Resonance → PAM4 eye → optimize → evaluate (TW)",
     "vars": {
-      "detune_pm": 2.0,
-      "dL_nm": 250.0,
-      "vbias": 2.0,
-      "pn_um": 500.0,
-      "ring_um": 150.0,
-      "vswing": 2.0,
-      "r_drv_ohm": 50.0,
+      "detune_pm": 1.92,
+      "dL_nm": 247.0,
+      "vbias": 2.04,
+      "pn_um": 495.0,
+      "ring_um": 172.0,
+      "z0_ohm": 60.0,
       "r_term_ohm": 40.0,
+      "v_emf_pp": 4.0,
+      "r_drv_ohm": 50.0,
       "rs_ohm_mm": 10.0,
       "vpil_vcm": 2.0,
       "loss_db_cm": 12.0,
       "cj0_ff_um": 0.3,
-      "z0_ohm": 60.0,
       "n_rf": 2.4,
       "rf_loss_db_cm": 2.0
     },
     "set": {
       "WG_A.length_m": "2.0120095e-05 + dL_nm*0.5e-9",
       "WG_B.length_m": "2.0120095e-05 - dL_nm*0.5e-9",
-      "PRBS.v0": "vbias - vswing/2*(r_drv_ohm + r_term_ohm)/r_term_ohm",
-      "PRBS.v1": "vbias + vswing/2*(r_drv_ohm + r_term_ohm)/r_term_ohm",
       "PN_A.length_m": "pn_um*1e-6",
       "PN_B.length_m": "pn_um*1e-6",
       "PN_A.vpil_vcm": "vpil_vcm",
@@ -449,6 +446,8 @@
       "PN_B.cj0_ff_um": "cj0_ff_um",
       "WG_R1.length_m": "ring_um*0.5e-6",
       "WG_R2.length_m": "ring_um*0.5e-6",
+      "PRBS.v0": "vbias - v_emf_pp/2",
+      "PRBS.v1": "vbias + v_emf_pp/2",
       "RDA.R": "r_drv_ohm",
       "RDB.R": "r_drv_ohm",
       "RTA.R": "r_term_ohm",
@@ -526,7 +525,7 @@
       {
         "id": "opt",
         "kind": "optimize",
-        "title": "Maximize the worst spec margin",
+        "title": "Maximize the worst spec margin (incl. Z0, termination)",
         "inner": [
           "res",
           "eye"
@@ -556,12 +555,22 @@
             "var": "ring_um",
             "min": 100.0,
             "max": 800.0
+          },
+          {
+            "var": "z0_ohm",
+            "min": 30.0,
+            "max": 80.0
+          },
+          {
+            "var": "r_term_ohm",
+            "min": 20.0,
+            "max": 80.0
           }
         ],
         "objective": "min((rlm - 0.95)/0.05, (1.5 - tdecq_db)/1.5, (rel_oma_db + 2)/2, (er_db - 3.5)/3.5)",
         "maximize": true,
         "constraints": [],
-        "iters": 50
+        "iters": 60
       },
       {
         "id": "eval",

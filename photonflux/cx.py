@@ -890,14 +890,26 @@ def _hash(*parts: str) -> str:
     return h.hexdigest()[:16]
 
 
+def _compile_va(va_path: Path, **kwargs: Any) -> Any:
+    """bosdi's VA front end. Since 0.1.7 it shells out to an OpenVAF binary
+    found via $OPENVAF_IR (no more openvaf-py binding); default that to our
+    ChipFlow-fork binary, which supports the --dump-json it needs."""
+    import os
+
+    from bosdi.va import compile_va
+
+    os.environ.setdefault("OPENVAF_IR", str(openvaf_ir_path()))
+    return compile_va(str(va_path), **kwargs)
+
+
 def _bsim4_param_names() -> frozenset[str]:
     """All BSIM4 VA parameter names, from a cached bare lowering."""
     cache = CACHE_DIR / f"bsim4_params_{_hash(BSIM4_VA.read_text())}.json"
     if cache.exists():
         return frozenset(json.loads(cache.read_text()))
-    from bosdi.va import compile_va, lower
+    from bosdi.va import lower
 
-    dump = compile_va(str(BSIM4_VA), allow_analog_in_cond=True)
+    dump = _compile_va(BSIM4_VA, allow_analog_in_cond=True)
     dev = lower(dump.modules[0], class_name="Probe")
     names = sorted({p[0] for p in dev.params})
     CACHE_DIR.mkdir(parents=True, exist_ok=True)
@@ -1019,10 +1031,10 @@ def _lower_cached(
     cache = CACHE_DIR / f"{class_name.lower()}_{key}.py"
     if not cache.exists():
         import bosdi.va.lowering as _lowering
-        from bosdi.va import compile_va, emit_source, lower
+        from bosdi.va import emit_source, lower
         from bosdi.va.va_defaults import ParamSpec, parse_va_defaults
 
-        dump = compile_va(str(va_path), allow_analog_in_cond=allow_analog_in_cond)
+        dump = _compile_va(va_path, allow_analog_in_cond=allow_analog_in_cond)
         cm = dump.modules[0]
         defaults = parse_va_defaults(va_text)
         # repair bosdi's missed localparams / scale-suffixed literals first;

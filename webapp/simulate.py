@@ -100,6 +100,7 @@ def _port_domain(ep: str, instances: dict) -> str:
 
 
 DEFAULT_WAVE_SPAN = 2.56e-8   # pattern-source coverage when no t_stop known
+MAX_FLOW_POINTS = 262_144     # transient save points a flow evaluation may ask for
 _C_LIGHT = 299792458.0        # optical-frequency <-> wavelength conversions
 
 
@@ -695,7 +696,10 @@ def _run_transient(circuit, meta, analysis, log) -> dict:
     t_stop = float(analysis.get("t_stop", 4e-9))
     if not (0 < t_stop <= 1.0):
         raise NetlistError(f"t_stop out of range: {t_stop}")
-    points = max(16, min(int(analysis.get("points", 800)), 20000))
+    # 20k saved points keeps a browser run's JSON small; a flow's evaluation
+    # run (a full PRBS-13Q period at >= 16 samples/UI) raises the cap
+    cap = min(int(analysis.get("max_points", 20000)), MAX_FLOW_POINTS)
+    points = max(16, min(int(analysis.get("points", 800)), cap))
     # BDF2 by default for OSDI devices (required), stiff devices (lasers,
     # injection rings), and pattern-driven circuits (SERDES runs want
     # uniform steps; the PID controller reject-storms on some optical link
@@ -1794,6 +1798,10 @@ def _run_inner(payload: dict) -> dict:
         sch = payload.get("schematic") or {}
         analysis = payload.get("analysis") or {"mode": "dc"}
         mode = analysis.get("mode", "dc")
+        if mode == "flow":
+            import flow
+
+            return flow.run_flow(payload)
         # Generic parameter-sweep overlay (transient/noise/pulse, and 2-axis
         # AC): fan the analysis out per grid point and overlay. DC and
         # single-axis AC keep their own fast engines below, so they are

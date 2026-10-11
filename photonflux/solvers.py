@@ -20,9 +20,74 @@ compile is skipped.
 """
 from __future__ import annotations
 
+import os
 from typing import Any
 
-__all__ = ["dc", "transient", "step_budget"]
+__all__ = ["dc", "transient", "step_budget", "bdf2_reuse_solver",
+           "enable_compile_cache"]
+
+_CACHE_MAX_BYTES = 1 << 30
+_cache_set = False
+
+
+def _machine_tag() -> str:
+    """Host fingerprint for the XLA cache path: compiled CPU code targets the
+    host's instruction set, so a shared home directory must not hand one
+    machine's executables to another."""
+    import hashlib
+    import platform
+
+    flags = ""
+    try:
+        with open("/proc/cpuinfo") as fh:
+            flags = next((ln for ln in fh if ln.startswith("flags")), "")
+    except OSError:
+        pass
+    ident = "|".join((platform.platform(), platform.machine(),
+                      platform.processor(), flags))
+    return hashlib.sha256(ident.encode()).hexdigest()[:12]
+
+
+def enable_compile_cache(path: str | None = None) -> str | None:
+    """Keep compiled XLA programs on disk so a new process (a CLI example, a
+    flow, a server restart) skips recompiling circuits it has seen before.
+
+    Called on the first solve. ``PHOTONFLUX_JAX_CACHE`` overrides the
+    directory, or disables the cache when ``0``; a cache directory the user
+    already configured for JAX is left alone. Oldest entries are pruned
+    beyond 1 GB. Returns the directory in use (None when disabled)."""
+    global _cache_set
+    import jax
+
+    if _cache_set:
+        return jax.config.jax_compilation_cache_dir
+    _cache_set = True
+    env = os.environ.get("PHOTONFLUX_JAX_CACHE", "").strip()
+    if env == "0":
+        return None
+    if jax.config.jax_compilation_cache_dir:
+        return jax.config.jax_compilation_cache_dir
+    if path is None:
+        base = env or os.path.join(
+            os.environ.get("XDG_CACHE_HOME")
+            or os.path.join(os.path.expanduser("~"), ".cache"),
+            "photonflux", "xla")
+        path = os.path.join(base, f"jax{jax.__version__}-{_machine_tag()}")
+    try:
+        os.makedirs(path, exist_ok=True)
+        entries = sorted((e for e in os.scandir(path) if e.is_file()),
+                         key=lambda e: e.stat().st_mtime, reverse=True)
+        total = 0
+        for e in entries:
+            total += e.stat().st_size
+            if total > _CACHE_MAX_BYTES:
+                os.remove(e.path)
+    except OSError:
+        return None
+    jax.config.update("jax_compilation_cache_dir", path)
+    # circuit programs take ~0.3-5 s to compile; cache all but the trivial
+    jax.config.update("jax_persistent_cache_min_compile_time_secs", 0.2)
+    return path
 
 
 def _zero_vf(t, y, args):
@@ -94,6 +159,7 @@ def dc(circuit: Any, y_guess: Any = None, *,
     """
     import jax.numpy as jnp
 
+    enable_compile_cache()
     y = circuit._zero_guess() if y_guess is None else jnp.asarray(y_guess)
     arrays = {k: jnp.asarray(v) for k, v in (params or {}).items()}
     return _dc_jit()(circuit.solver, circuit.groups, circuit.sys_size, y,
@@ -110,6 +176,7 @@ def transient(circuit: Any, *, y0: Any, max_steps: int, **kwargs: Any) -> Any:
     """
     if y0 is None:
         raise ValueError("solvers.transient needs y0 (use solvers.dc first)")
+    enable_compile_cache()
     kwargs.setdefault("term", _zero_term())
     return circuit.transient(y0=y0, max_steps=step_budget(max_steps),
                              **kwargs)

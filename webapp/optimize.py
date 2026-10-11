@@ -9,7 +9,7 @@ w/l, channel fits) are handled uniformly through the caches. Objectives:
   expr:<name>     scalar defined in the expressions panel (e.g. obj = pk2pk(vout))
   eye:<probe>     worst inner eye opening at that probe (needs a PRBS source)
   ber:<probe>     log10 of the Q-fit BER from the link report (minimize)
-  fom             COM-style FOM from the pulse analysis [dB]
+  fom             ISI-limited FOM from the pulse analysis [dB]
   tdec:<probe>    IEEE 802.3 TDEC at an optical probe [dB] (minimize)
   omatdec:<probe> OMA - TDEC at an optical probe [dBm] (maximize)
 

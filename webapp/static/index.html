@@ -207,13 +207,13 @@
       <label>at <select id="an-nq-probe"></select></label>
     </span>
     <span class="an-group" data-mode="optimize" hidden
-          title="Nelder-Mead over up to 4 instance parameters (runtime or compile-time), objective from: expr:<name> (a scalar from the fx panel), eye:<probe> (inner eye opening, needs a PRBS source), ber:<probe> (Q-fit BER, minimized), fom (pulse/COM). The inner run is a transient with the fields here; finite-difference sensitivities are reported at the optimum.">
+          title="Nelder-Mead over up to 8 instance parameters (runtime or compile-time), objective from: expr:<name> (a scalar from the fx panel), eye:<probe> (inner eye opening, needs a PRBS source), ber:<probe> (Q-fit BER, minimized), fom (pulse/COM). The inner run is a transient with the fields here; finite-difference sensitivities are reported at the optimum.">
       <label>iters <input id="an-op-iters" type="text" value="30" size="3"></label>
       <label>t_stop <input id="an-op-tstop" type="text" value="25.6n" size="5"> s</label>
       <label>points <input id="an-op-points" type="text" value="4000" size="5"></label>
     </span>
     <span class="an-group" data-mode="pulse" hidden
-          title="Runs the PRBS source in single-pulse mode, extracts the symbol-spaced pulse response at the probe, designs a Wiener FFE/DFE and reports a COM-style FOM.">
+          title="Runs the PRBS source in single-pulse mode, extracts the symbol-spaced pulse response at the probe, designs a Wiener FFE/DFE and reports an ISI-limited FOM (half eye over RMS residual ISI).">
       <label>t_stop <input id="an-pl-tstop" type="text" value="8n" size="5"> s</label>
       <label>points <input id="an-pl-points" type="text" value="2000" size="5"></label>
       <label>probe <select id="an-pl-probe"></select></label>

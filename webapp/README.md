@@ -221,8 +221,9 @@ TDECQ 1.4 dB.
   **bathtub** curve. Multi-seed noise runs pool their statistics.
 * **Pulse / COM analysis**: reruns the PRBS source in single-pulse mode,
   extracts the symbol-spaced pulse response at a probe, designs a Wiener
-  FFE(+DFE) and reports a COM-style FOM = 20 log10(cursor / sigma_ISI) with
-  the tap sets and the equalized pulse — a "best achievable EQ" oracle for
+  FFE(+DFE) and reports an ISI-limited FOM = 20 log10(half eye / sigma_ISI)
+  (half eye = cursor/(2(L-1)), sigma_ISI the RMS residual ISI of random NRZ or
+  PAM4 data) with the tap sets and the equalized pulse — a "best achievable EQ" oracle for
   any schematic link.
 * **Transient noise**: set `noise seeds` (+ bandwidth) in the transient
   toolbar to enable photodiode **shot noise** (2qI on the instantaneous

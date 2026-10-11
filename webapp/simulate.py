@@ -1881,8 +1881,10 @@ def _run_inner(payload: dict) -> dict:
             if not pat_inst:
                 raise NetlistError(
                     "pulse/COM analysis needs a PRBS source on the canvas")
-            sch["instances"][pat_inst].setdefault("settings", {})["mode"] = \
-                "pulse"
+            pat_settings = sch["instances"][pat_inst].setdefault(
+                "settings", {})
+            pulse_levels = 4 if pat_settings.get("mode") == "pam4" else 2
+            pat_settings["mode"] = "pulse"
         circuit, meta, log = _get_circuit(sch, wave_span, noise_cfg)
         if mode == "dc":
             result = _run_dc(circuit, meta, log)
@@ -1905,7 +1907,8 @@ def _run_inner(payload: dict) -> dict:
             import linkpost
 
             result["pulse"] = linkpost.pulse_report(
-                result, meta, {**analysis, "pattern": pat_inst}, log)
+                result, meta, {**analysis, "pattern": pat_inst,
+                               "levels": pulse_levels}, log)
         elif mode == "ac":
             result = _run_ac(circuit, meta, analysis, log)
         elif mode == "noise":

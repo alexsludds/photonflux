@@ -1002,7 +1002,7 @@ def _lower_cached(
     NB the cache key covers the VA text and lowering inputs but NOT this
     module's emitted-source repairs (_fix_branch_aliases/_harden_emitted):
     after changing repair logic, delete the affected models/__jax__/*.py."""
-    import bosdi
+    from importlib.metadata import version
 
     va_text = va_path.read_text()
     literal_defaults = _va_literal_defaults(va_text)
@@ -1014,7 +1014,7 @@ def _lower_cached(
         json.dumps(runtime_defaults or {}, sort_keys=True),
         json.dumps(literal_defaults, sort_keys=True),
         repr(sorted(sorted(p) for p in collapse_pairs) if collapse_pairs else None),
-        getattr(bosdi, "__version__", "?"),
+        version("bosdi"),  # bosdi has no __version__
     )
     cache = CACHE_DIR / f"{class_name.lower()}_{key}.py"
     if not cache.exists():

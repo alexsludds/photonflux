@@ -278,9 +278,29 @@ def schematic_to_netlist(sch: dict, wave_span: float = DEFAULT_WAVE_SPAN,
                             else float(settings.get("length_m", 1e-3)))
                 n_sec = _cat.tw_sections(settings.pop("n_sections", 0),
                                          length_m)
-                key = f"pn_tw@{n_sec}"
-                ltis[key] = {"pn_tw": n_sec}
+                m = 0
+                if _cat.transit_on(settings.pop("transit", "")):
+                    m = _cat.transit_stages(
+                        length_m, settings.get("n_group", 4.0), n_sec)
+                key = f"pn_tw@{n_sec}" + (f"t{m}" if m else "")
+                ltis[key] = {"pn_tw": n_sec, "stages": m}
                 cx_instances[name] = {"component": key}
+            elif ctype == "waveguide":
+                # real group delay: the stage count is structural, so each
+                # count is its own model (stages of <= 0.5 ps)
+                import catalog as _cat
+
+                if _cat.transit_on(settings.pop("transit")):
+                    length_m = (float(settings["length_um"]) * 1e-6
+                                if "length_um" in settings
+                                else float(settings.get("length_m", 1e-4)))
+                    n_st = _cat.transit_stages(length_m,
+                                               settings.get("n_group", 4.0))
+                    key = f"wg_transit@{n_st}"
+                    ltis[key] = {"wg_transit": n_st}
+                    cx_instances[name] = {"component": key}
+                else:
+                    cx_instances[name] = {"component": ctype}
             elif (noise_cfg and ctype == "cw_laser"
                   and (float(settings.get("rin_db", 0.0)) < 0
                        or float(settings.get("linewidth_hz", 0.0)) > 0)):
@@ -415,7 +435,10 @@ def schematic_to_netlist(sch: dict, wave_span: float = DEFAULT_WAVE_SPAN,
     # pseudo-transient settle before the DC point is trusted; record the
     # user's source delays so the settle can stage a clean bias ramp-up
     hard_dc = any(CATALOG[i["type"]].get("hard_dc") for i in instances.values())
-    stiff = any(CATALOG[i["type"]].get("stiff") for i in instances.values())
+    # (real optical transit adds sub-ps Pade stages: stiff too)
+    stiff = any(CATALOG[i["type"]].get("stiff")
+                or str((i.get("settings") or {}).get("transit", "")).lower()
+                == "delayed" for i in instances.values())
     src_delay: dict[str, float] = {}
     if hard_dc:
         for name, inst in instances.items():

@@ -498,7 +498,6 @@ function flowRenderSteps() {
   if (!t?.flowOn || !t.flow) return;
   if (document.activeElement !== $("flow-name")) $("flow-name").value = t.flow.name || "";
   const recs = Object.fromEntries((t.flowResult?.steps || []).map((s) => [s.id, s]));
-  const vars = t.flowResult?.vars || {};
   t.flow.steps.forEach((st, i) => {
     const rec = recs[st.id];
     const el = document.createElement("div");
@@ -515,9 +514,10 @@ function flowRenderSteps() {
     const outs = st.kind === "optimize" ? (st.params || []).map((p) => p.var || `${p.inst}.${p.param}`)
       : st.kind === "evaluate" ? Object.keys(st.fom || {})
       : Object.keys(st.outputs || {});
+    const got = rec?.status === "ok" ? { ...(rec.outputs || {}) } : {};
     const chips = outs.slice(0, 6).map((n) =>
-      `<span class="flow-chip">${escapeHtml(n)}${rec?.status === "ok" && n in vars
-        ? ` ${flowFmt(vars[n])}` : ""}</span>`).join("")
+      `<span class="flow-chip">${escapeHtml(n)}${n in got
+        ? ` ${flowFmt(got[n])}` : ""}</span>`).join("")
       + (outs.length > 6 ? `<span class="flow-chip">+${outs.length - 6}</span>` : "");
     el.innerHTML = `<span class="rp-num">${i + 1}</span>
       <div class="flow-step-txt"><div class="flow-step-k">${escapeHtml(flowStepSummary(st, t.flow))}</div>
@@ -714,7 +714,7 @@ function flowPlotCurve(st, rec, doc) {
   let svg = f.open + fsvgPoly(f, pts, "fl-line");
   // mark outputs that locate a point on the x axis (xat_min / xat_max / cross)
   for (const [name, expr] of Object.entries(st.outputs || {})) {
-    const v = flowTab().flowResult?.vars?.[name];
+    const v = rec.outputs?.[name];
     if (!/^(xat_m(in|ax)|cross)\(/.test(String(expr).trim()) || !(v >= x0 && v <= x1)) continue;
     const u = (v - x0) / (x1 - x0);
     svg += `<line class="fl-mark" x1="${f.sx(u)}" x2="${f.sx(u)}" y1="${f.sy(0)}" y2="${f.sy(1)}"/>`

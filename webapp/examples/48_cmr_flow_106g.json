@@ -21,11 +21,13 @@
           "  the worst normalized spec margin, re-running 1 + 2 each time.",
           "4 Evaluate the optimum over a full PRBS-13Q period against",
           "  RLM > 0.95, TDECQ < 1.5 dB, relOMA > -2 dB, ER > 3.5 dB.",
-          "Verdict: NOT met. At 2 Vpp the static levels cap relOMA near",
-          "-3 dB (600 um PN); the RC (~25 GHz at 300 um, 50 Ohm) costs",
-          "1.5-4 dB of TDECQ, so length trades OMA for TDECQ: about",
-          "-5 dB relOMA at 3.5 dB TDECQ. Still optimistic: quasi-static",
-          "optics (no photon lifetime; Q 1e4-1e5 is 10-60 ps vs 9.4 ps UI)."
+          "Verdict: NOT met. Best found (50 evals, PN 313 um, ring 124 um):",
+          "relOMA -4.9 dB, TDECQ 2.4 dB, RLM 0.947, ER 3.3 dB, IL 2.2 dB.",
+          "At 2 Vpp the static levels alone cap relOMA near -3 dB (600 um",
+          "PN); the RC (~25 GHz at 300 um, 50 Ohm) costs 1.5-4 dB of",
+          "TDECQ, so PN length trades OMA against TDECQ. Still optimistic:",
+          "quasi-static optics (no photon lifetime; Q 1e4-1e5 = 10-60 ps",
+          "against a 9.4 ps UI)."
         ]
       }
     ],

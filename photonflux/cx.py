@@ -1,8 +1,8 @@
 """circulax bridge: Verilog-A models and SKY130 PDK transistors as JAX components.
 
 Two entry points, both returning circulax ``CircuitComponent`` classes built by
-`bosdi <https://pypi.org/project/bosdi/>`_ (``pip install circulax[verilog-a]
-openvaf-py``) from real Verilog-A:
+`bosdi <https://pypi.org/project/bosdi/>`_ (``pip install circulax[verilog-a]``)
+from real Verilog-A:
 
   ``cx.va("photodiode")``
       any ``models/*.va`` compiled straight to a differentiable JAX component.

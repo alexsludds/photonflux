@@ -10,8 +10,8 @@
 # `.osdi`. Compiling openvaf-ir takes Rust + LLVM 18, so CI builds it once
 # (docker/openvaf-ir.Dockerfile, .github/workflows/openvaf-ir.yml) and this
 # image downloads that release asset (OPENVAF_IR_URL).
-# The photonic models need no native toolchain at runtime: `bosdi`/`openvaf-py`
-# lower them to pure-Python JAX (cached under models/__jax__/), and the warmup
+# The photonic models need no native toolchain at runtime: `bosdi` lowers
+# them to pure-Python JAX (cached under models/__jax__/), and the warmup
 # step pre-populates that cache.
 #
 # NOTE: this image has not been built on this (arm64, no-daemon) machine. The
@@ -45,13 +45,11 @@ ENV HOME=/home/user
 WORKDIR /app
 
 # --- Python deps -----------------------------------------------------------
-# bosdi is NOT on PyPI; install its Linux wheel from the GitHub release first so
-# circulax's `bosdi>=0.1.3` requirement is already satisfied. Then circulax
-# (pure-python) pulls jax/jaxlib/diffrax/klujax (all manylinux) from PyPI.
+# circulax (pure-python) pulls jax/jaxlib/diffrax/klujax (all manylinux) from
+# PyPI; bosdi ships a manylinux wheel there too (since 0.1.8, its release
+# wheels are on PyPI, and it no longer needs the openvaf-py binding).
 RUN pip install --no-cache-dir \
-      "https://github.com/gdsfactory/bosdi/releases/download/v0.1.5/bosdi-0.1.5-cp312-cp312-manylinux_2_28_x86_64.whl" \
-    && pip install --no-cache-dir \
-      "circulax==0.2.1" "openvaf-py==0.1.5" volare numpy matplotlib
+      "circulax==0.2.4" "bosdi==0.1.8" volare numpy matplotlib
 
 # --- app source + Linux openvaf-ir (overwrites the vendored Mac binary) -----
 COPY . /app

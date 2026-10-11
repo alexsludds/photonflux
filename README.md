@@ -64,16 +64,15 @@ flowchart TD
 ```bash
 # one-time environment (Python 3.12, native on Apple Silicon)
 python3 -m venv .venv-circulax
-.venv-circulax/bin/pip install "circulax[verilog-a]" openvaf-py
+.venv-circulax/bin/pip install "circulax[verilog-a]"
 .venv-circulax/bin/pip install -e .
 
 # SKY130 PDK (used for FET model-card extraction)
 .venv-circulax/bin/pip install volare
 .venv-circulax/bin/python -m volare enable --pdk sky130 <commit>   # -> ~/.volare/sky130A
 
-# openvaf-ir — required for every SKY130 FET example/circuit. The pip
-# `openvaf-py` above is NOT this: the FET path needs the ChipFlow `vajax`
-# fork, which has no wheel. Build + install it as bin/openvaf-ir in one step:
+# openvaf-ir — required for every SKY130 FET example/circuit: the FET path
+# needs the ChipFlow `vajax` OpenVAF fork, which has no wheel. Build + install it as bin/openvaf-ir in one step:
 scripts/build-openvaf.sh                             # needs Rust + LLVM 18
 
 # verify the toolchain is complete before running anything
@@ -236,7 +235,7 @@ Native arm64 for local dev; the container rebuilds the native pieces for Linux.
 | `bin/openvaf-ir` | Verilog-A → OSDI for circulax (BSIM4-correct) | [robtaylor/OpenVAF](https://github.com/robtaylor/OpenVAF) branch `vajax` |
 | `libngspice` | SKY130 PDK card extraction only (no simulation) | Homebrew (apt in the container) |
 | SKY130 PDK | CMOS transistors | volare (`~/.volare/sky130A`) |
-| `.venv-circulax` | circulax 0.2.1 + bosdi 0.1.5 + openvaf-py + JAX | pip |
+| `.venv-circulax` | circulax 0.2.4 + bosdi 0.1.8 + JAX | pip |
 
 ### Rebuilding openvaf-ir
 

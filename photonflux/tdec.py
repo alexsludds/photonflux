@@ -405,6 +405,31 @@ def _pam4_eye(stateye, p, dt_sec, baud, nx, ny, s_noise_mW, ser):
     return eye.get_measurements()
 
 
+def _pattern_outer_levels(p, sps: float, phase: float,
+                          decisions) -> tuple[float, float]:
+    """(P3, P0) of ``p`` on the known pattern's runs: the mean over the
+    central 2 UI of every run of >= 7 threes, and of every run of >= 6 zeros
+    (802.3 121.8.4, stateye's compute_oma_outer), with the runs located on
+    the equalizer's aligned symbols -- symbol k sampled at
+    ``phase + k * sps`` -- instead of on decisions sliced from ``p``. NaN
+    for a level whose run the pattern lacks."""
+    d = np.asarray(decisions)
+    x = np.arange(len(p), dtype=float)
+
+    def level(value: int, min_run: int) -> float:
+        vals = []
+        edges = np.flatnonzero(np.diff(np.r_[0, (d == value).astype(int), 0]))
+        for start, stop in zip(edges[::2], edges[1::2]):
+            if stop - start < min_run:
+                continue
+            mid = phase + 0.5 * (start + stop - 1) * sps    # run centre [samples]
+            keep = np.abs(x - mid) < sps                    # its central 2 UI
+            vals.extend(np.asarray(p)[keep])
+        return float(np.mean(vals)) if vals else float("nan")
+
+    return level(3, 7), level(0, 6)
+
+
 def measure_pam4(
     p_thru_mW,
     dt_sec: float,
@@ -497,6 +522,18 @@ def measure_pam4(
     violation in ``metrics["eq_violations"]``. ``progress`` is passed to the
     TDECQ-optimal search (``progress(i, n, tdecq_i, tdecq_best)``).
 
+    With ``symbols`` and an equalizer, OMA_outer is read on the known
+    pattern's runs (aligned as the equalizer aligns its training symbols) on
+    both the equalizer input and output, as a TDECQ scope that knows its
+    pattern would: stateye finds the runs on symbols it slices itself, which
+    a slowly settling or strongly equalized eye breaks (runs missed, or
+    mis-sliced stretches counted). The input's levels are
+    ``metrics["outer_levels_ref"]`` ([P3, P0]) and its OMA
+    ``metrics["oma_outer_ref"]``; ``oma_outer_from_pattern`` marks a
+    TDECQ_outer scored this way. The TDECQ-optimal search still scores its
+    candidates through stateye's own slicing (only its OMA reference comes
+    from the pattern), and the returned ``eye`` holds stateye's view.
+
     Still Clause 121 rather than D3.2 Clause 180 in two places, both of
     which can only raise TDECQ: the sub-eye thresholds stay at their
     nominal levels (D3.2 lets them move +-2 % of OMA) and the sampling
@@ -516,6 +553,7 @@ def measure_pam4(
     ser, ffe_taps, ffe_pre, dfe_taps, ffe_limits = (
         r["ser"], r["ffe_taps"], r["ffe_pre"], r["dfe_taps"], r["limits"])
     eq: dict = {}
+    pattern = None      # (phase, decisions): the known symbols, aligned
     if ffe_taps or dfe_taps:
         if not hasattr(stateye, "tap_limit_violations"):
             raise ImportError(
@@ -531,6 +569,24 @@ def measure_pam4(
             m_in = _pam4_eye(stateye, p, dt_sec, baud, nx, ny, s_noise_mW, ser)
             oma_reference = {"outer": m_in.get("oma_outer"),
                              "xp": m_in.get("oma_xp")}
+        elif isinstance(oma_reference, dict):
+            oma_reference = dict(oma_reference)
+        else:                            # one OMA for both families
+            oma_reference = {"outer": float(oma_reference),
+                             "xp": float(oma_reference)}
+        if symbols is not None:
+            # OMA_outer on the known pattern's runs: stateye finds the runs
+            # on symbols it slices itself, which a slowly settling or
+            # strongly equalized eye breaks -- the runs go missing (TDECQ
+            # then falls back to the crossing-point OMA and reads several dB
+            # high) or mis-sliced stretches count as runs (OMA_outer low)
+            _, aligned = stateye.ffe_mmse(p, sps, n_taps=n, n_pre=pre,
+                                          symbols=symbols, n_dfe=nd)
+            pattern = (aligned["phase"], aligned["decisions"])
+            p3, p0 = _pattern_outer_levels(p, sps, *pattern)
+            if np.isfinite(p3 - p0) and p3 != p0:
+                oma_reference["outer"] = abs(p3 - p0)
+                eq["outer_levels_ref"] = [p3, p0]
         # the Wiener design charges FFE taps for the receiver noise at the
         # FFE input; TDECQ's S is that noise (stateye defaults to 2 % of OMA)
         noise = float(s_noise_mW) if s_noise_mW > 0 else None
@@ -590,7 +646,8 @@ def measure_pam4(
             info.pop("rms_error_after", None)
             projected = True
         p = stateye.equalize(p, taps, info, sps)
-        eq = {"ffe_taps": [float(c) for c in taps] if int(ffe_taps) else [],
+        eq = {**eq,
+              "ffe_taps": [float(c) for c in taps] if int(ffe_taps) else [],
               "eq_projected": projected,
               "ceq": info["ceq"], "ffe_method": ffe_method,
               "dfe_b": [float(x) for x in info.get("dfe_b", [])],
@@ -623,6 +680,39 @@ def measure_pam4(
     msmts = {k: (float(v) if isinstance(v, np.generic) else v)
              for k, v in eye.get_measurements().items()}
     counts = dict(eye.get_measurement_counts())
+    ref_outer = oma_reference.get("outer") if eq else None
+    p3, p0 = (_pattern_outer_levels(p, sps, *pattern) if pattern is not None
+              else (np.nan, np.nan))
+    if np.isfinite(p3 - p0) and p3 != p0 and ref_outer is not None \
+            and np.isfinite(ref_outer):
+        # TDECQ's sub-eye thresholds (Pave +- OMA_outer/3) from the equalized
+        # record's levels on the pattern's runs too, scored with stateye's
+        # own R search on the same histogram
+        from stateye.measurements.bathtub import to_q_scale
+        from stateye.measurements.histogram_analysis import compute_tdecq_r
+
+        oma_eq = abs(p3 - p0)
+        hd = np.sum(eye.hist_data, axis=2)
+        grid = {"hd": hd, "dx": eye.dx, "dy": eye.dy,
+                "x": np.arange(hd.shape[0]) * eye.dx,
+                "y": np.arange(hd.shape[1]) * eye.dy + eye.ymin}
+        noise_r = compute_tdecq_r(grid, msmts, oma_eq, s_noise_mW, eq["ceq"],
+                                  ser)
+        tq = 10 * np.log10(ref_outer / 6
+                           / (to_q_scale(ser, rho_t=0.75) * noise_r))
+        if np.isfinite(tq):
+            avg = msmts["average"]
+            lo, hi = sorted((p3, p0))
+            msmts.update(
+                tdecq_outer=float(tq), oma_outer=oma_eq,
+                three_level_outer=p3, zero_level_outer=p0,
+                extinction_ratio_outer=(float(10 * np.log10(hi / lo))
+                                        if lo > 0 else np.nan),
+                threshold_lower=avg - oma_eq / 3, threshold=avg,
+                threshold_upper=avg + oma_eq / 3,
+                oma_outer_from_pattern=True)
+    if eq:
+        msmts["oma_outer_ref"] = ref_outer   # TDECQ's OMA (equalizer input)
     msmts.update(eq)
     msmts["tdecq_ser"] = ser
     if strict and not np.isfinite(msmts.get("tdecq_outer", np.nan)):

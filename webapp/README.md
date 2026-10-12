@@ -230,7 +230,14 @@ scored near relOMA -3.6 dB / TDECQ 1.4 dB.
   standard -- 802.3dj at 200G/lane (15 taps, 3 pre, 1 DFE, SER 4.56e-4),
   802.3cd at 100G/lane (5 taps, 1 pre, no DFE, SER 4.8e-4). S defaults to
   0: 802.3 credits scope noise back to the transmitter, and a simulated
-  trace has none. "show scored eye"
+  trace has none. TDECQ needs OMA_outer (a run of 7 threes and one of 6
+  zeros in the record). Trained on the pattern, the equalized score reads
+  it on the aligned pattern's runs, before and after the equalizer, and
+  the OMA / ER readout follows; stateye's own slicing (the raw score, and
+  decision-directed training) misses runs on a slowly settling eye or
+  counts stray ones. A record with no such run falls back to the
+  crossing-point OMA, whose TDECQ reads several dB high after a strong
+  equalizer. "show scored eye"
   draws the eye stateye measured (after the reference receiver and FFE,
   time-aligned to the probe).
 * **Link tab / BER report**: pick a received probe in the Link tab's

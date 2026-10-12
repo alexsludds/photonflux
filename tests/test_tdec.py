@@ -308,6 +308,66 @@ def test_measure_pam4_defaults_at_200g_lane(needs_pam4):
         eq["tdecq_outer"] < raw["tdecq_outer"]
 
 
+def test_pattern_outer_levels_read_the_known_runs():
+    """OMA_outer's levels from the aligned pattern: the central 2 UI of the
+    run of 7 threes and of the run of 6 zeros, not every 3 or 0, and not
+    the run's first symbols while it is still settling."""
+    d = np.array([1, 2, 0, 3, 1] + [3] * 7 + [2, 1] + [0] * 6 + [2, 3, 0, 1])
+    level = {0: 0.10, 1: 0.20, 2: 0.30, 3: 0.40}
+    lv = np.array([level[s] for s in d])
+    lv[5:12], lv[14:20] = 0.45, 0.05          # the runs settle further...
+    lv[5:7], lv[14:16] = 0.42, 0.08           # ...after their first 2 UI
+    phase = (SPS - 1) / 2                     # symbol k sampled mid-symbol
+    p = np.repeat(lv, SPS)
+    assert tdec._pattern_outer_levels(p, SPS, phase, d) == \
+        pytest.approx((0.45, 0.05))
+    p3, p0 = tdec._pattern_outer_levels(p, SPS, phase, d[:13])
+    assert p3 == pytest.approx(0.45) and np.isnan(p0)
+
+
+def test_measure_pam4_reads_oma_outer_on_the_pattern(needs_pam4, monkeypatch):
+    """With the pattern known, OMA_outer -- TDECQ's OMA and the source of
+    its sub-eye thresholds -- is read on the pattern's run of 7 threes and
+    of 6 zeros, not on stateye's own slicing, which counts stray runs on
+    this eye (OMA_outer ~20 % low) and can miss the runs altogether (the
+    crossing-point fallback, several dB high)."""
+    from stateye.measurements import waveform_analysis as wa
+    from photonflux.signals import pam4_gray
+
+    baud = 106.25e9
+    dt = 1.0 / baud / SPS
+    sym = np.roll(pam4_gray(np.tile(prbs(13), 2)), 64)
+    lv = PAM4_LEVELS[sym]
+    isi = lv + 0.3 * (np.concatenate([[lv[0]], lv[:-1]]) - lv.mean())
+    p = np.repeat(isi, SPS) + 0.002 * np.random.default_rng(1).standard_normal(
+        isi.size * SPS)
+    raw = tdec.measure_pam4(p, dt, baud, ffe_taps=0, strict=False)
+    assert raw["oma_outer"] < 0.9 * 0.39          # stateye's slicing
+    # settled run levels 0.40 + 0.3 * 0.15 and 0.10 - 0.3 * 0.15
+    m = tdec.measure_pam4(p, dt, baud, symbols=sym)
+    assert m["oma_outer_from_pattern"] is True
+    assert m["outer_levels_ref"] == pytest.approx([0.445, 0.055], abs=2e-3)
+    assert m["oma_outer_ref"] == pytest.approx(0.39, abs=3e-3)
+    assert m["threshold_upper"] - m["threshold_lower"] == \
+        pytest.approx(2 * m["oma_outer"] / 3)
+
+    found = wa.compute_oma_outer
+
+    def missed(*args):                # stateye's slicing finds no runs
+        found(*args)
+        msmts, counts = args[-2], args[-1]
+        for key in ("oma_outer", "zero_level_outer", "three_level_outer",
+                    "extinction_ratio_outer"):
+            msmts[key], counts[key] = np.nan, 0
+
+    monkeypatch.setattr(wa, "compute_oma_outer", missed)
+    lost = tdec.measure_pam4(p, dt, baud, symbols=sym,
+                             oma_reference={"outer": np.nan,
+                                            "xp": raw["oma_xp"]})
+    assert lost["oma_outer"] == pytest.approx(m["oma_outer"])
+    assert lost["tdecq_outer"] == pytest.approx(m["tdecq_outer"], abs=1e-6)
+
+
 def test_fractional_samples_per_ui_is_resampled(needs_pam4):
     """stateye assumes whole samples/UI; a 24.93-sample grid used to score
     a clean eye at ~28 dB TDECQ (and 24.5 crashed). The bridge resamples."""

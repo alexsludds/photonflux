@@ -199,12 +199,20 @@ def measure(payload: dict) -> dict:
     levels_raw = [_num(raw.get(f"{n}_level_xp"))
                   for n in ("zero", "one", "two", "three")]
     er = _num(raw.get(f"extinction_ratio_{fam}"))
+    oma = _num(raw.get(f"oma_{fam}"))
+    outer_ref = eq.get("outer_levels_ref")
+    if fam == "outer" and outer_ref:
+        # the outer levels TDECQ referenced, read on the known pattern's
+        # runs (stateye's own slicing can miss them or count stray runs)
+        hi, lo = max(outer_ref), min(outer_ref)
+        oma = _num(hi - lo)
+        er = _num(10 * np.log10(hi / lo)) if lo > 0 else None
     return {"ok": True, "format": "PAM4", "tdecq_db": tq, "tdecq_raw_db": tq_raw,
             "er_db": er if er is not None else _num(
                 raw.get("extinction_ratio_xp")),
             "levels_raw": levels_raw,
             # OMA at the equalizer input, as 802.3dj references it
-            "family": fam, "oma": _num(raw.get(f"oma_{fam}")),
+            "family": fam, "oma": oma,
             "ceq": _num(eq.get("ceq", 1.0)),
             "taps": eq.get("ffe_taps") or [], "method": eq.get("ffe_method"),
             "dfe_b": eq.get("dfe_b") or [],

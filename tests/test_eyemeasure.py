@@ -72,6 +72,22 @@ def test_auto_settings_at_200g_lane():
     assert off["tdecq_db"] == off["tdecq_raw_db"]
 
 
+def test_pam4_oma_outer_on_the_pattern_runs():
+    """OMA and ER come from the pattern's run of 7 threes and of 6 zeros
+    (symbols 5000 and 4096 of this PRBS-13Q), settled at 0.40 + 0.3 * 0.15
+    and 0.10 - 0.3 * 0.15 through the post-cursor; stateye's own slicing
+    counts stray runs on this eye and reads OMA_outer ~20 % low."""
+    t, v, pat = _trace("pam4", nsym=5200, post=0.3)
+    r = eyemeasure.measure({"t": t.tolist(), "values": v.tolist(),
+                            "unit": "mW", "ui": UI, "levels": 4,
+                            "skip_s": 10 * UI, "pattern": pat,
+                            "cfg": {**FAST, "s_noise": 0.005}})
+    assert r["ok"], r.get("error")
+    assert r["family"] == "outer"
+    assert r["oma"] == pytest.approx(0.39, abs=5e-3)
+    assert r["er_db"] == pytest.approx(10 * np.log10(0.445 / 0.055), abs=0.15)
+
+
 def test_nrz_reports_tdec():
     r = eyemeasure.measure(_payload("nrz", {"ber": 1e-12}))
     assert r["ok"], r.get("error")

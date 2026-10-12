@@ -41,7 +41,7 @@
 //   with w_pk = 2*pi*c*(1/lambda_peak - 1/lambda_ref) the baseband offset of
 //   the gain peak and tau_bw = 1/(pi*df_fwhm) fixing the -3 dB gain bandwidth
 //   (df_fwhm from gain_bw_nm). A carrier at lambda sits at w = 2*pi*c*(1/
-//   lambda_ref - 1/lambda) in the shared DWDM frame (lambda_ref, matching the
+//   lambda - 1/lambda_ref) in the shared DWDM frame (lambda_ref, matching the
 //   cw_laser WDM reference), so it peaks exactly at lambda = lambda_peak and
 //   rolls off away from it — a real per-channel gain tilt, not a scalar.
 //   Set gain_bw_nm wide (e.g. 40 nm) for an essentially flat amplifier.
@@ -107,7 +107,7 @@ module edfa(fi_re, fi_im, fo_re, fo_im, gnd);
         tau_bw  = 1.0 / (`M_PI * df_fwhm);
         beta    = tau_bw * w_pk;
 
-        // ---- field transfer: sqrt(G)*e^{-j*alpha_h*h/2}, detuned pole
+        // ---- field transfer: sqrt(G)*e^{+j*alpha_h*h/2}, detuned pole
         sg  = sqrt(g);
         phi = 0.5 * alpha_h * hc;
         gr  = sg * cos(phi);

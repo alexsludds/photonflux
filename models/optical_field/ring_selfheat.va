@@ -127,8 +127,8 @@ module ring_selfheat(in_re, in_im, out_re, out_im, lam_nm, gnd);
         delta = 2.0 * `M_PI * `P_C0 * (1.0 / lam_l - 1.0 / lam_res_eff);
 
         // CMT rate equations for A = kappa*a, rows scaled by tau:
-        //   dA_re/dt = -A_re/tau - delta*A_im - kappa^2 * s_im
-        //   dA_im/dt = -A_im/tau + delta*A_re + kappa^2 * s_re
+        //   dA_re/dt = -A_re/tau + delta*A_im - kappa^2 * s_im
+        //   dA_im/dt = -A_im/tau - delta*A_re + kappa^2 * s_re
         I(are, gnd) <+ tau * ddt(V(are, gnd)) + V(are, gnd)
                        - tau * delta * V(aim, gnd) + tk2 * V(in_im, gnd);
         I(aim, gnd) <+ tau * ddt(V(aim, gnd)) + V(aim, gnd)

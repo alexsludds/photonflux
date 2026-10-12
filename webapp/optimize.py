@@ -35,7 +35,9 @@ import numpy as np
 
 # TDEC settings the browser has no UI for yet. They matter: s_noise sets the
 # saturation floor of OMA - TDEC (see photonflux.tdec.oma_tdec_floor_dbm), and
-# ref_bw is the reference-receiver bandwidth TDEC is defined through.
+# ref_bw is the reference-receiver bandwidth TDEC is defined through
+# (photonflux.tdec.TDEC_REF_BW_FACTOR; spelt out because importing tdec
+# needs the optional stateye).
 TDEC_DEFAULTS = {"s_noise_mW": 0.01, "ber": 1e-12,
                  "ref_bw_factor": 0.5, "ref_bw_order": 4}
 

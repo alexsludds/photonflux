@@ -47,7 +47,7 @@ module ring_phase_shifter(are, aim, vp, vn, gnd);
         lam_res_eff = lambda_res_nm * 1e-9 + dl_dv_pm * 1e-12 * V(vp, vn);
         delta = 2.0 * `M_PI * `P_C0 * (1.0 / (lambda_nm * 1e-9) - 1.0 / lam_res_eff);
 
-        // cavity node: -j*delta*A
+        // cavity node: +j*delta*A (so dA/dt gains -j*delta*A)
         I(are, gnd) <+ -delta * V(aim, gnd);
         I(aim, gnd) <+ delta * V(are, gnd);
 

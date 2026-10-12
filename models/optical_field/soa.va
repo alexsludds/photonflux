@@ -90,7 +90,7 @@ module soa(fi_re, fi_im, fo_re, fo_im, bi_re, bi_im, bo_re, bo_im,
         I(nh, gnd) <+ tau_c * ddt(V(nh, gnd)) + V(nh, gnd) - h0
                       + (g - 1.0) * ptot / p_sat;
 
-        // ---- field transfer: sqrt(G)*e^{-j*alpha_h*h/2}, one-pole output
+        // ---- field transfer: sqrt(G)*e^{+j*alpha_h*h/2}, one-pole output
         sg  = sqrt(g);
         phi = 0.5 * alpha_h * hc;
         gr  = sg * cos(phi);

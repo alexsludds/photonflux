@@ -230,7 +230,7 @@ def rf_drop_analytic(dnu: np.ndarray) -> np.ndarray:
     amp = np.zeros_like(dnu, dtype=complex)
     for m in (-2, -1, 0, 1, 2):
         delta = 2 * np.pi * (dnu - m * fsr)
-        amp += 1j * np.sqrt(2 * ite1) * np.sqrt(2 * ite2) / (1 / tau - 1j * delta)
+        amp += 1j * np.sqrt(2 * ite1) * np.sqrt(2 * ite2) / (1 / tau + 1j * delta)
     return np.abs(amp) ** 2
 
 

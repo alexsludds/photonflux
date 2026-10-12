@@ -184,11 +184,16 @@ with S = 0.005 mW, before the flows switched to the 802.3 reference settings
 and S = 0). Example 49 runs the flow on traveling-wave PN arms with real
 optical transit (`transit` = delayed), a 10 um / 0.3 dB/cm feedback delay
 line, 30 Ohm electrodes driven through 30 Ohm, and the input coupler and
-the PRBS source's TX FFE pre/post-cursor taps as optimizer knobs. Before
-the 30 Ohm / FFE change (50 Ohm drive, both couplers as knobs) it scored
-relOMA -5.6 dB, TDECQ 2.3 dB, RLM 0.92, ER 1.9 dB -- all miss; the ring's
-photon lifetime (~6 UI) limits. With quasi-static optics that design had
-scored near relOMA -3.6 dB / TDECQ 1.4 dB.
+the PRBS source's TX FFE pre/post-cursor taps as optimizer knobs. PN_B's
+p-side rail tracks 2 x vbias, so both junctions share the reverse bias,
+and the PRBS seed (5407) starts PRBS-13Q at symbol 4064 so the 1000-UI
+eye step holds the pattern's OMA_outer runs and scores TDECQ_outer like
+the evaluate. Its start design is estimated at relOMA -3.5 dB, ER 3.9 dB,
+RLM 0.89, TDECQ 3.5 dB on the full period: ER passes, the rest miss. The
+ring's photon lifetime (~5 UI) limits: the reference equalizer's C_eq
+~1.7 costs ~2.4 dB of TDECQ by itself, and a 6 Vpp drive or a 1 V*cm VpiL
+still leaves relOMA near -3.5 dB. Its 1000-UI eye step reads RLM about
+0.05-0.1 above the full period.
 
 ## Serial-link (SERDES) workflow
 

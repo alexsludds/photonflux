@@ -1,7 +1,7 @@
 {
   "title": "Coupling-modulated ring, 106.25 GBd PAM4 flow (traveling-wave PN)",
   "group": "Lasers & modulators",
-  "description": "Example 48 with traveling-wave PN phase shifters and real optical transit: each arm's junction sits under a transmission-line electrode (Z0 30 Ohm) fed through a 30 Ohm driver resistance and terminated into the bias, and the arms and ring guides carry their group delay (transit = delayed), so the ring has its real round trip and photon lifetime. A 10 um, 0.3 dB/cm feedback delay line closes the ring; the optimizer also sets the input coupler and the PRBS source's TX FFE pre/post-cursor taps (linear, relative to the main cursor). Same spec as example 48 (RLM > 0.95, TDECQ < 1.5 dB, relOMA > -2 dB, ER > 3.5 dB)",
+  "description": "Example 48 with traveling-wave PN phase shifters and real optical transit: each arm's junction sits under a transmission-line electrode (Z0 30 Ohm) fed through a 30 Ohm driver resistance and terminated into the bias (PN_B's p-side rail at 2*vbias, so both junctions share the bias), and the arms and ring guides carry their group delay (transit = delayed), so the ring has its real round trip and photon lifetime. A 10 um, 0.3 dB/cm feedback delay line closes the ring; the optimizer also sets the input coupler and the PRBS source's TX FFE pre/post-cursor taps (linear, relative to the main cursor). Same spec as example 48 (RLM > 0.95, TDECQ < 1.5 dB, relOMA > -2 dB, ER > 3.5 dB)",
   "schematic": {
     "notes": [
       {
@@ -15,7 +15,8 @@
           "junction (Cj0 0.3 fF/um, 10 Ohm*mm series R), Z0 30 Ohm, fed by a 4 Vpp",
           "EMF behind 30 Ohm at e_in, terminated into the bias (VTERM = vbias).",
           "Push-pull: PN_A's line is its n side (ref = ground), PN_B's its",
-          "p side (ref = 4 V). RF/optical walk-off modelled.",
+          "p side (ref = VRAIL = 2*vbias, so both junctions sit at vbias).",
+          "RF/optical walk-off modelled.",
           "Optics: transit = delayed on the arms and ring guides, so the ring",
           "has its real round trip (~7 ps) and photon lifetime (~6 UI) instead",
           "of a quasi-static resonance. Feedback delay line WG_R1 + WG_R2:",
@@ -24,10 +25,16 @@
           "DC1 power coupling (k1) and the TX FFE taps ffe_pre / ffe_post",
           "(linear, relative to the main cursor; negative = de-emphasis).",
           "Z0 and the driver R are fixed at 30 Ohm; DC2 is fixed at k2 = 0.5.",
-          "Previous verdict (50 Ohm drive, Z0 65.6 Ohm, no FFE; 60 evals, full",
-          "PRBS-13): relOMA -5.6 dB, TDECQ 2.3 dB, RLM 0.92, ER 1.9 dB -- all",
-          "four miss; the ring's photon lifetime limits. Re-run the flow to",
-          "score the 30 Ohm + FFE design."
+          "PRBS seed 5407 starts PRBS-13Q at symbol 4064, so the 1000-UI eye",
+          "step holds its run of 6 zeros and of 7 threes: the optimizer scores",
+          "OMA_outer / TDECQ_outer like the full-period evaluate.",
+          "Start design, full PRBS-13Q (fast-model estimate): relOMA -3.5 dB,",
+          "ER 3.9 dB, RLM 0.89, TDECQ 3.5 dB -- ER passes, the rest miss.",
+          "Device-limited: the ring's photon lifetime (~5 UI) makes the",
+          "reference equalizer boost by C_eq ~1.7 (~2.4 dB of TDECQ alone);",
+          "6 Vpp drive or VpiL 1 V*cm still leave relOMA ~-3.5 dB, TDECQ",
+          "~2.7 dB. The 1000-UI eye step reads RLM ~0.05-0.1 above the full",
+          "period on this ring."
         ]
       }
     ],
@@ -55,7 +62,7 @@
         "y": 190,
         "rot": 0,
         "settings": {
-          "coupling": 0.5
+          "coupling": 0.578
         }
       },
       "PN_A": {
@@ -64,7 +71,7 @@
         "y": 70,
         "rot": 0,
         "settings": {
-          "length_m": 0.0005,
+          "length_m": 0.000574,
           "vpil_vcm": 2.0,
           "vref": 2.0,
           "vbi": 0.85,
@@ -89,7 +96,7 @@
         "y": 90,
         "rot": 0,
         "settings": {
-          "length_m": 2.024019e-05,
+          "length_m": 2.0243895e-05,
           "loss_dB_cm": 2.0,
           "neff": 2.4,
           "n_group": 4.0,
@@ -104,7 +111,7 @@
         "y": 290,
         "rot": 0,
         "settings": {
-          "length_m": 0.0005,
+          "length_m": 0.000574,
           "vpil_vcm": 2.0,
           "vref": 2.0,
           "vbi": 0.85,
@@ -129,7 +136,7 @@
         "y": 310,
         "rot": 0,
         "settings": {
-          "length_m": 1.9999999999999998e-05,
+          "length_m": 1.9996295e-05,
           "loss_dB_cm": 2.0,
           "neff": 2.4,
           "n_group": 4.0,
@@ -204,7 +211,7 @@
         "y": 360,
         "rot": 0,
         "settings": {
-          "V": 4.0
+          "V": 2.84
         }
       },
       "GND4": {
@@ -222,15 +229,15 @@
         "settings": {
           "mode": "pam4",
           "order": 13,
-          "v0": 1.0,
-          "v1": 3.0,
+          "v0": -0.58,
+          "v1": 3.42,
           "tr": 5e-12,
-          "seed": 1,
+          "seed": 5407,
           "rj_ui": 0.02,
           "sj_ui": 0.02,
           "dj_ui": 0.02,
-          "ffe_pre": 0.0,
-          "ffe_post": 0.0
+          "ffe_pre": 0.096,
+          "ffe_post": -0.017
         }
       },
       "RDA": {
@@ -257,7 +264,7 @@
         "y": 30,
         "rot": 0,
         "settings": {
-          "R": 40.0
+          "R": 43.8
         }
       },
       "RTB": {
@@ -266,7 +273,7 @@
         "y": 250,
         "rot": 0,
         "settings": {
-          "R": 40.0
+          "R": 43.8
         }
       },
       "VTERM": {
@@ -275,7 +282,7 @@
         "y": 10,
         "rot": 0,
         "settings": {
-          "V": 2.0
+          "V": 1.42
         }
       },
       "GNDT": {
@@ -427,15 +434,15 @@
   "flow": {
     "name": "Resonance → PAM4 eye → optimize → evaluate (TW)",
     "vars": {
-      "detune_pm": 5.0,
-      "dL_nm": 252.0,
-      "vbias": 2.04,
-      "pn_um": 495.0,
+      "detune_pm": 5.75,
+      "dL_nm": 247.6,
+      "vbias": 1.42,
+      "pn_um": 574.0,
       "ring_um": 10.0,
-      "k1": 0.526,
+      "k1": 0.578,
       "k2": 0.5,
       "z0_ohm": 30.0,
-      "r_term_ohm": 40.0,
+      "r_term_ohm": 43.8,
       "v_emf_pp": 4.0,
       "r_drv_ohm": 30.0,
       "rs_ohm_mm": 10.0,
@@ -444,8 +451,8 @@
       "cj0_ff_um": 0.3,
       "n_rf": 2.4,
       "rf_loss_db_cm": 2.0,
-      "ffe_pre": 0.0,
-      "ffe_post": 0.0
+      "ffe_pre": 0.096,
+      "ffe_post": -0.017
     },
     "set": {
       "WG_A.length_m": "2.0120095e-05 + dL_nm*0.5e-9",
@@ -478,7 +485,8 @@
       "PN_B.n_rf": "n_rf",
       "PN_B.rf_loss_dB_cm": "rf_loss_db_cm",
       "PRBS.ffe_pre": "ffe_pre",
-      "PRBS.ffe_post": "ffe_post"
+      "PRBS.ffe_post": "ffe_post",
+      "VRAIL.V": "2*vbias"
     },
     "stateye": {
       "rx_bw": "auto",
@@ -557,7 +565,7 @@
           },
           {
             "var": "vbias",
-            "min": 1.4,
+            "min": 1.0,
             "max": 2.6
           },
           {

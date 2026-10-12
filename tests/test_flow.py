@@ -406,6 +406,30 @@ def test_example_49_real_transit_and_optimizer_knobs():
     assert abs(notch[0.5] - notch[0.35]) > 0.3
 
 
+def test_example_49_biases_both_arms_and_eye_holds_the_oma_runs():
+    # push-pull bias: PN_A's junction sees the line (vbias, ref grounded),
+    # PN_B's sees VRAIL - line -- the rail tracks 2*vbias so both junctions
+    # sit at vbias instead of PN_B at 4 V - vbias
+    import wavesrc
+
+    ex = _example("49_cmr_flow_106g_tw")
+    inst, fl = ex["schematic"]["instances"], ex["flow"]
+    assert fl["set"]["VRAIL.V"] == "2*vbias"
+    sch = flow._prepare(ex["schematic"], fl, {}, None,
+                        {k: float(v) for k, v in fl["vars"].items()})
+    vb = fl["vars"]["vbias"]
+    assert sch["instances"]["VRAIL"]["settings"]["V"] == pytest.approx(2 * vb)
+    # the eye step's 1000-UI record is a window of PRBS-13Q that holds the
+    # pattern's run of 6 zeros and run of 7 threes past the 16-UI settling,
+    # so it scores OMA_outer / TDECQ_outer like the full-period evaluate
+    eye = next(s for s in fl["steps"] if s["id"] == "eye")
+    ui = 1.0 / ex["schematic"]["globals"]["baud"]
+    nsym = int(round(eye["analysis"]["t_stop"] / ui))
+    sym = np.rint(3 * wavesrc._symbols(inst["PRBS"]["settings"], nsym))
+    text = "".join(str(int(s)) for s in sym[16:nsym - 4])
+    assert "3" * 7 in text and "0" * 6 in text
+
+
 def test_dc_sweep_warm_start_matches_a_cold_start():
     # examples 48/49's resonance steps start every sweep point from the
     # first point's operating point (far fewer Newton iterations on a big

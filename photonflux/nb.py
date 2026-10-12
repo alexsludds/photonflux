@@ -781,6 +781,8 @@ class Session:
         finally:
             if bar:
                 bar.stop()
+        if bar:
+            bar.finish_log(raw.get("log"))
         if not raw.get("ok"):
             raise RunError(raw.get("error") or "flow failed",
                            log=raw.get("log"))
@@ -941,6 +943,13 @@ class _ProgressBar:
         self._t.join(timeout=1.0)
         if self._drew:
             sys.stderr.write("\r" + " " * 100 + "\r")
+            sys.stderr.flush()
+
+    def finish_log(self, log: list | None) -> None:
+        """After stop(): print the flow log lines that landed after the last
+        poll (only when some were printed live, so a quick flow stays quiet)."""
+        if log and 0 < self._log_n < len(log):
+            sys.stderr.write("".join(f"{line}\n" for line in log[self._log_n:]))
             sys.stderr.flush()
 
 

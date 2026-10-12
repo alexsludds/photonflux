@@ -608,6 +608,8 @@ class _Runner:
 
         history: list[dict] = []
         best: dict = {"J": math.inf}
+        # a long objective expression would swamp every eval's log line
+        obj_name = objective if len(objective) <= 24 else "objective"
         first_err: list[str] = []
 
         def f(x):
@@ -647,7 +649,7 @@ class _Runner:
             self.say(
                 f"  eval {n}: " + ", ".join(
                     f"{nm}={xi:.6g}" for (_, nm), xi in zip(keys, x))
-                + f" -> {objective} {obj:.4g}"
+                + f" -> {obj_name} {obj:.4g}"
                 + ("" if pen == 0 else f", penalty {pen:.3g}"))
             if J < best["J"]:
                 best.update(J=J, obj=obj, x=np.array(x), vars=v2, overrides=o2,

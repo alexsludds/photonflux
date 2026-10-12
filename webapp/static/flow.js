@@ -682,8 +682,9 @@ function flowDur(sec) {
     : `${Math.floor(m / 60)}h${String(m % 60).padStart(2, "0")}m`;
 }
 
-// "eval 12/60" for a running Optimize, else "running"
-const flowLiveTag = (s) => (s.iters ? `eval ${s.eval || 0}/${s.iters}` : "running");
+// "eval 12/60" (the one in flight) for a running Optimize, else "running"
+const flowLiveTag = (s) => (s.iters
+  ? `eval ${Math.min(s.iters, (s.eval || 0) + 1)}/${s.iters}` : "running");
 
 // time left in a running Optimize step, from its mean evaluation time
 function flowLiveEta(s) {

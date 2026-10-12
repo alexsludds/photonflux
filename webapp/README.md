@@ -125,7 +125,12 @@ brings the tab's own analysis back. Steps share **flow variables**:
   *set for this step* (`*.wavelength_nm = lam_res - detune_pm*1e-3`; `*`
   writes every instance that has the parameter), *outputs* (`lam_res =
   xat_min(thru)`, `rlm = rlm(thru)`) that become variables, and *checks*
-  (`notch_db < -3`). Output expressions see the probes, `x`/`t`, the
+  (`notch_db < -3`). A DC sweep step can carry `"warm_start": true` (examples
+  48/49's resonance steps do): every point starts from the converged
+  operating point at the first sweep value instead of from zero, which cuts a
+  large circuit's sweep ~4x. It is opt-in because on a circuit with several DC
+  solutions (a latch, a bistable ring) the starting point picks the branch.
+  Output expressions see the probes, `x`/`t`, the
   variables, the fx vocabulary plus `xat_min`, `xat_max`, `cross`, and the
   stateye figures of merit `rlm`, `er_db`, `tdecq`, `tdec`, `oma_dbm`,
   `rel_oma_db(out, in)`, `il_db(out, in)` (scored exactly like the Eye tab's

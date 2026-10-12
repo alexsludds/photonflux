@@ -136,6 +136,25 @@ def _levels(settings: dict, frac: np.ndarray) -> np.ndarray:
     return v0 + frac * (v1 - v0)
 
 
+def level_map(settings: dict) -> tuple[float, float] | None:
+    """(v0, v1 - v0) when the drive is v0 + (v1 - v0) * g(t), g being the same
+    pattern built for v0 = 0, v1 = 1: every sequence, pulse and QAM drive
+    (TX FFE included) except the RLM-warped ladder (rlm_vpi > 0). The netlist then
+    bakes g and passes the levels at run time, so a level change (a bias
+    sweep, an optimizer step) reuses the compiled circuit."""
+    if float(settings.get("rlm_vpi", 0.0)) > 0.0:
+        return None
+    v0 = float(settings.get("v0", -0.5))
+    return v0, float(settings.get("v1", 0.5)) - v0
+
+
+def flat_shape() -> tuple[np.ndarray, np.ndarray]:
+    """The baked shape of a flat drive (v0 == v1, e.g. a flow's DC-bias
+    step): with zero gain no pattern, FFE or jitter shows, so one canonical
+    shape serves them all and editing them never recompiles that circuit."""
+    return np.array([0.0, 1.0]), np.zeros(2)
+
+
 def _ffe_tap(settings: dict, name: str) -> float:
     """Side tap relative to the main cursor (linear, signed). The legacy
     ``<name>_db`` knob (tap = -10^(-dB/20), 0 dB = off) still drives an

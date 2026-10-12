@@ -49,6 +49,19 @@ _MODELS_CACHE: dict[str, Any] = {}    # sky130-geometry-key set -> models_map
 # so concurrent runs (see parallel_map) build circuits one at a time.
 _BUILD_LOCK = threading.RLock()
 
+# Each circuit structure keeps its compiled XLA programs in JAX's in-memory
+# jit caches, which never let go: ~0.3 GB and ~4k memory mappings for a
+# mid-size photonic circuit (a DC sweep and a transient of one schematic are
+# two structures: their pattern sources span different times). An optimizer
+# that keeps changing structure (a TW shifter's section count follows its
+# length) piles them up until LLVM can map no more code (Linux allows ~65k
+# mappings per process) and the process dies. Past this many live structures
+# the caches are released; a structure seen again is traced and compiled again.
+_MAX_LIVE_STRUCTURES = max(
+    1, int(os.environ.get("PHOTONFLUX_LIVE_STRUCTURES", "") or 6))
+_LIVE_STRUCTURES: set[str] = set()
+_PARALLEL_ACTIVE = 0      # parallel_map pools running (no release then)
+_LIVE_LOCK = threading.Lock()
 
 def _max_workers() -> int:
     """Threads for independent solves; PHOTONFLUX_THREADS overrides."""
@@ -72,10 +85,17 @@ def parallel_map(fn, items, *, warm_first: bool = True) -> list:
         return [fn(x) for x in items]
     from concurrent.futures import ThreadPoolExecutor
 
+    global _PARALLEL_ACTIVE
     head = [fn(items[0])] if warm_first else []
     rest = items[len(head):]
-    with ThreadPoolExecutor(min(workers, len(rest))) as pool:
-        return head + list(pool.map(fn, rest))
+    with _LIVE_LOCK:
+        _PARALLEL_ACTIVE += 1
+    try:
+        with ThreadPoolExecutor(min(workers, len(rest))) as pool:
+            return head + list(pool.map(fn, rest))
+    finally:
+        with _LIVE_LOCK:
+            _PARALLEL_ACTIVE -= 1
 
 
 _PATTERN_SOURCES = ("prbs", "qam_source")
@@ -320,23 +340,32 @@ def schematic_to_netlist(sch: dict, wave_span: float = DEFAULT_WAVE_SPAN,
             if wave:
                 import wavesrc
 
+                levels = None
                 try:
                     if wave == "prbs":
                         if ctype == "qam_source":
                             settings["mode"] = "qam"
+                        patterns[name] = dict(settings)
+                        # bake the unit-level shape; v0 / v1 go in at run
+                        # time (see wavesrc.level_map)
+                        levels = wavesrc.level_map(settings)
+                        shape = (dict(settings, v0=0.0, v1=1.0) if levels
+                                 else settings)
                         if str(settings.get("mode")) == "qam":
-                            wt, wv = wavesrc.qam_drive_waveform(settings,
+                            wt, wv = wavesrc.qam_drive_waveform(shape,
                                                                wave_span)
                         else:
-                            wt, wv = wavesrc.prbs_waveform(settings, wave_span)
-                        patterns[name] = dict(settings)
+                            wt, wv = wavesrc.prbs_waveform(shape, wave_span)
+                        if levels and levels[1] == 0.0:
+                            wt, wv = wavesrc.flat_shape()
                     else:
                         wt, wv = wavesrc.pwl_waveform(settings)
                 except ValueError as e:
                     raise NetlistError(f"{name}: {e}") from e
                 wkey = wavesrc.wave_key(wave, wt, wv)
                 cx_instances[name] = {"component": wkey, "_wave": (wt, wv)}
-                settings = {}
+                settings = ({"offset": levels[0], "gain": levels[1]}
+                            if levels else {})
             elif entry.get("lti"):
                 import lti as lti_mod
 
@@ -554,7 +583,13 @@ def schematic_to_netlist(sch: dict, wave_span: float = DEFAULT_WAVE_SPAN,
                                                    - 1.0 / (lw * 1e-9))))
 
     net = {"instances": cx_instances, "connections": connections, "ports": ports}
+    # what a compiled program depends on: topology and models, not values
+    structure = hashlib.sha256(json.dumps(
+        [{n: i["component"] for n, i in cx_instances.items()}, connections,
+         ports, any_optical], sort_keys=True, default=str).encode()
+    ).hexdigest()
     meta = {"probe_domains": probe_domains, "has_osdi": has_osdi,
+            "structure": structure,
             "spectrum_probes": spectrum_probes, "carrier_nm": carrier_nm,
             "spectrum_windows": spectrum_windows,
             "wdm_max_offset_hz": max_off,
@@ -585,17 +620,36 @@ def _get_circuit(sch: dict, wave_span: float = DEFAULT_WAVE_SPAN,
     if key in _CIRCUIT_CACHE:
         circuit, meta = _CIRCUIT_CACHE[key]
         log.append("compile: cache hit")
-        return circuit, meta, log
-    with _BUILD_LOCK:
-        if key in _CIRCUIT_CACHE:          # built by a concurrent run
-            circuit, meta = _CIRCUIT_CACHE[key]
-            log.append("compile: cache hit")
-            return circuit, meta, log
-        circuit, meta = _build_circuit(sch, wave_span, noise_cfg, log)
-        _CIRCUIT_CACHE[key] = (circuit, meta)
-        if len(_CIRCUIT_CACHE) > 16:
-            _CIRCUIT_CACHE.pop(next(iter(_CIRCUIT_CACHE)))
+    else:
+        with _BUILD_LOCK:
+            if key in _CIRCUIT_CACHE:          # built by a concurrent run
+                circuit, meta = _CIRCUIT_CACHE[key]
+                log.append("compile: cache hit")
+            else:
+                circuit, meta = _build_circuit(sch, wave_span, noise_cfg, log)
+                _CIRCUIT_CACHE[key] = (circuit, meta)
+                if len(_CIRCUIT_CACHE) > 16:
+                    _CIRCUIT_CACHE.pop(next(iter(_CIRCUIT_CACHE)))
+    _note_structure(meta["structure"], log)
     return circuit, meta, log
+
+
+def _note_structure(structure: str, log: list[str]) -> None:
+    """Count live compiled structures; release JAX's compiled programs before
+    a new one would exceed _MAX_LIVE_STRUCTURES. Never while parallel_map
+    solves are in flight: another thread may be tracing or compiling."""
+    with _LIVE_LOCK:
+        if structure in _LIVE_STRUCTURES:
+            return
+        if len(_LIVE_STRUCTURES) >= _MAX_LIVE_STRUCTURES and not _PARALLEL_ACTIVE:
+            import jax
+
+            jax.clear_caches()
+            log.append(f"released the compiled programs of "
+                       f"{len(_LIVE_STRUCTURES)} circuit structures "
+                       f"(PHOTONFLUX_LIVE_STRUCTURES = {_MAX_LIVE_STRUCTURES})")
+            _LIVE_STRUCTURES.clear()
+        _LIVE_STRUCTURES.add(structure)
 
 
 def _build_circuit(sch, wave_span, noise_cfg, log):
@@ -618,10 +672,15 @@ def _build_circuit(sch, wave_span, noise_cfg, log):
         _MODELS_CACHE[mkey] = build_models(meta["sky130_geoms"],
                                            meta["waveforms"], meta["noisy"],
                                            meta["ltis"])
-        if len(_MODELS_CACHE) > 8:   # waveform/noise closures hold arrays
+        # waveform/noise closures hold arrays; keep every live structure's
+        if len(_MODELS_CACHE) > max(8, _MAX_LIVE_STRUCTURES + 2):
             _MODELS_CACHE.pop(next(iter(_MODELS_CACHE)))
     models = _MODELS_CACHE[mkey]
     log.append(f"models ready in {time.perf_counter() - t0:.2f}s")
+    # a compiled program depends on the models too (noise banks key by
+    # instance name, not by their settings)
+    meta["structure"] = hashlib.sha256(
+        f"{meta['structure']}|{mkey}".encode()).hexdigest()
 
     from circulax import compile_circuit
 
@@ -779,9 +838,10 @@ def _run_dcsweep(circuit, meta, analysis, log) -> dict:
         xx = np.tile(x, len(svals))
         ss = np.repeat(np.asarray(svals, float), points)
         t0 = time.perf_counter()
-        y0 = _dc_solve(circuit, meta, log) if meta.get("hard_dc") else None
         pd = {p: jnp.asarray(xx * sc) for p, sc in paths}
         pd[spath] = jnp.asarray(ss * sscale)
+        y0 = (_dc_solve(circuit, meta, log) if meta.get("hard_dc")
+              else _warm_guess(circuit, pd, analysis))
         y = solvers.dc(circuit, y0, params=pd)
         log.append(
             f"DC sweep ({points} points of {len(paths)} x {param} x "
@@ -806,9 +866,10 @@ def _run_dcsweep(circuit, meta, analysis, log) -> dict:
                 "step_label": f"{step_inst}.{step_param}", "traces": traces}
 
     t0 = time.perf_counter()
-    y0 = _dc_solve(circuit, meta, log) if meta.get("hard_dc") else None
-    y = solvers.dc(circuit, y0,
-                   params={p: jnp.asarray(x * sc) for p, sc in paths})
+    pd = {p: jnp.asarray(x * sc) for p, sc in paths}
+    y0 = (_dc_solve(circuit, meta, log) if meta.get("hard_dc")
+          else _warm_guess(circuit, pd, analysis))
+    y = solvers.dc(circuit, y0, params=pd)
     swept = path if len(paths) == 1 else f"{len(paths)} instances' {param}"
     log.append(f"DC sweep ({points} points of {swept}) in "
                f"{time.perf_counter() - t0:.2f}s")
@@ -818,6 +879,21 @@ def _run_dcsweep(circuit, meta, analysis, log) -> dict:
             "xlabel": (f"{param} (all)" if inst == "*"
                        else f"{inst}.{param}"),
             "traces": traces}
+
+
+def _warm_guess(circuit, pd: dict, analysis: dict):
+    """Initial guess for a DC sweep's points (``analysis["warm_start"]``):
+    the converged operating point at the sweep's first value. The vmapped
+    Newton runs until its slowest point converges, and from a converged
+    state that is a step or two instead of a dozen from zero. Opt-in: on a
+    circuit with several DC solutions (a latch, a bistable ring) the start
+    picks the branch. None (start from zero) when off or not finite."""
+    import numpy as np
+
+    if not analysis.get("warm_start"):
+        return None
+    y = solvers.dc(circuit, params={k: v[0] for k, v in pd.items()})
+    return y if bool(np.all(np.isfinite(np.asarray(y)))) else None
 
 
 def _progress_save_fn(t, y, args):
@@ -830,6 +906,12 @@ def _progress_save_fn(t, y, args):
 
     jax.debug.callback(PROGRESS.report_time, t)
     return y
+
+
+# progress reports per transient: each is a host round-trip from inside the
+# compiled loop (~0.5 ms), so one per saved point (10k on a long eye run)
+# cost seconds; a bar needs a couple of hundred
+_PROGRESS_POINTS = 200
 
 
 def _run_transient(circuit, meta, analysis, log) -> dict:
@@ -892,11 +974,25 @@ def _run_transient(circuit, meta, analysis, log) -> dict:
     from progress import PROGRESS
 
     if PROGRESS.enabled:
-        saveat = diffrax.SaveAt(ts=ts, fn=_progress_save_fn)
+        # a second, coarse save schedule carries the callback; the first is
+        # the plain series (unwrapped in solve_one)
+        saveat = diffrax.SaveAt(subs=[
+            diffrax.SubSaveAt(ts=ts),
+            diffrax.SubSaveAt(
+                ts=jnp.linspace(0.0, t_stop, min(points, _PROGRESS_POINTS)),
+                fn=_progress_save_fn)])
         PROGRESS.set_span(t_stop)
         PROGRESS.set_seeds(seeds)
     else:
         saveat = diffrax.SaveAt(ts=ts)
+
+    def plain(sol):
+        """The solution's ts/ys of the plain save schedule."""
+        if not isinstance(sol.ys, (tuple, list)):
+            return sol
+        from types import SimpleNamespace
+
+        return SimpleNamespace(ts=sol.ts[0], ys=sol.ys[0], result=sol.result)
 
     def solve_one(seed_params):
         y0 = _dc_solve(circuit, meta, None, params=seed_params)
@@ -938,6 +1034,7 @@ def _run_transient(circuit, meta, analysis, log) -> dict:
             {f"{i}.seed_idx": float(k) for i in meta.get("noise_insts", [])}
             or None)
         dt_k, sol = solve_one(seed_params)
+        sol = plain(sol)
         finished.append(k)
         PROGRESS.set_seed(len(finished))   # seeds run concurrently: count done
         return dt_k, sol

@@ -509,7 +509,8 @@
           "param": "wavelength_nm",
           "start": 1309.5,
           "stop": 1310.5,
-          "points": 1001
+          "points": 1001,
+          "warm_start": true
         },
         "outputs": {
           "lam_res": "xat_min(thru)",

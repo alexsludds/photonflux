@@ -1605,7 +1605,8 @@ CATALOG: dict[str, dict] = {
                "The unit interval is set globally by the top-bar baud rate "
                "(UI = 1/baud), not per source. "
                "The waveform is baked at compile time: parameter edits "
-               "recompile the circuit (seconds).",
+               "recompile the circuit (seconds), except the levels v0/v1, "
+               "which apply at run time (unless rlm_vpi is set).",
         "ports": _ports("p1:e p2:e"),
         "params": [
             _p("mode", "nrz", "", "Mode", rebuild=True, kind="enum",
@@ -1642,7 +1643,8 @@ CATALOG: dict[str, dict] = {
                "root-raised-cosine shaped, scaled to v0..v1. Use two — "
                "qam_drive = i and q — sharing order and seed, one per "
                "electrode. The symbol rate is the top-bar baud rate. Baked "
-               "at compile time: parameter edits recompile (seconds).",
+               "at compile time: parameter edits recompile (seconds), except "
+               "the levels v0/v1, which apply at run time.",
         "ports": _ports("p1:e p2:e"),
         "params": [
             _p("qam", "qpsk", "", "QAM order", rebuild=True, kind="enum",
@@ -2253,7 +2255,10 @@ def _waveform_source(wt, wv):
 
     The arrays are baked as closure constants — not JAX leaves — so pattern
     parameters are compile-time (rebuild=True in the catalog). Values clamp
-    to the first/last breakpoint outside the time range.
+    to the first/last breakpoint outside the time range. ``offset + gain *``
+    the waveform is applied at run time: a pattern source bakes its unit-level
+    shape (v0 = 0, v1 = 1) and passes its levels here, so changing them reuses
+    the compiled circuit.
     """
     import jax.numpy as jnp
     from circulax.components.base_component import Signals, States, source
@@ -2267,8 +2272,10 @@ def _waveform_source(wt, wv):
         s: States,
         t: float,
         scale: float = 1.0,
+        offset: float = 0.0,
+        gain: float = 1.0,
     ) -> tuple[dict, dict]:
-        v_val = scale * jnp.interp(t, wt_c, wv_c)
+        v_val = scale * (offset + gain * jnp.interp(t, wt_c, wv_c))
         constraint = (signals.p1 - signals.p2) - v_val
         return {"p1": s.i_src, "p2": -s.i_src, "i_src": constraint}, {}
 

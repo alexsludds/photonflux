@@ -13,7 +13,10 @@
 //
 // are one third of the CMT ring ODE
 //
-//     dA/dt = (j*delta - 1/tau) A + j*kappa^2 s_in ,   s_out = s_in + j*A
+//     dA/dt = (-j*delta - 1/tau) A + j*kappa^2 s_in ,   s_out = s_in + j*A
+//
+// in the engineering convention e^{+j*w*t} that circulax's waveguides use
+// (delta = w_laser - w_res, so -j*delta is a phase lag above resonance)
 //
 // the rest coming from the elements sharing the cavity node: ring_waveguide.va
 // (storage + round-trip loss) and ring_phase_shifter.va (EO detuning).

@@ -44,8 +44,9 @@ Self-checks (all asserted, machine-verifiable):
                     depletion regime), plus exact energy conservation
 
 Envelope convention: node value E = re + j*im, |E|^2 = power [W]; a tone at
-envelope +f is optical nu0 - f, and 2*f_p - f_s maps identically in both
-frames (2*(nu0-f_p) - (nu0-f_s) = nu0 - (2*f_p-f_s)). No dispersion is
+envelope +f is optical nu0 + f (the engineering e^{+j*w*t} convention), and
+2*f_p - f_s maps identically in both frames (2*(nu0+f_p) - (nu0+f_s) =
+nu0 + (2*f_p-f_s)). No dispersion is
 modelled in a lumped segment, so phase matching is perfect (Dbeta = 0) —
 the correct limit for a short/dispersion-engineered waveguide.
 
@@ -243,7 +244,7 @@ def main() -> int:
           f"@ {LOSS_DB_M:.0f} dB/m -> k = {k0:.4f} rad/W, T = {t0:.4f}")
     print(f"pump {P_P0*1e3:.0f} mW @ +{F_P/1e9:.0f} GHz, "
           f"signal {P_S0*1e3:.2f} mW @ +{F_S/1e9:.0f} GHz (envelope frame; "
-          f"+f is optical nu0 - f)")
+          f"+f is optical nu0 + f)")
 
     f_i = 2 * F_P - F_S          # idler, +10 GHz
     f_i2 = 2 * F_S - F_P         # secondary idler, +40 GHz

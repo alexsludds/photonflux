@@ -1160,10 +1160,10 @@ def _optical_spectra(circuit, sol, t, names, carrier_nm, log, windows=None):
         X = np.fft.fftshift(np.fft.fft(E * win))
         S = np.abs(X) ** 2
         fb = np.fft.fftshift(np.fft.fftfreq(n, dt))      # baseband offset [Hz]
-        # coherent envelopes use the physics e^{-i w t} convention, so a
-        # baseband component at +fb is an optical tone at f0 - fb: a WDM laser
+        # coherent envelopes use the engineering e^{+j w t} convention, so a
+        # baseband component at +fb is an optical tone at f0 + fb: a WDM laser
         # blue-shifted from the reference (shorter lambda) sits at +fb.
-        wl = _C_LIGHT / (f0 - fb) * 1e9                  # -> wavelength [nm]
+        wl = _C_LIGHT / (f0 + fb) * 1e9                  # -> wavelength [nm]
         sdb = 10.0 * np.log10(S / S.max() + 1e-15)
         order = np.argsort(wl)
         wl, sdb = wl[order], np.maximum(sdb[order], floor_db)
@@ -1173,7 +1173,9 @@ def _optical_spectra(circuit, sol, t, names, carrier_nm, log, windows=None):
         if sig.size < 2:
             continue
         lo, hi = wl[sig[0]], wl[sig[-1]]
-        pad = 0.15 * (hi - lo) + 1e-4
+        # at least 16 bins of floor each side: a clean CW line is only ~7
+        # bins wide above the floor and used to leave no plot at all
+        pad = max(0.15 * (hi - lo), 16.0 * float(np.median(np.diff(wl))))
         band = (wl >= lo - pad) & (wl <= hi + pad)
         wlk, sdk = wl[band], sdb[band]
         if wlk.size < 8:

@@ -12,7 +12,7 @@
 //
 // Each mode m is an independent CMT resonator sharing the bus couplings:
 //
-//   dA_m/dt = (j*delta_m - 1/tau) A_m + j*kappa1^2 * s_in
+//   dA_m/dt = (-j*delta_m - 1/tau) A_m + j*kappa1^2 * s_in
 //   s_thru  = s_in + j * sum_m A_m
 //   s_drop  = j * sqrt(kappa2_drop/kappa2_in) * sum_m A_m
 //
@@ -84,29 +84,29 @@ module ring_filter(in_re, in_im, thru_re, thru_im, drop_re, drop_im,
 
         // five CMT mode pairs, rows scaled by the constant tau
         I(ar_m2, gnd) <+ tau * ddt(V(ar_m2, gnd)) + V(ar_m2, gnd)
-                         + tau * d_m2 * V(ai_m2, gnd) + tk2 * V(in_im, gnd);
+                         - tau * d_m2 * V(ai_m2, gnd) + tk2 * V(in_im, gnd);
         I(ai_m2, gnd) <+ tau * ddt(V(ai_m2, gnd)) + V(ai_m2, gnd)
-                         - tau * d_m2 * V(ar_m2, gnd) - tk2 * V(in_re, gnd);
+                         + tau * d_m2 * V(ar_m2, gnd) - tk2 * V(in_re, gnd);
 
         I(ar_m1, gnd) <+ tau * ddt(V(ar_m1, gnd)) + V(ar_m1, gnd)
-                         + tau * d_m1 * V(ai_m1, gnd) + tk2 * V(in_im, gnd);
+                         - tau * d_m1 * V(ai_m1, gnd) + tk2 * V(in_im, gnd);
         I(ai_m1, gnd) <+ tau * ddt(V(ai_m1, gnd)) + V(ai_m1, gnd)
-                         - tau * d_m1 * V(ar_m1, gnd) - tk2 * V(in_re, gnd);
+                         + tau * d_m1 * V(ar_m1, gnd) - tk2 * V(in_re, gnd);
 
         I(ar_0, gnd)  <+ tau * ddt(V(ar_0, gnd)) + V(ar_0, gnd)
-                         + tau * d_0 * V(ai_0, gnd) + tk2 * V(in_im, gnd);
+                         - tau * d_0 * V(ai_0, gnd) + tk2 * V(in_im, gnd);
         I(ai_0, gnd)  <+ tau * ddt(V(ai_0, gnd)) + V(ai_0, gnd)
-                         - tau * d_0 * V(ar_0, gnd) - tk2 * V(in_re, gnd);
+                         + tau * d_0 * V(ar_0, gnd) - tk2 * V(in_re, gnd);
 
         I(ar_p1, gnd) <+ tau * ddt(V(ar_p1, gnd)) + V(ar_p1, gnd)
-                         + tau * d_p1 * V(ai_p1, gnd) + tk2 * V(in_im, gnd);
+                         - tau * d_p1 * V(ai_p1, gnd) + tk2 * V(in_im, gnd);
         I(ai_p1, gnd) <+ tau * ddt(V(ai_p1, gnd)) + V(ai_p1, gnd)
-                         - tau * d_p1 * V(ar_p1, gnd) - tk2 * V(in_re, gnd);
+                         + tau * d_p1 * V(ar_p1, gnd) - tk2 * V(in_re, gnd);
 
         I(ar_p2, gnd) <+ tau * ddt(V(ar_p2, gnd)) + V(ar_p2, gnd)
-                         + tau * d_p2 * V(ai_p2, gnd) + tk2 * V(in_im, gnd);
+                         - tau * d_p2 * V(ai_p2, gnd) + tk2 * V(in_im, gnd);
         I(ai_p2, gnd) <+ tau * ddt(V(ai_p2, gnd)) + V(ai_p2, gnd)
-                         - tau * d_p2 * V(ar_p2, gnd) - tk2 * V(in_re, gnd);
+                         + tau * d_p2 * V(ar_p2, gnd) - tk2 * V(in_re, gnd);
 
         sum_re = V(ar_m2, gnd) + V(ar_m1, gnd) + V(ar_0, gnd)
                + V(ar_p1, gnd) + V(ar_p2, gnd);

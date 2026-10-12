@@ -93,7 +93,8 @@ CATALOG: dict[str, dict] = {
                "p1/p2 (ground p2). All modulation belongs in modulators. For "
                "DWDM, set ref_wavelength_nm to a shared reference so several "
                "lasers at different wavelengths become distinct tones on one "
-               "bus, $f_{off} = c\\,(1/\\lambda_{ref} - 1/\\lambda)$; "
+               "bus, $f_{off} = c\\,(1/\\lambda - 1/\\lambda_{ref})$ (a "
+               "bluer laser sits at a positive offset); "
                "0 = single-carrier (default). linewidth_hz > 0 adds a Wiener "
                "phase process (Lorentzian FWHM $\\Delta\\nu$) for coherent / "
                "self-heterodyne studies; needs a transient with noise seeds.",
@@ -2904,8 +2905,8 @@ def _cw_laser_noisy(bank, dt_n):
         # select the never-zero reference before dividing
         ref_safe = jnp.where(ref_wavelength_nm > 0.0,
                              ref_wavelength_nm, wavelength_nm)
-        w_off = 2.0 * jnp.pi * c0 * (1.0 / (ref_safe * 1e-9)
-                                     - 1.0 / (wavelength_nm * 1e-9))
+        w_off = 2.0 * jnp.pi * c0 * (1.0 / (wavelength_nm * 1e-9)
+                                     - 1.0 / (ref_safe * 1e-9))
         field = jnp.sqrt(power * rel) * jnp.exp(
             1j * (w_off * t + phase + phi_n))
         constraint = (signals.p1 - signals.p2) - field

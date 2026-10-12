@@ -7,8 +7,11 @@
 // effective indices n_te != n_tm, so the two polarizations accumulate
 // different propagation phase over the same physical length:
 //
-//   phi_x = 2*pi * n_te * L / lambda ,   Ex_out = s * e^{j*phi_x} * Ex_in
-//   phi_y = 2*pi * n_tm * L / lambda ,   Ey_out = s * e^{j*phi_y} * Ey_in
+//   phi_x = 2*pi * n_te * L / lambda ,   Ex_out = s * e^{-j*phi_x} * Ex_in
+//   phi_y = 2*pi * n_tm * L / lambda ,   Ey_out = s * e^{-j*phi_y} * Ey_in
+//
+// (a phase lag: the engineering e^{+j*w*t} convention of circulax's
+// OpticalWaveguide and the rest of the optical library)
 //
 // The differential phase phi_x - phi_y = 2*pi * dn_eff * L / lambda (with
 // dn_eff = n_te - n_tm) is the modal birefringence — the static, deterministic
@@ -48,8 +51,11 @@ module birefringent_wg(xin_re, xin_im, yin_re, yin_im,
 
         lam  = lambda_nm * 1e-9;
         len  = length_um * 1e-6;
-        phix = 2.0 * `M_PI * n_te * len / lam;
-        phiy = 2.0 * `M_PI * n_tm * len / lam;
+        // propagation phase LAG, e^{-j*2*pi*n*L/lambda}: the engineering
+        // convention circulax's OpticalWaveguide uses, so a birefringent arm
+        // and a plain waveguide arm rotate the same way in a wavelength sweep
+        phix = -2.0 * `M_PI * n_te * len / lam;
+        phiy = -2.0 * `M_PI * n_tm * len / lam;
         s    = pow(10.0, -(loss_db_m * len) / 20.0);
         cx   = s * cos(phix);  sx = s * sin(phix);
         cy   = s * cos(phiy);  sy = s * sin(phiy);

@@ -168,7 +168,8 @@ def test_edfa_spectral_gain_wdm_grid():
 
 def test_edfa_chirp():
     # linewidth-enhancement factor: gain saturation chirps the field by
-    # phi = -0.5*alpha_h*h (h = ln G), without changing the gain magnitude.
+    # phi = +0.5*alpha_h*h (h = ln G, e^{+j*w*t} convention), without
+    # changing the gain magnitude.
     p_in, alpha = 1e-3, 1.0     # keep |phi| < pi so atan2 doesn't wrap
     s = {**EDFA, "alpha_h": alpha, "lambda_ref_nm": EDFA["lambda_peak_nm"]}
     vals = op(cx.va("edfa"), {"fi_re": np.sqrt(p_in), "fi_im": 0.0},
@@ -177,7 +178,7 @@ def test_edfa_chirp():
     # magnitude unchanged by alpha_h (matches the alpha_h = 0 saturated gain)
     assert g == pytest.approx(edfa_gain(p_in, EDFA["p_pump_mw"]), rel=1e-3)
     phase = np.arctan2(vals["fo_im"].real, vals["fo_re"].real)
-    assert phase == pytest.approx(-0.5 * alpha * np.log(g), rel=1e-3)
+    assert phase == pytest.approx(0.5 * alpha * np.log(g), rel=1e-3)
 
 
 def test_edfa_gain_bandwidth_widens_the_top():

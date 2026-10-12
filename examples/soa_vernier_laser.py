@@ -128,7 +128,7 @@ def drop_amp(dnu: np.ndarray, ring: dict, shift_hz: float = 0.0) -> np.ndarray:
     amp = np.zeros_like(dnu, dtype=complex)
     for m in (-2, -1, 0, 1, 2):
         delta = 2 * np.pi * (dnu - shift_hz - m * fsr)
-        amp += 1j * (2 * inv_te) / (1 / tau - 1j * delta)
+        amp += 1j * (2 * inv_te) / (1 / tau + 1j * delta)
     return amp
 
 
@@ -283,13 +283,13 @@ def line_and_smsr(t, e, t_from: float, t_to: float | None = None,
                   guard_hz: float = 12e9):
     """Winning line (as an OPTICAL offset from 1310 nm), its SMSR, and the mean
     power over the window (t_from, t_to]. Envelope +f rotation = optical
-    nu0 - f (red)."""
+    nu0 + f (engineering convention e^{+j*w*t})."""
     m = t > t_from
     if t_to is not None:
         m &= t < t_to
     f, s = spectrum(e[m], float(t[1] - t[0]))
     k = np.argmax(s)
-    nu_opt = -f[k]                       # optical offset from the frame
+    nu_opt = f[k]                        # optical offset from the frame
     away = np.abs(f - f[k]) > guard_hz
     smsr_db = 10 * np.log10(s[k] / s[away].max())
     power = float(np.mean(np.abs(e[m]) ** 2))
@@ -380,7 +380,7 @@ def measure(t, e, geom: dict) -> dict:
 
     # spectrogram + per-candidate powers over the whole story
     tc, fsp, sdb = spectrogram(t, e)
-    tcp, pc = candidate_powers(t, e, -cands)   # envelope f = -optical offset
+    tcp, pc = candidate_powers(t, e, cands)    # envelope f = optical offset
 
     # mode competition: a candidate "competed" if its line rose >= 20 dB out
     # of its own pre-bias ASE floor during the act-1 buildup (the losers rise
@@ -468,7 +468,7 @@ def plot(t, e, geom: dict, m: dict) -> None:
     ax.grid(alpha=0.3)
 
     ax = fig.add_subplot(gs[1, :])
-    pm = ax.pcolormesh(m["tc"] * 1e9, -m["fsp"] / 1e9, m["sdb"].T, cmap="magma",
+    pm = ax.pcolormesh(m["tc"] * 1e9, m["fsp"] / 1e9, m["sdb"].T, cmap="magma",
                        vmin=-55, vmax=0, shading="auto")
     ax.axvline(T_HOP * 1e9, c="w", lw=0.8, ls="--", alpha=0.7)
     ax.set_ylim(-85, 85)

@@ -20,7 +20,7 @@
 // Optics: single-mode CMT (Little/Manolatou), identical to `ring_mod.va`. The
 // intracavity field a obeys
 //
-//     da/dt = (j*delta - 1/tau) a + j*kappa*s_in ,   s_out = s_in + j*kappa*a
+//     da/dt = (-j*delta - 1/tau) a + j*kappa*s_in ,   s_out = s_in + j*kappa*a
 //
 // with the decay rates derived from the device:
 //
@@ -130,9 +130,9 @@ module ring_selfheat(in_re, in_im, out_re, out_im, lam_nm, gnd);
         //   dA_re/dt = -A_re/tau - delta*A_im - kappa^2 * s_im
         //   dA_im/dt = -A_im/tau + delta*A_re + kappa^2 * s_re
         I(are, gnd) <+ tau * ddt(V(are, gnd)) + V(are, gnd)
-                       + tau * delta * V(aim, gnd) + tk2 * V(in_im, gnd);
+                       - tau * delta * V(aim, gnd) + tk2 * V(in_im, gnd);
         I(aim, gnd) <+ tau * ddt(V(aim, gnd)) + V(aim, gnd)
-                       - tau * delta * V(are, gnd) - tk2 * V(in_re, gnd);
+                       + tau * delta * V(are, gnd) - tk2 * V(in_re, gnd);
 
         // through port: s_out = s_in + j*A
         V(out_re, gnd) <+ V(in_re, gnd) - V(aim, gnd);

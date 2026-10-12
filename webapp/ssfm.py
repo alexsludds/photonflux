@@ -23,12 +23,9 @@ Fourier domain ``d/dT -> j w`` and the linear operator is
 
     L(w) = -alpha/2 - j (beta2/2 w^2 + beta3/6 w^3).
 
-NB ``cx.cw_laser``'s WDM offset, the CMT ring models, ``opt_filter`` and the
-optical-spectrum display use the *physics* ``e^{-i w0 t}`` convention (an
-envelope tone at ``+f`` is ``f0 - f``). Chirp-free single-carrier intensity is
-the same either way, but WDM walk-off and chirp x dispersion take the
-opposite sign across that boundary until the repo settles on one convention
-(fiber_cd / fiber_nl share this one).
+Every optical model shares it: ``cx.cw_laser``'s WDM offset, the CMT rings,
+the SOA/EDFA phase, ``opt_filter``, ``fiber_cd`` / ``fiber_nl`` and the
+optical-spectrum display (tests/test_convention.py pins the agreement).
 
 Over the full length this is exactly ``fiber_cd``'s target all-pass
 ``amp * exp(-j theta(w))`` with ``theta = beta2 L/2 w^2 + beta3 L/6 w^3`` and

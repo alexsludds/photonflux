@@ -20,7 +20,7 @@ a loop, rather than one monolithic coupled-mode equation. The pieces are
 
 Their Kirchhoff sum on the shared cavity node ``a`` is exactly the ring CMT
 
-    dA/dt = (-1/tau + j*delta(t)) A + j*kappa^2 s_in ,   s_out = s_in + j*A,
+    dA/dt = (-1/tau - j*delta(t)) A + j*kappa^2 s_in ,   s_out = s_in + j*A,
 
 with ``1/tau = 1/tau_i + 1/tau_e``. So the monolithic ``models/optical_field/
 ring_mod.va`` used by ``ring_mod_sky130.py`` / ``ring_eo_response.py`` is
@@ -300,10 +300,10 @@ def golden(design: dict, v_ac: float, freq: float,
     def rhs(t, y):
         a = y[0] + 1j * y[1]
         v = v_ac * np.sin(2 * np.pi * freq * t)
-        da = (-1.0 / tau + 1j * delta_of_v(design, v)) * a + 1j * krate * s_in
+        da = (-1.0 / tau - 1j * delta_of_v(design, v)) * a + 1j * krate * s_in
         return [da.real, da.imag]
 
-    a0 = 1j * krate * s_in / (1.0 / tau - 1j * design["delta0"])   # V=0 steady
+    a0 = 1j * krate * s_in / (1.0 / tau + 1j * design["delta0"])   # V=0 steady
     sol = solve_ivp(rhs, [0.0, float(t_grid[-1])], [a0.real, a0.imag],
                     t_eval=t_grid, rtol=1e-11, atol=1e-14, max_step=DT)
     a = sol.y[0] + 1j * sol.y[1]
@@ -314,12 +314,12 @@ def quasi_static(design: dict, v_ac: float, freq: float,
                  t: np.ndarray) -> np.ndarray:
     """Adiabatic (instantaneous-steady-state) through field: the swept Lorentzian.
 
-    A_qs(t) = j*kappa^2 s_in / (1/tau - j*delta(t)); the f_RF -> 0 limit of the
+    A_qs(t) = j*kappa^2 s_in / (1/tau + j*delta(t)); the f_RF -> 0 limit of the
     ODE, in which the ring tracks the resonance with no lag."""
     tau, krate = design["tau"], design["krate"]
     s_in = np.sqrt(P_LASER)
     v = v_ac * np.sin(2 * np.pi * freq * t)
-    a_qs = 1j * krate * s_in / (1.0 / tau - 1j * delta_of_v(design, v))
+    a_qs = 1j * krate * s_in / (1.0 / tau + 1j * delta_of_v(design, v))
     return s_in + 1j * a_qs
 
 

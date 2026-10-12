@@ -165,7 +165,8 @@ def line_of(e, dt):
     X = np.fft.fftshift(np.fft.fft(e * win))
     f = np.fft.fftshift(np.fft.fftfreq(len(e), dt))
     k = int(np.argmax(np.abs(X) ** 2))
-    return -f[k]                       # optical offset from Bragg [Hz]
+    # envelope +f is optical nu0 + f (the e^{+j*w*t} convention tw_seg uses)
+    return f[k]                        # optical offset from Bragg [Hz]
 
 
 def main() -> int:
@@ -199,7 +200,9 @@ def main() -> int:
           f"{len(hops)} mode hop(s) of ~{FSR_HZ/1e9:.0f} GHz")
 
     assert len(hops) >= 1, "no mode hop across the DBR tuning sweep"
-    assert nu[-1] - nu[0] > 0.5 * FSR_HZ / 1e9, "DBR did not tune the wavelength"
+    # the DBR drive raises its Bragg detuning (dbeta_dv > 0), i.e. moves the
+    # stopband red, and the lasing line follows it down in frequency
+    assert nu[0] - nu[-1] > 0.5 * FSR_HZ / 1e9, "DBR did not tune the wavelength red"
     print("ALL TESTBENCH CHECKS PASSED")
 
     # ---- plot ---------------------------------------------------------------

@@ -81,9 +81,9 @@ module ring_mod_inj(in_re, in_im, out_re, out_im, vp, vn, gnd);
 
         // ---- CMT rate equations (rows scaled by constant tau0) ----------
         I(are, gnd) <+ tau0 * ddt(V(are, gnd)) + tau0 * inv_tau * V(are, gnd)
-                       + tau0 * delta * V(aim, gnd) + tk2 * V(in_im, gnd);
+                       - tau0 * delta * V(aim, gnd) + tk2 * V(in_im, gnd);
         I(aim, gnd) <+ tau0 * ddt(V(aim, gnd)) + tau0 * inv_tau * V(aim, gnd)
-                       - tau0 * delta * V(are, gnd) - tk2 * V(in_re, gnd);
+                       + tau0 * delta * V(are, gnd) - tk2 * V(in_re, gnd);
 
         // through port: s_out = s_in + j*A
         V(out_re, gnd) <+ V(in_re, gnd) - V(aim, gnd);

@@ -2472,9 +2472,11 @@ function applyAnalysis(a) {
 // Poll GET /api/progress while a run is in flight and drive the header bar.
 // The backend fraction covers the transient solve (spanning noise seeds and
 // sweep points); compile time reports no fraction, so we hold the bar in an
-// indeterminate sweep until the first real step arrives.
+// indeterminate sweep until the first real step arrives. onSnap, if given,
+// sees every snapshot of the run; with the run's token a flow's live record
+// rides along as p.flow (the server shows it to no one else).
 let progressGen = 0;
-function startProgressPoll() {
+function startProgressPoll(onSnap, token) {
   const bar = $("run-progress"), fill = $("run-progress-fill");
   const label = $("run-progress-label");
   if (!bar || !fill) return { stop() {} };
@@ -2491,9 +2493,10 @@ function startProgressPoll() {
   if (label) { label.hidden = false; label.textContent = "Compiling…"; }
   const timer = setInterval(async () => {
     let p;
-    try { p = await (await fetch("/api/progress")).json(); }
+    try { p = await (await fetch(`/api/progress${token ? `?run=${token}` : ""}`)).json(); }
     catch { return; }
     if (stopped || !p || !p.active) return;
+    if (onSnap) onSnap(p);
     // a flow names its stage ("step 3/4, eval 12/30, <step title>")
     const stage = p.label ? `${p.label}, ` : "";
     if (p.frac > 0 || p.phase === "solving") {
@@ -2609,9 +2612,16 @@ async function runSim(runKind) {
   // their existing elapsed-time ticker is enough and avoids a bar that can
   // only ever sit indeterminate. Swept transients keep mode "transient", so
   // this covers them too, while excluding e.g. a 2-axis AC sweep.
-  const timeDomain = a.mode === "transient" || a.mode === "pulse"
-    || a.mode === "flow";
-  const progPoll = timeDomain ? startProgressPoll() : { stop() {} };
+  const timeDomain = a.mode === "transient" || a.mode === "pulse";
+  // a flow also streams its step states, evaluations and log into the Flow
+  // tab; its random token lets only this page read that live record
+  let progPoll = { stop() {} };
+  if (a.mode === "flow") {
+    payload.run_token = Array.from(crypto.getRandomValues(new Uint8Array(12)),
+      (b) => b.toString(16).padStart(2, "0")).join("");
+    flowLiveStart(runTab);
+    progPoll = startProgressPoll((p) => flowLiveUpdate(runTab, p.flow), payload.run_token);
+  } else if (timeDomain) progPoll = startProgressPoll();
   let res, aborted = false;
   try {
     const resp = await fetch("/api/run", {
@@ -2625,6 +2635,7 @@ async function runSim(runKind) {
   }
   clearInterval(tick);
   progPoll.stop();
+  if (a.mode === "flow") flowLiveEnd(runTab, !!(res.ok && res.kind === "flow"));
   runAbort = null;
   btn.hidden = false;
   stopBtn.hidden = true;
@@ -3628,7 +3639,7 @@ function renderLink() {
           ${rep.tdecq ? `
           <tr><th>TDECQ</th><td><b>${rep.tdecq.tdecq_db.toFixed(2)} dB</b>
             <span class="link-hint">(${rep.tdecq.tdecq_raw_db.toFixed(2)} dB unequalized${
-              rep.tdecq.family === "outer" ? "" : "; crossing-point OMA — run a full PRBS-13Q for OMA_outer"})</span></td></tr>
+              rep.tdecq.family === "outer" ? "" : "; crossing-point OMA — set the PRBS sequence to prbs+oma, or run a full PRBS-13Q, for OMA_outer"})</span></td></tr>
           <tr><th>TDECQ ref. EQ</th><td>${fmtTaps(rep.tdecq.ffe_taps)}${
               (rep.tdecq.dfe_b || []).length ? ` + DFE b ${fmtTaps(rep.tdecq.dfe_b)}` : ""}
             <span class="link-hint">(${rep.tdecq.standard ? `${rep.tdecq.standard}; ` : ""}C<sub>eq</sub> ${rep.tdecq.ceq.toFixed(3)};
@@ -4023,6 +4034,14 @@ function migrateInstances(insts) {
     }
     if ("pj_ui" in st) { st.sj_ui = st.pj_ui; delete st.pj_ui; }
     if ("pj_freq" in st) { st.sj_freq = st.pj_freq; delete st.pj_freq; }
+    // TX FFE taps were dB knobs (tap = -10^(-dB/20), 0 dB = off); they are
+    // now linear, signed ratios to the main cursor
+    for (const k of ["ffe_pre", "ffe_post"]) {
+      if (!(k + "_db" in st)) continue;
+      const db = Number(st[k + "_db"]);
+      if (!st[k] && db > 0) st[k] = -(10 ** (-db / 20));
+      delete st[k + "_db"];
+    }
   }
   return insts;
 }

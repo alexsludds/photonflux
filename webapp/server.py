@@ -75,6 +75,9 @@ def _load_engine() -> None:
     # so they skip the solver's per-save-point host callback entirely.
     import progress
     progress.PROGRESS.enable()
+    # and print a running flow's log here as it goes (step starts, optimizer
+    # evaluations, checks) — the browser shows the same live in its Flow tab
+    progress.PROGRESS.flow_echo = progress.printer(sys.stdout)
 
     loaded_va = load_user_va()
     if loaded_va:
@@ -192,7 +195,11 @@ class Handler(BaseHTTPRequestHandler):
             # _RUN_LOCK), so it answers on its own handler thread while the run
             # worker holds the lock and updates the shared state.
             import progress
-            self._json(progress.PROGRESS.snapshot())
+            from urllib.parse import parse_qs
+
+            query = parse_qs(self.path.partition("?")[2])
+            self._json(progress.PROGRESS.snapshot(
+                (query.get("run") or [None])[0]))
             return
         if path == "/api/veriloga":
             import catalog

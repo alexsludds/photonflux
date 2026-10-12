@@ -51,7 +51,10 @@ def cmd_flow(args) -> int:
 
     jax.config.update("jax_enable_x64", True)
     import simulate
+    from progress import PROGRESS, printer
 
+    if not args.quiet:    # live log on stderr: steps, evaluations, checks
+        PROGRESS.flow_echo = printer(sys.stderr)
     doc = json.loads(Path(args.testbench).read_text())
     if not doc.get("flow"):
         print(f"{args.testbench}: no flow in this testbench", file=sys.stderr)
@@ -92,6 +95,8 @@ def main(argv: list[str] | None = None) -> int:
                     help="run one step (no prior variables: use for a first "
                          "step or a self-contained one)")
     fp.add_argument("--json", metavar="OUT", help="write the full result here")
+    fp.add_argument("-q", "--quiet", action="store_true",
+                    help="no live log on stderr while the flow runs")
     args = ap.parse_args(argv)
     return {"doctor": cmd_doctor, "flow": cmd_flow}[args.cmd](args)
 

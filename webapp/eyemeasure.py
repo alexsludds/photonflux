@@ -118,6 +118,10 @@ def measure(payload: dict) -> dict:
 
         symbols = None
         pattern = payload.get("pattern")
+        if pattern and pattern.get("sequence", "prbs") not in ("prbs",
+                                                               "prbs+oma"):
+            return {"ok": False, "error": "TDECQ needs a data pattern: set "
+                    "the PRBS source's sequence to prbs or prbs+oma"}
         if cfg.get("use_pattern", True) and pattern:
             nsym = int(np.ceil((tu[-1] - 0.0) / ui)) + 2
             symbols = np.rint(wavesrc._symbols(pattern, nsym) * 3).astype(int)
@@ -174,9 +178,10 @@ def measure(payload: dict) -> dict:
 
     (tq, fam), (tq_raw, _) = pick(eq), pick(raw)
     if fam == "xp":
-        log.append("OMA_outer needs runs of 7 threes and 6 zeros (a full "
-                   "PRBS-13Q); this record lacks them, so TDECQ uses the "
-                   "crossing-point OMA")
+        log.append("OMA_outer needs a run of 7 threes and one of 6 zeros; "
+                   "this record has none, so TDECQ uses the crossing-point "
+                   "OMA. Set the PRBS source's sequence to prbs+oma (runs "
+                   "every 512 UI), or simulate a full rotated PRBS-13Q")
     if symbols is None and (n_taps or n_dfe) and method != "manual":
         log.append("no PRBS source on the canvas: taps adapted "
                    "decision-directed (reliable only on a mostly open eye)")

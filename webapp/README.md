@@ -174,19 +174,27 @@ short of the spec (relOMA -4.9 dB, TDECQ 2.4 dB; scored through a 5-tap FFE
 with S = 0.005 mW, before the flows switched to the 802.3 reference settings
 and S = 0). Example 49 runs the flow on traveling-wave PN arms with real
 optical transit (`transit` = delayed), a 10 um / 0.3 dB/cm feedback delay
-line and both couplers as knobs: relOMA -5.6 dB, TDECQ 2.3 dB, RLM 0.92,
-ER 1.9 dB all miss. The ring's photon lifetime (~6 UI) now limits; with
-quasi-static optics the same design had scored near relOMA -3.6 dB /
-TDECQ 1.4 dB.
+line, 30 Ohm electrodes driven through 30 Ohm, and the input coupler and
+the PRBS source's TX FFE pre/post-cursor taps as optimizer knobs. Before
+the 30 Ohm / FFE change (50 Ohm drive, both couplers as knobs) it scored
+relOMA -5.6 dB, TDECQ 2.3 dB, RLM 0.92, ER 1.9 dB -- all miss; the ring's
+photon lifetime (~6 UI) limits. With quasi-static optics that design had
+scored near relOMA -3.6 dB / TDECQ 1.4 dB.
 
 ## Serial-link (SERDES) workflow
 
 * **PRBS / pattern source**: PRBS7/9/11/15/23/31 (same LFSR taps as the
   companion time-domain serdes codebase), NRZ or Gray-coded PAM4, raised-
-  cosine edges, TX FFE pre/post-cursor de-emphasis (dB), RLM predistortion
+  cosine edges, 3-tap TX FFE (`ffe_pre`/`ffe_post`: side taps relative
+  to the main cursor, linear and signed), RLM predistortion
   for a quadrature-biased MZM (set `rlm_vpi`), edge jitter (RJ Gaussian
   rms, SJ sinusoidal peak at `sj_freq`, DJ dual-Dirac peak-to-peak, DCD),
-  and a single-pulse mode. Coherent QAM drive is a separate **QAM Source**
+  and a single-pulse mode. `sequence` picks the pattern: `prbs`;
+  `prbs+oma` writes a top-level then bottom-level run over the PRBS every
+  512 UI (PAM4 >= 7 threes / 6 zeros, NRZ >= 8 / 8), so TDECQ's OMA_outer
+  and TDEC's OMA_8180 are measurable on records far shorter than a PRBS
+  period; `square` (top/bottom runs of `run_ui`); `staircase` (PAM4
+  0,1,2,3,2,1 for RLM). Coherent QAM drive is a separate **QAM Source**
   (one per I/Q rail). The waveform is precomputed and baked at
   compile time (parameter edits recompile, seconds). A **PWL source** plays
   arbitrary `t v` breakpoints (paste or Load CSV) — the simplest way to

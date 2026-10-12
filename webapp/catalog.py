@@ -1582,7 +1582,10 @@ CATALOG: dict[str, dict] = {
         "category": "Sources",
         "doc": "Serial-data pattern source: PRBS7/9/11/15/23/31 (LFSR), NRZ "
                "or Gray-coded PAM4 levels between v0/v1, raised-cosine edges. "
-               "Optional TX FFE pre/post-cursor de-emphasis (dB), RLM "
+               "Optional 3-tap TX FFE: pre/post-cursor taps relative to the "
+               "main cursor, linear and signed (-0.2 = a side tap at -20% of "
+               "the main; negative de-emphasizes, 0 = off; the taps are "
+               "scaled so the peak swing stays v0..v1), RLM "
                "predistortion for a quadrature-biased MZM (set rlm_vpi to "
                "its V-pi), and jitter on the edge times: random (RJ, "
                "Gaussian rms), sinusoidal (SJ, peak amplitude at sj_freq), "
@@ -1590,7 +1593,14 @@ CATALOG: dict[str, dict] = {
                "at random, so dj_ui is the peak-to-peak DJ(dd) that "
                "TJ = DJ + 2Q*RJ budgets use) and duty-cycle distortion "
                "(DCD). RJ, SJ and DJ default to 0.05 UI each; set them to 0 "
-               "for a clean pattern. mode=pulse emits one isolated, "
+               "for a clean pattern. sequence picks the pattern: prbs; "
+               "prbs+oma writes a run of the top level then the bottom "
+               "level (PAM4 >= 7 threes / 6 zeros, NRZ >= 8 ones / 8 "
+               "zeros) over the PRBS every 512 UI, so OMA_outer (TDECQ) "
+               "and OMA_8180 (TDEC) are measurable on short records; "
+               "square alternates top/bottom runs of run_ui symbols; "
+               "staircase steps PAM4 through 0,1,2,3,2,1 (RLM). "
+               "mode=pulse emits one isolated, "
                "jitter-free UI for pulse-response runs. For coherent QAM drive use the QAM Source. "
                "The unit interval is set globally by the top-bar baud rate "
                "(UI = 1/baud), not per source. "
@@ -1601,14 +1611,20 @@ CATALOG: dict[str, dict] = {
         "params": [
             _p("mode", "nrz", "", "Mode", rebuild=True, kind="enum",
                choices=["nrz", "pam4", "pulse"]),
+            _p("sequence", "prbs", "", "Sequence", rebuild=True, kind="enum",
+               choices=["prbs", "prbs+oma", "square", "staircase"]),
             _p("order", 7, "", "PRBS order", rebuild=True, kind="enum",
                choices=[7, 9, 11, 13, 15, 23, 31]),
+            _p("run_ui", 8, "UI", "Run length (square / staircase / OMA)",
+               rebuild=True),
             _p("v0", -0.5, "V", "Low level", rebuild=True),
             _p("v1", 0.5, "V", "High level", rebuild=True),
             _p("tr", 20e-12, "s", "Edge time (20-80%)", rebuild=True),
             _p("seed", 1, "", "PRBS seed", rebuild=True),
-            _p("ffe_pre_db", 0.0, "dB", "TX FFE pre-cursor", rebuild=True),
-            _p("ffe_post_db", 0.0, "dB", "TX FFE post-cursor", rebuild=True),
+            _p("ffe_pre", 0.0, "", "TX FFE pre-cursor (c-1/c0)",
+               rebuild=True),
+            _p("ffe_post", 0.0, "", "TX FFE post-cursor (c+1/c0)",
+               rebuild=True),
             _p("rlm_vpi", 0.0, "V", "RLM V-pi (0 = off)", rebuild=True),
             _p("rj_ui", 0.05, "UI", "Random jitter (rms)", rebuild=True),
             _p("sj_ui", 0.05, "UI", "Sinusoidal jitter (peak)", rebuild=True),

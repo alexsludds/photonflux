@@ -31,6 +31,10 @@ def _drive(build, settings, t):
     {"mode": "pam4", "order": 9, "ffe_pre_db": 3.0, "ffe_post_db": 6.0},
     {"mode": "pulse"},
     {"mode": "pam4", "rj_ui": 0.05, "dj_ui": 0.05},
+    {"mode": "pam4", "ffe_pre": -0.1, "ffe_post": -0.25},
+    {"mode": "pam4", "sequence": "prbs+oma"},
+    {"mode": "pam4", "sequence": "staircase", "run_ui": 4},
+    {"mode": "nrz", "sequence": "square", "run_ui": 3},
 ])
 @pytest.mark.parametrize("v0, v1", [(-0.4, 1.3), (2.0, 2.0), (1.5, -0.5)])
 def test_prbs_drive_is_affine_in_its_levels(extra, v0, v1):
@@ -75,8 +79,21 @@ def test_level_change_keeps_the_compiled_source():
     """Same component key (so the same compiled program) for any levels;
     the levels ride along as the instance's offset / gain."""
     a, _ = simulate.schematic_to_netlist(_prbs_schematic(0.5, 3.5), SPAN)
-    b, _ = simulate.schematic_to_netlist(_prbs_schematic(1.2, 1.2), SPAN)
+    b, _ = simulate.schematic_to_netlist(_prbs_schematic(1.2, -0.8), SPAN)
     sa, sb = a["instances"]["SRC"], b["instances"]["SRC"]
     assert sa["component"] == sb["component"]
     assert sa["settings"] == {"offset": 0.5, "gain": 3.0}
-    assert sb["settings"] == {"offset": 1.2, "gain": 0.0}
+    assert sb["settings"] == {"offset": 1.2, "gain": -2.0}
+
+
+def test_flat_drive_shares_one_shape_across_pattern_edits():
+    """v0 == v1 (a flow's DC-bias step): no pattern, FFE or sequence edit
+    changes the compiled source, and the drive is the level itself."""
+    a, _ = simulate.schematic_to_netlist(_prbs_schematic(2.0, 2.0), SPAN)
+    sch = _prbs_schematic(2.0, 2.0)
+    sch["instances"]["SRC"]["settings"].update(
+        ffe_pre=-0.2, ffe_post=-0.3, sequence="prbs+oma")
+    b, _ = simulate.schematic_to_netlist(sch, SPAN)
+    sa, sb = a["instances"]["SRC"], b["instances"]["SRC"]
+    assert sa["component"] == sb["component"]
+    assert sb["settings"] == {"offset": 2.0, "gain": 0.0}

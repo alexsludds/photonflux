@@ -356,6 +356,8 @@ def schematic_to_netlist(sch: dict, wave_span: float = DEFAULT_WAVE_SPAN,
                                                                wave_span)
                         else:
                             wt, wv = wavesrc.prbs_waveform(shape, wave_span)
+                        if levels and levels[1] == 0.0:
+                            wt, wv = wavesrc.flat_shape()
                     else:
                         wt, wv = wavesrc.pwl_waveform(settings)
                 except ValueError as e:
@@ -2029,7 +2031,7 @@ def run(payload: dict) -> dict:
     # bar appear on Run and clear when the result lands. Re-entrancy safe: the
     # recursive run() calls a parameter sweep makes nest without resetting.
     from progress import PROGRESS
-    PROGRESS.enter()
+    PROGRESS.enter(payload.get("run_token"))   # gates the live flow record
     try:
         return _run_inner(payload)
     finally:

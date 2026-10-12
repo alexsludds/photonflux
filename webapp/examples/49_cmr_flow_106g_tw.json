@@ -1,7 +1,7 @@
 {
   "title": "Coupling-modulated ring, 106.25 GBd PAM4 flow (traveling-wave PN)",
   "group": "Lasers & modulators",
-  "description": "Example 48 with traveling-wave PN phase shifters and real optical transit: each arm's junction sits under a transmission-line electrode fed through the driver resistance and terminated into the bias, and the arms and ring guides carry their group delay (transit = delayed), so the ring has its real round trip and photon lifetime. A 10 um, 0.3 dB/cm feedback delay line closes the ring; the optimizer also sets both couplers. Same spec as example 48 (RLM > 0.95, TDECQ < 1.5 dB, relOMA > -2 dB, ER > 3.5 dB)",
+  "description": "Example 48 with traveling-wave PN phase shifters and real optical transit: each arm's junction sits under a transmission-line electrode (Z0 30 Ohm) fed through a 30 Ohm driver resistance and terminated into the bias, and the arms and ring guides carry their group delay (transit = delayed), so the ring has its real round trip and photon lifetime. A 10 um, 0.3 dB/cm feedback delay line closes the ring; the optimizer also sets the input coupler and the PRBS source's TX FFE pre/post-cursor taps (linear, relative to the main cursor). Same spec as example 48 (RLM > 0.95, TDECQ < 1.5 dB, relOMA > -2 dB, ER > 3.5 dB)",
   "schematic": {
     "notes": [
       {
@@ -12,21 +12,22 @@
           "Example 48 with traveling-wave PN arms and real optical transit.",
           "Each arm's junction sits under a TW electrode: an RLC ladder, one",
           "section per <= 100 um (unloaded n_rf 2.4, 2 dB/cm), loaded by the",
-          "junction (Cj0 0.3 fF/um, 10 Ohm*mm series R), fed by a fixed 4 Vpp",
-          "EMF behind 50 Ohm at e_in, terminated into the bias (VTERM = vbias).",
+          "junction (Cj0 0.3 fF/um, 10 Ohm*mm series R), Z0 30 Ohm, fed by a 4 Vpp",
+          "EMF behind 30 Ohm at e_in, terminated into the bias (VTERM = vbias).",
           "Push-pull: PN_A's line is its n side (ref = ground), PN_B's its",
           "p side (ref = 4 V). RF/optical walk-off modelled.",
           "Optics: transit = delayed on the arms and ring guides, so the ring",
           "has its real round trip (~7 ps) and photon lifetime (~6 UI) instead",
           "of a quasi-static resonance. Feedback delay line WG_R1 + WG_R2:",
           "10 um at 0.3 dB/cm (fixed).",
-          "Optimizer: detune, bias, arm imbalance, PN length, electrode Z0,",
-          "termination and both couplers' power coupling (k1 = DC1, k2 = DC2).",
-          "Verdict (60 evals; full PRBS-13): relOMA -5.6 dB, TDECQ 2.3 dB,",
-          "RLM 0.92, ER 1.9 dB -- all four miss. The optimizer moved only Z0",
-          "(60 -> 65.6 Ohm) and DC1 (0.50 -> 0.53); the ring's photon lifetime",
-          "limits, not the couplers. Quasi-static optics scored this design",
-          "near relOMA -3.6 dB / TDECQ 1.4 dB."
+          "Optimizer: detune, bias, arm imbalance, PN length, termination,",
+          "DC1 power coupling (k1) and the TX FFE taps ffe_pre / ffe_post",
+          "(linear, relative to the main cursor; negative = de-emphasis).",
+          "Z0 and the driver R are fixed at 30 Ohm; DC2 is fixed at k2 = 0.5.",
+          "Previous verdict (50 Ohm drive, Z0 65.6 Ohm, no FFE; 60 evals, full",
+          "PRBS-13): relOMA -5.6 dB, TDECQ 2.3 dB, RLM 0.92, ER 1.9 dB -- all",
+          "four miss; the ring's photon lifetime limits. Re-run the flow to",
+          "score the 30 Ohm + FFE design."
         ]
       }
     ],
@@ -71,7 +72,7 @@
           "dloss_dB_cm": 1.5,
           "cj0_ff_um": 0.3,
           "rs_ohm_mm": 10.0,
-          "z0_ohm": 60.0,
+          "z0_ohm": 30.0,
           "n_rf": 2.4,
           "rf_loss_dB_cm": 2.0,
           "neff": 2.4,
@@ -111,7 +112,7 @@
           "dloss_dB_cm": 1.5,
           "cj0_ff_um": 0.3,
           "rs_ohm_mm": 10.0,
-          "z0_ohm": 60.0,
+          "z0_ohm": 30.0,
           "n_rf": 2.4,
           "rf_loss_dB_cm": 2.0,
           "neff": 2.4,
@@ -227,7 +228,9 @@
           "seed": 1,
           "rj_ui": 0.02,
           "sj_ui": 0.02,
-          "dj_ui": 0.02
+          "dj_ui": 0.02,
+          "ffe_pre": 0.0,
+          "ffe_post": 0.0
         }
       },
       "RDA": {
@@ -236,7 +239,7 @@
         "y": 30,
         "rot": 0,
         "settings": {
-          "R": 50.0
+          "R": 30.0
         }
       },
       "RDB": {
@@ -245,7 +248,7 @@
         "y": 260,
         "rot": 0,
         "settings": {
-          "R": 50.0
+          "R": 30.0
         }
       },
       "RTA": {
@@ -431,16 +434,18 @@
       "ring_um": 10.0,
       "k1": 0.526,
       "k2": 0.5,
-      "z0_ohm": 65.6,
+      "z0_ohm": 30.0,
       "r_term_ohm": 40.0,
       "v_emf_pp": 4.0,
-      "r_drv_ohm": 50.0,
+      "r_drv_ohm": 30.0,
       "rs_ohm_mm": 10.0,
       "vpil_vcm": 2.0,
       "loss_db_cm": 12.0,
       "cj0_ff_um": 0.3,
       "n_rf": 2.4,
-      "rf_loss_db_cm": 2.0
+      "rf_loss_db_cm": 2.0,
+      "ffe_pre": 0.0,
+      "ffe_post": 0.0
     },
     "set": {
       "WG_A.length_m": "2.0120095e-05 + dL_nm*0.5e-9",
@@ -471,7 +476,9 @@
       "PN_B.rs_ohm_mm": "rs_ohm_mm",
       "PN_B.z0_ohm": "z0_ohm",
       "PN_B.n_rf": "n_rf",
-      "PN_B.rf_loss_dB_cm": "rf_loss_db_cm"
+      "PN_B.rf_loss_dB_cm": "rf_loss_db_cm",
+      "PRBS.ffe_pre": "ffe_pre",
+      "PRBS.ffe_post": "ffe_post"
     },
     "stateye": {
       "rx_bw": "auto",
@@ -537,7 +544,7 @@
       {
         "id": "opt",
         "kind": "optimize",
-        "title": "Maximize the worst spec margin (incl. couplers, Z0, termination)",
+        "title": "Maximize the worst spec margin (incl. TX FFE, DC1, termination)",
         "inner": [
           "res",
           "eye"
@@ -564,11 +571,6 @@
             "max": 1500.0
           },
           {
-            "var": "z0_ohm",
-            "min": 30.0,
-            "max": 80.0
-          },
-          {
             "var": "r_term_ohm",
             "min": 20.0,
             "max": 80.0
@@ -579,9 +581,14 @@
             "max": 0.85
           },
           {
-            "var": "k2",
-            "min": 0.15,
-            "max": 0.85
+            "var": "ffe_pre",
+            "min": -0.3,
+            "max": 0.3
+          },
+          {
+            "var": "ffe_post",
+            "min": -0.5,
+            "max": 0.5
           }
         ],
         "objective": "min((rlm - 0.95)/0.05, (1.5 - tdecq_db)/1.5, (rel_oma_db + 2)/2, (er_db - 3.5)/3.5)",

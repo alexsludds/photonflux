@@ -731,7 +731,7 @@
           "ASE floor, vout1-3 are the recovered eyes. Transient noise",
           "(seeds = 1) is on, so the ASE is a live noise source.",
           "",
-          "At the default power the SOA is unsaturated (amp_out ~2 mW",
+          "At the default power the SOA is unsaturated (amp_out ~1.3 mW",
           "<< p_sat 10 mW) with high OSNR: the eyes are open. Push it",
           "off either edge of its power window and the eyes collapse:",
           "",

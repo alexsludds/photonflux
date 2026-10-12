@@ -459,16 +459,20 @@ class Handler(BaseHTTPRequestHandler):
         files = []
         for f in uploads.iterdir():
             try:
-                st = f.stat()
+                if f.is_file():
+                    st = f.stat()
+                    files.append((st.st_mtime, st.st_size, f))
             except OSError:
                 continue
-            files.append((st.st_mtime, st.st_size, f))
         total = 0
         for _mtime, size, f in sorted(files, key=lambda e: e[0],
                                       reverse=True):
             total += size
             if total > _UPLOAD_DIR_MAX_BYTES and f.name != fid:
-                f.unlink(missing_ok=True)
+                try:
+                    f.unlink(missing_ok=True)
+                except OSError:      # the upload itself is already stored
+                    pass
         return {"ok": True, "id": fid, "name": safe}
 
     def log_message(self, fmt: str, *args) -> None:

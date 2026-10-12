@@ -188,8 +188,9 @@ the PRBS source's TX FFE pre/post-cursor taps as optimizer knobs. PN_B's
 p-side rail tracks 2 x vbias, so both junctions share the reverse bias,
 and the PRBS seed (5407) starts PRBS-13Q at symbol 4064 so the 1000-UI
 eye step holds the pattern's OMA_outer runs and scores TDECQ_outer like
-the evaluate. Its start design is estimated at relOMA -3.5 dB, ER 3.9 dB,
-RLM 0.89, TDECQ 3.5 dB on the full period: ER passes, the rest miss. The
+the evaluate. Its start design evaluates at relOMA -3.5 dB, ER 3.8 dB,
+RLM 0.89, TDECQ 3.6 dB on the full period: ER passes, the rest miss (the
+previous start: -4.7 dB, 2.3 dB, 0.94, 2.9 dB -- the same worst margin). The
 ring's photon lifetime (~5 UI) limits: the reference equalizer's C_eq
 ~1.7 costs ~2.4 dB of TDECQ by itself, and a 6 Vpp drive or a 1 V*cm VpiL
 still leaves relOMA near -3.5 dB. Its 1000-UI eye step reads RLM about

@@ -123,7 +123,7 @@ birefringence that the concatenation model is made of; the DGD *delay* and the
 ## 5. Roadmap (scoped follow-ups)
 
 1. **Webapp catalog + wiring.** The browser represents an optical port as a
-   single node mapped through the `_f2ri`/`_ri2f` adapters. A dual-pol port is
+   single node mapped through the `_f2ri_m`/`_ri2f` adapters. A dual-pol port is
    two field pairs (X and Y), so it needs either a distinct `"optical-jones"`
    port domain (four nodes) or an X/Y port split, plus Jones adapters and the
    `app.js` domain-compatibility rule (scalar-optical ↔ Jones is the TE

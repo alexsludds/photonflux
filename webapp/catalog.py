@@ -523,10 +523,12 @@ CATALOG: dict[str, dict] = {
         },
     },
     # --- SOA + cavity building blocks (directed-wave VA models) ------------
-    # These four carry DIRECTED waves: optical inputs are read at infinite
-    # impedance, outputs are driven. Wire outputs to inputs (never output to
-    # output); terminate dark inputs and unused outputs with the optical
-    # terminator.
+    # These four carry DIRECTED waves: optical inputs are matched receivers
+    # (they absorb the incoming wave, see _field_to_ri_matched), outputs are
+    # driven. Wire outputs to inputs (never output to output), one input per
+    # node: feed two inputs through a splitter, and keep terminators and
+    # photodiodes off an input's node. Terminate unused outputs with the
+    # optical terminator.
     "soa": {
         "label": "SOA (VA)",
         "category": "Lasers",
@@ -2250,7 +2252,9 @@ def _pulse_mod():
         env = jax.nn.sigmoid(k * (t - t0)) - jax.nn.sigmoid(k * (t - t1))
         trans = jnp.sqrt((p_off + (p_on - p_off) * env) / p_on)
         constraint = signals.pout - trans * signals.pin
-        return {"pin": 0.0, "pout": s.i_out, "i_out": constraint}, {}
+        # matched input, like the directed VA models' receivers: an open one
+        # reflects whatever reciprocal element feeds it
+        return {"pin": signals.pin, "pout": s.i_out, "i_out": constraint}, {}
 
     return PulseModulator
 
@@ -3107,7 +3111,7 @@ def _ase_src_plain():
         t: float,
         s_ase_dbm_hz: float = -135.0,
     ) -> tuple[dict, dict]:
-        return {"pin": 0.0, "pout": s.i_out,
+        return {"pin": signals.pin, "pout": s.i_out,     # matched input
                 "i_out": signals.pout - signals.pin}, {}
 
     return ASESrcOff
@@ -3140,7 +3144,7 @@ def _ase_src_noisy(bank, dt_n):
         nr = jnp.interp(t, tn, jnp.take(bank_c, 2 * k, axis=0))
         ni = jnp.interp(t, tn, jnp.take(bank_c, 2 * k + 1, axis=0))
         nval = sigma * (nr + 1j * ni)
-        return {"pin": 0.0, "pout": s.i_out,
+        return {"pin": signals.pin, "pout": s.i_out,     # matched input
                 "i_out": signals.pout - (signals.pin + nval)}, {}
 
     return ASESrc
@@ -3277,11 +3281,11 @@ for _entry in CATALOG.values():
 del _entry
 
 
-# Built-in models are parameter-free, so each is built once per process: a
-# Verilog-A entry is a full lowering + exec of the emitted module and every
-# other one a component-class build. Rebuilding them on every models-cache
-# miss (each new waveform, SKY130 geometry, noise bank or LTI fit) cost about
-# a second per call, and the first call lowered all of them.
+# Built-in models are parameter-free, so each component class is built once
+# per process (Verilog-A entries rely on cx.va's content-hash memo instead,
+# see _builtin_factories). Rebuilding them on every models-cache miss (each
+# new waveform, SKY130 geometry, noise bank or LTI fit) cost about a second
+# per call, and the first call lowered all of them.
 _BUILTIN_MODELS: dict[str, Any] = {}
 
 
@@ -3320,7 +3324,6 @@ def _builtin_factories() -> dict[str, Any]:
         "apd": _apd,
         "iq_modulator": _iq_modulator,
         "coherent_rx": _coherent_rx,
-        "_f2ri": cx.field_to_ri,
         "_f2ri_m": _field_to_ri_matched,
         "_ri2f": cx.ri_to_field,
         "_ring_va": va("ring_mod"),

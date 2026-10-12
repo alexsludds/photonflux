@@ -169,10 +169,12 @@ short of the spec (relOMA -4.9 dB, TDECQ 2.4 dB; scored through a 5-tap FFE
 with S = 0.005 mW, before the flows switched to the 802.3 reference settings
 and S = 0). Example 49 runs the flow on traveling-wave PN arms with real
 optical transit (`transit` = delayed), a 10 um / 0.3 dB/cm feedback delay
-line and both couplers as knobs: relOMA -5.6 dB, TDECQ 2.3 dB, RLM 0.92,
-ER 1.9 dB all miss. The ring's photon lifetime (~6 UI) now limits; with
-quasi-static optics the same design had scored near relOMA -3.6 dB /
-TDECQ 1.4 dB.
+line, 30 Ohm electrodes driven through 30 Ohm, and the input coupler and
+the PRBS source's TX FFE pre/post-cursor taps as optimizer knobs. Before
+the 30 Ohm / FFE change (50 Ohm drive, both couplers as knobs) it scored
+relOMA -5.6 dB, TDECQ 2.3 dB, RLM 0.92, ER 1.9 dB -- all miss; the ring's
+photon lifetime (~6 UI) limits. With quasi-static optics that design had
+scored near relOMA -3.6 dB / TDECQ 1.4 dB.
 
 ## Serial-link (SERDES) workflow
 

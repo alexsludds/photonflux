@@ -5,7 +5,8 @@ exact transmitted symbol sequence (`wavesrc._symbols`), so alignment,
 equalizer design and error counting use the known data — no CDR, no blind
 adaptation. Conventions:
 
-  * decision samples: best phase picked by correlation, symbol-spaced
+  * decision samples: symbol lag from the correlation peak, sampling phase
+    at the centre of the bathtub floor (as a BERT picks it), symbol-spaced
   * RX FFE/DFE designed by data-aided least squares (the Wiener solution
     computed from the record itself); the DFE feeds back known symbols
   * Q-fit BER: per-eye Q = (mu2 - mu1)/(sigma1 + sigma2), each eye's error
@@ -260,36 +261,60 @@ def _count_errors(eq: np.ndarray, tx: np.ndarray, nlv: int) -> dict:
 def _bathtub(samples: np.ndarray, tx: np.ndarray, osr: int, phase: int,
              lag: int, skip: int, nlv: int) -> dict:
     """log10(BER) vs sampling phase from per-phase Gaussian Q fits (raw,
-    unequalized samples — the classic scope-style bathtub)."""
+    unequalized samples — the classic scope-style bathtub).
+
+    Phase d/osr in [-0.5, 0.5) UI is the sample d steps from the decision
+    sample of each symbol (absolute index ``(k + lag) * osr + phase + d``),
+    so the curve is centred on the decision phase and every point compares
+    a symbol's own samples with its own data -- the same lag at every
+    stream phase put half the points a symbol off, at BER ~ 0.5."""
     nsym = len(samples) // osr
     lv_fracs = np.linspace(0, 1, nlv)
+    k = np.arange(skip, min(len(tx), nsym))
     phases = []
     log_ber = []
-    for ph in range(osr):
-        s = samples[ph::osr][:nsym]
-        m = min(len(s) - lag - skip, len(tx) - skip)
-        if m < 64:
+    for d in range(-(osr // 2), osr - osr // 2):
+        idx = (k + lag) * osr + phase + d
+        ok = (idx >= 0) & (idx < len(samples))
+        if ok.sum() < 64:
             continue
-        s_k = s[skip + lag: skip + lag + m]
-        a_k = tx[skip: skip + m]
+        s_k, a_k = samples[idx[ok]], tx[k[ok]]
         bers = []
-        okay = True
         for e in range(nlv - 1):
             lo = s_k[np.isclose(a_k, lv_fracs[e], atol=1e-6)]
             hi = s_k[np.isclose(a_k, lv_fracs[e + 1], atol=1e-6)]
             if len(lo) < 8 or len(hi) < 8:
-                okay = False
                 break
             q = (hi.mean() - lo.mean()) / (lo.std() + hi.std() + 1e-30)
             bers.append(0.5 * float(_erfc(max(q, 0.0) / np.sqrt(2.0))))
-        if not okay:
-            continue
-        tot = float(np.sum(bers) / (4.0 if nlv == 4 else 1.0))
-        phases.append(((ph - phase) % osr) / osr - 0.5)
-        log_ber.append(float(np.log10(max(tot, 1e-30))))
-    order = np.argsort(phases)
-    return {"phase_ui": [phases[i] for i in order],
-            "log10_ber": [log_ber[i] for i in order]}
+        else:
+            tot = float(np.sum(bers) / (4.0 if nlv == 4 else 1.0))
+            phases.append(d / osr)
+            log_ber.append(float(np.log10(max(tot, 1e-30))))
+    return {"phase_ui": phases, "log10_ber": log_ber}
+
+
+def _centre_on_bathtub(samples: np.ndarray, tx: np.ndarray, osr: int,
+                       phase: int, lag: int, skip: int,
+                       nlv: int) -> tuple[int, int]:
+    """(phase, lag) moved to the middle of the bathtub's floor -- the run of
+    phases within a decade of the best BER around it -- the way a BERT picks
+    its sampling point. The correlation peak finds the symbol lag reliably
+    but can sit next to an eye edge."""
+    tub = _bathtub(samples, tx, osr, phase, lag, skip, nlv)
+    ph = np.asarray(tub["phase_ui"])
+    lb = np.asarray(tub["log10_ber"])
+    if ph.size < 4:
+        return phase, lag
+    floor = lb <= lb.min() + 1.0
+    lo = hi = int(np.argmin(lb))
+    while lo > 0 and floor[lo - 1]:
+        lo -= 1
+    while hi < len(lb) - 1 and floor[hi + 1]:
+        hi += 1
+    new = phase + int(round(0.5 * (ph[lo] + ph[hi]) * osr))
+    # past a UI boundary the decision sample belongs to the next symbol slot
+    return new % osr, lag + new // osr
 
 
 # ---------------------------------------------------------------------------
@@ -333,6 +358,7 @@ def link_report(result: dict, meta: dict, cfg: dict, log: list) -> dict | None:
     skip = int(cfg.get("skip", max(32, nsym_rec // 20)))
 
     phase, lag, corr = _align(samples0, tx, osr, skip)
+    phase, lag = _centre_on_bathtub(samples0, tx, osr, phase, lag, skip, nlv)
     n_ffe = int(cfg.get("ffe_taps", 0))
     n_dfe = int(cfg.get("dfe_taps", 0))
     mu = float(cfg.get("ffe_mu", 0.0)) or float(cfg.get("dfe_mu", 0.0))
@@ -385,6 +411,7 @@ def link_report(result: dict, meta: dict, cfg: dict, log: list) -> dict | None:
     return {
         "tdecq": tdecq,
         "pattern": pat_inst, "probe": probe, "ui": ui, "nlv": nlv,
+        "unit": trs[0].get("unit", ""),
         "sampling_phase_ui": phase / osr, "lag_ui": lag, "corr": corr,
         "seeds": len(trs),
         "counted": counted, "qfit": qfit, "bathtub": tub,

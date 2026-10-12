@@ -614,6 +614,20 @@ body { display: flex; flex-direction: column; }
 .fl-pt { fill: var(--electrical); opacity: .8; }
 .fl-best { fill: none; stroke: var(--ok); stroke-width: 1.5; vector-effect: non-scaling-stroke; }
 .fl-h { font-weight: 600; font-size: 12px; margin-top: 2px; }
+/* live status while a flow runs (flowRenderLive) */
+.fl-node.run { border-color: var(--accent); box-shadow: inset 0 2px 0 var(--accent); }
+.fl-run { color: var(--accent2); display: inline-flex; align-items: center; gap: 4px; }
+.fl-spin { display: inline-block; width: 9px; height: 9px; flex: 0 0 9px; border-radius: 50%;
+  border: 2px solid var(--accent2); border-right-color: transparent;
+  animation: fl-spin 0.8s linear infinite; }
+@keyframes fl-spin { to { transform: rotate(360deg); } }
+.fl-log { margin: 0; max-height: 210px; overflow: auto; background: var(--panel2);
+  border: 1px solid var(--border); border-radius: 6px; padding: 6px 8px;
+  font: 10.5px/1.45 "SF Mono", ui-monospace, monospace; color: var(--text-dim); white-space: pre-wrap; }
+.fl-rng { position: relative; height: 6px; min-width: 70px; border-radius: 3px; background: var(--panel2);
+  border: 1px solid var(--border); }
+.fl-rng i { position: absolute; top: -3px; width: 3px; height: 10px; margin-left: -1.5px;
+  border-radius: 1px; background: var(--ok); }
 .fl-table { border-collapse: collapse; width: 100%; font-size: 12px; }
 .fl-table th { text-align: left; color: var(--text-dim); font-weight: 500; font-size: 11px;
   padding: 2px 4px; border-bottom: 1px solid var(--border); }

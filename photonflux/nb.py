@@ -886,12 +886,15 @@ class Session:
 class _ProgressBar:
     """Poll ``/api/progress`` while a run is in flight and draw one stderr
     line. Quiet runs (compile-cached DC sweeps) never draw: the first paint
-    waits until the run has been active for half a second."""
+    waits until the run has been active for half a second. A flow's log
+    (step starts, optimizer evaluations, checks) prints above the bar as it
+    grows."""
 
     def __init__(self, session: Session, interval: float = 0.3):
         self._s = session
         self._stop = threading.Event()
         self._drew = False
+        self._log_n = 0           # flow log lines already printed
         self._t = threading.Thread(target=self._loop, args=(interval,),
                                    daemon=True)
         self._t.start()
@@ -903,7 +906,10 @@ class _ProgressBar:
                 p = self._s._req("/api/progress", timeout=3.0)
             except SessionError:
                 continue
-            if not p.get("active") or time.monotonic() - started < 0.5:
+            if not p.get("active"):
+                continue
+            self._flow_lines(p.get("flow"))
+            if time.monotonic() - started < 0.5:
                 continue
             frac = float(p.get("frac") or 0.0)
             phase = p.get("phase") or "running"
@@ -917,11 +923,24 @@ class _ProgressBar:
             sys.stderr.flush()
             self._drew = True
 
+    def _flow_lines(self, fl: dict | None) -> None:
+        if not fl:
+            return
+        n, log = int(fl.get("log_n") or 0), fl.get("log") or []
+        new = log[len(log) - min(n - self._log_n, len(log)):] \
+            if n > self._log_n else []
+        self._log_n = n
+        if new:
+            if self._drew:        # clear the bar, print, the next poll redraws
+                sys.stderr.write("\r" + " " * 100 + "\r")
+            sys.stderr.write("".join(f"{line}\n" for line in new))
+            sys.stderr.flush()
+
     def stop(self) -> None:
         self._stop.set()
         self._t.join(timeout=1.0)
         if self._drew:
-            sys.stderr.write("\r" + " " * 60 + "\r")
+            sys.stderr.write("\r" + " " * 100 + "\r")
             sys.stderr.flush()
 
 

@@ -75,6 +75,9 @@ def _load_engine() -> None:
     # so they skip the solver's per-save-point host callback entirely.
     import progress
     progress.PROGRESS.enable()
+    # and print a running flow's log here as it goes (step starts, optimizer
+    # evaluations, checks) — the browser shows the same live in its Flow tab
+    progress.PROGRESS.flow_echo = progress.printer(sys.stdout)
 
     loaded_va = load_user_va()
     if loaded_va:

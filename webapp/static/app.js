@@ -2472,9 +2472,10 @@ function applyAnalysis(a) {
 // Poll GET /api/progress while a run is in flight and drive the header bar.
 // The backend fraction covers the transient solve (spanning noise seeds and
 // sweep points); compile time reports no fraction, so we hold the bar in an
-// indeterminate sweep until the first real step arrives.
+// indeterminate sweep until the first real step arrives. onSnap, if given,
+// sees every snapshot of the run (a flow's live record rides along as p.flow).
 let progressGen = 0;
-function startProgressPoll() {
+function startProgressPoll(onSnap) {
   const bar = $("run-progress"), fill = $("run-progress-fill");
   const label = $("run-progress-label");
   if (!bar || !fill) return { stop() {} };
@@ -2494,6 +2495,7 @@ function startProgressPoll() {
     try { p = await (await fetch("/api/progress")).json(); }
     catch { return; }
     if (stopped || !p || !p.active) return;
+    if (onSnap) onSnap(p);
     // a flow names its stage ("step 3/4, eval 12/30, <step title>")
     const stage = p.label ? `${p.label}, ` : "";
     if (p.frac > 0 || p.phase === "solving") {
@@ -2611,7 +2613,10 @@ async function runSim(runKind) {
   // this covers them too, while excluding e.g. a 2-axis AC sweep.
   const timeDomain = a.mode === "transient" || a.mode === "pulse"
     || a.mode === "flow";
-  const progPoll = timeDomain ? startProgressPoll() : { stop() {} };
+  // a flow also streams its step states, evaluations and log into the Flow tab
+  if (a.mode === "flow") flowLiveStart(runTab);
+  const progPoll = !timeDomain ? { stop() {} } : startProgressPoll(
+    a.mode === "flow" ? (p) => flowLiveUpdate(runTab, p.flow) : null);
   let res, aborted = false;
   try {
     const resp = await fetch("/api/run", {
@@ -2625,6 +2630,7 @@ async function runSim(runKind) {
   }
   clearInterval(tick);
   progPoll.stop();
+  if (a.mode === "flow") flowLiveEnd(runTab, !!(res.ok && res.kind === "flow"));
   runAbort = null;
   btn.hidden = false;
   stopBtn.hidden = true;

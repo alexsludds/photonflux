@@ -15,10 +15,19 @@ once the first step reports — the UI shows an indeterminate bar until then.
 Progress is a single monotonically-increasing fraction over the *whole* run,
 including any parameter sweep (``runs``) and transient-noise seeds (``seeds``):
 each seed of each sweep point owns an equal ``1 / (runs * seeds)`` slice.
+
+A flow (``webapp/flow.py``) additionally publishes its live state through the
+``flow_*`` methods: each step's status, its outputs and checks once done, every
+Optimize evaluation as it lands, and the flow log. The snapshot carries it as
+``flow`` so the Flow tab, the notebook bridge and the CLI can show a long flow
+advancing; ``flow_echo`` (a callable) also prints each log line as it is added.
 """
 from __future__ import annotations
 
 import threading
+import time
+
+FLOW_LOG_TAIL = 400   # log lines a snapshot carries (``log_n`` counts them all)
 
 
 class RunCancelled(Exception):
@@ -52,6 +61,8 @@ class _Progress:
         self._cancel = False  # set by request_cancel(); the solve callback raises
         self._label = ""      # flow stage text (set_label)
         self._span = 0.0      # simulated t_stop of the current solve
+        self._flow: dict | None = None   # live flow state (flow_begin)
+        self.flow_echo = None  # optional callable(line, elapsed_s) per log line
 
     def enable(self) -> None:
         """Opt this process in to per-step progress reporting. The web server
@@ -80,6 +91,7 @@ class _Progress:
                 self._seeds = 1
                 self._seed = 0
                 self._label = ""
+                self._flow = None
 
     def leave(self) -> None:
         with self._lock:
@@ -89,6 +101,7 @@ class _Progress:
                 self._frac = 1.0
                 self._phase = ""
                 self._label = ""
+                self._flow = None
 
     # --- cooperative cancellation (the web UI's Stop button) --------------
     def request_cancel(self) -> None:
@@ -181,12 +194,73 @@ class _Progress:
                 self._frac = g
             self._phase = "solving"
 
+    # --- live flow state (flow.py) -----------------------------------------
+    # Recorded whether or not enable() was called: these are host-side calls
+    # once per step / evaluation, so the in-process CLI can echo them too.
+    def flow_begin(self, name: str, steps: list[dict]) -> None:
+        """Start a flow's live record; ``steps`` are {id, title, kind,
+        status} dicts (status "pending" or "skipped")."""
+        with self._lock:
+            self._flow = {"name": str(name), "t0": time.monotonic(),
+                          "steps": [dict(s) for s in steps], "log": [],
+                          "log_n": 0}
+
+    def flow_step(self, sid: str, **fields) -> None:
+        """Update one step's live entry (status, time_s, outputs, checks,
+        error, eval/iters, ...)."""
+        with self._lock:
+            for s in (self._flow or {}).get("steps", []):
+                if s["id"] == sid:
+                    s.update(fields)
+
+    def flow_eval(self, sid: str, entry: dict) -> None:
+        """Append one Optimize evaluation to its step's live history."""
+        with self._lock:
+            for s in (self._flow or {}).get("steps", []):
+                if s["id"] == sid:
+                    s.setdefault("history", []).append(dict(entry))
+                    s["eval"] = len(s["history"])
+
+    def flow_log(self, line: str) -> None:
+        with self._lock:
+            fl = self._flow
+            if fl is not None:
+                fl["log"].append(str(line))
+                fl["log_n"] += 1
+                del fl["log"][:-FLOW_LOG_TAIL]
+            elapsed = time.monotonic() - fl["t0"] if fl else 0.0
+            echo = self.flow_echo
+        if echo is not None:
+            try:            # a broken printer must never fail the run
+                echo(str(line), elapsed)
+            except Exception:  # noqa: BLE001
+                pass
+
     def snapshot(self) -> dict:
         with self._lock:
-            return {"active": self._active, "frac": round(self._frac, 4),
-                    "phase": self._phase,
-                    "runs": self._runs, "run": self._run_i,
-                    "label": self._label}
+            out = {"active": self._active, "frac": round(self._frac, 4),
+                   "phase": self._phase,
+                   "runs": self._runs, "run": self._run_i,
+                   "label": self._label}
+            fl = self._flow
+            if fl is not None:
+                out["flow"] = {
+                    "name": fl["name"],
+                    "elapsed_s": round(time.monotonic() - fl["t0"], 2),
+                    "steps": [{**s, "history": list(s["history"])}
+                              if "history" in s else dict(s)
+                              for s in fl["steps"]],
+                    "log": list(fl["log"]), "log_n": fl["log_n"]}
+            return out
+
+
+def printer(stream):
+    """A ``flow_echo`` writing ``[flow 1m02s] <line>`` to ``stream``."""
+    def echo(line: str, elapsed: float) -> None:
+        m, sec = divmod(int(elapsed), 60)
+        stream.write(f"[flow {m}m{sec:02d}s] {line}\n")
+        stream.flush()
+    return echo
 
 
 PROGRESS = _Progress()

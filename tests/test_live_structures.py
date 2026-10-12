@@ -44,3 +44,35 @@ def test_no_release_while_parallel_solves_run(cap, monkeypatch):
     monkeypatch.setattr(simulate, "_PARALLEL_ACTIVE", 0)
     simulate._note_structure("e", [])
     assert len(cap) == 1 and simulate._LIVE_STRUCTURES == {"e"}
+
+
+def test_an_edited_va_model_is_rebuilt(monkeypatch):
+    """The compiled-circuit and models caches key on the built-in VA
+    sources, so an edited model takes effect on the next run of the same
+    schematic, not after a server restart."""
+    import jax
+
+    jax.config.update("jax_enable_x64", True)
+    sch = {"instances": {
+        "LAS": {"type": "cw_laser", "settings": {"power": 1e-3}},
+        "GL": {"type": "ground", "settings": {}},
+        "RM": {"type": "ring_mod", "settings": {}},
+        "GR": {"type": "ground", "settings": {}},
+        "TO": {"type": "opt_term", "settings": {}}},
+        "wires": [{"from": "LAS,p1", "to": "RM,pin"},
+                  {"from": "LAS,p2", "to": "GL,p1"},
+                  {"from": "RM,vp", "to": "GR,p1"},
+                  {"from": "RM,vn", "to": "GR,p1"},
+                  {"from": "RM,gnd", "to": "GR,p1"},
+                  {"from": "RM,pout", "to": "TO,p1"}],
+        "probes": [{"name": "thru", "at": "RM,pout"}]}
+
+    def run():
+        res = simulate.run({"schematic": sch, "analysis": {"mode": "dc"}})
+        assert res["ok"], res.get("error")
+        return res["log"]
+
+    run()
+    assert "compile: cache hit" in run()
+    monkeypatch.setattr(simulate, "_va_stamp", lambda: "edited")
+    assert "compile: cache hit" not in run()

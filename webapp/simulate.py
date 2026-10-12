@@ -32,6 +32,7 @@ import re
 import threading
 import time
 import traceback
+from pathlib import Path
 from typing import Any
 
 from catalog import CATALOG, build_models
@@ -608,13 +609,30 @@ def schematic_to_netlist(sch: dict, wave_span: float = DEFAULT_WAVE_SPAN,
 # compile (cached)
 # ---------------------------------------------------------------------------
 
+_VA_DIR = Path(__file__).resolve().parents[1] / "models"
+
+
+def _va_stamp() -> str:
+    """Fingerprint of the built-in Verilog-A sources (name, mtime, size), so
+    an edited model invalidates the compiled circuits and models built from
+    it without a server restart (~0.1 ms for the 36 files)."""
+    parts = []
+    for f in sorted(_VA_DIR.rglob("*.va")):
+        try:
+            st = f.stat()
+        except OSError:
+            continue
+        parts.append(f"{f.name}:{st.st_mtime_ns}:{st.st_size}")
+    return hashlib.sha256("|".join(parts).encode()).hexdigest()[:16]
+
+
 def _get_circuit(sch: dict, wave_span: float = DEFAULT_WAVE_SPAN,
                  noise_cfg: dict | None = None
                  ) -> tuple[Any, dict, list[str]]:
     log: list[str] = []
     key = hashlib.sha256(
         (json.dumps(sch, sort_keys=True, default=str) + f"|{wave_span:g}"
-         + f"|{json.dumps(noise_cfg, sort_keys=True)}")
+         + f"|{json.dumps(noise_cfg, sort_keys=True)}|{_va_stamp()}")
         .encode()
     ).hexdigest()
     if key in _CIRCUIT_CACHE:
@@ -669,7 +687,7 @@ def _build_circuit(sch, wave_span, noise_cfg, log):
     needed = sorted({i["component"] for i in net["instances"].values()})
     mkey = ",".join(sorted(meta["sky130_geoms"]) + sorted(meta["waveforms"])
                     + sorted(meta["noisy"]) + sorted(meta["ltis"]))
-    mkey += "|" + ",".join(needed)
+    mkey += "|" + ",".join(needed) + "|" + _va_stamp()
     if meta["noisy"]:
         mkey += "|" + json.dumps(noise_cfg, sort_keys=True)
     if mkey not in _MODELS_CACHE:

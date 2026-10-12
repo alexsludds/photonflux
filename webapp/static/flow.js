@@ -328,6 +328,8 @@ function flowSaveCards() {
       Object.assign(a, { start: parseSI(m[1]), stop: parseSI(m[2]),
                          points: parseInt(m[3]) || 101 });
     }
+    // an option the form has no field for (the DC sweep's warm start)
+    if (a.mode === "dcsweep" && st.analysis?.warm_start) a.warm_start = true;
     st.analysis = a;
     const e1 = [], e2 = [];
     st.set = flowParseAssign($("flow-step-set").value, "set", e1);

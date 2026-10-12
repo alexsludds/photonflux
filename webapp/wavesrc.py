@@ -89,6 +89,18 @@ def _levels(settings: dict, frac: np.ndarray) -> np.ndarray:
     return v0 + frac * (v1 - v0)
 
 
+def level_map(settings: dict) -> tuple[float, float] | None:
+    """(v0, v1 - v0) when the drive is v0 + (v1 - v0) * g(t), g being the same
+    pattern built for v0 = 0, v1 = 1: every PRBS, pulse and QAM drive (TX FFE
+    included) except the RLM-warped ladder (rlm_vpi > 0). The netlist then
+    bakes g and passes the levels at run time, so a level change (a bias
+    sweep, an optimizer step) reuses the compiled circuit."""
+    if float(settings.get("rlm_vpi", 0.0)) > 0.0:
+        return None
+    v0 = float(settings.get("v0", -0.5))
+    return v0, float(settings.get("v1", 0.5)) - v0
+
+
 def _tx_ffe(settings: dict, levels: np.ndarray) -> np.ndarray:
     """Symbol-spaced [pre, main, post] FIR, dB knobs like TxFFE."""
     pre_db = float(settings.get("ffe_pre_db", 0.0))

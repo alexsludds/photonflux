@@ -263,3 +263,26 @@ def test_example_49_real_transit_and_coupler_knobs():
         assert fr["steps"][0]["status"] == "ok", fr["steps"][0]
         notch[k1] = fr["vars"]["notch_db"]
     assert abs(notch[0.5] - notch[0.35]) > 0.3
+
+
+def test_dc_sweep_warm_start_matches_a_cold_start():
+    # examples 48/49's resonance steps start every sweep point from the
+    # first point's operating point (far fewer Newton iterations on a big
+    # circuit); on these single-solution circuits that is the same answer as
+    # starting each point from zero
+    ex = _example("48_cmr_flow_106g")
+    fl = ex["flow"]
+    step = next(s for s in fl["steps"] if s["id"] == "res")
+    assert step["analysis"].get("warm_start") is True
+    sch = flow._prepare(ex["schematic"], fl, {}, step.get("set"),
+                        {k: float(v) for k, v in fl["vars"].items()})
+    traces = {}
+    for warm in (False, True):
+        res = simulate.run({"schematic": sch, "analysis": {
+            **step["analysis"], "warm_start": warm}})
+        assert res["ok"], res.get("error")
+        traces[warm] = {t["name"]: np.asarray(t["values"])
+                        for t in res["traces"]}
+    for name, cold in traces[False].items():
+        np.testing.assert_allclose(traces[True][name], cold,
+                                   rtol=1e-9, atol=1e-12)

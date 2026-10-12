@@ -3628,7 +3628,7 @@ function renderLink() {
           ${rep.tdecq ? `
           <tr><th>TDECQ</th><td><b>${rep.tdecq.tdecq_db.toFixed(2)} dB</b>
             <span class="link-hint">(${rep.tdecq.tdecq_raw_db.toFixed(2)} dB unequalized${
-              rep.tdecq.family === "outer" ? "" : "; crossing-point OMA — run a full PRBS-13Q for OMA_outer"})</span></td></tr>
+              rep.tdecq.family === "outer" ? "" : "; crossing-point OMA — set the PRBS sequence to prbs+oma, or run a full PRBS-13Q, for OMA_outer"})</span></td></tr>
           <tr><th>TDECQ ref. EQ</th><td>${fmtTaps(rep.tdecq.ffe_taps)}${
               (rep.tdecq.dfe_b || []).length ? ` + DFE b ${fmtTaps(rep.tdecq.dfe_b)}` : ""}
             <span class="link-hint">(${rep.tdecq.standard ? `${rep.tdecq.standard}; ` : ""}C<sub>eq</sub> ${rep.tdecq.ceq.toFixed(3)};

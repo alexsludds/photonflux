@@ -47,3 +47,14 @@ def test_pulse_fom_matches_brute_force_isi(nlv):
     isi = post * a[:-1]                  # what the post-cursor adds
     want = 20 * np.log10((1.0 / (2 * (nlv - 1))) / np.std(isi))
     assert rep["fom_db"] == pytest.approx(want, abs=0.05)
+
+
+@pytest.mark.parametrize("sequence", ["square", "staircase"])
+def test_link_report_skips_level_patterns(sequence):
+    """A PAM-4 square wave never sends levels 1 and 2, so counted BER and
+    TDECQ would be meaningless: the report says so instead."""
+    log: list = []
+    meta = {"patterns": {"PAT1": {"mode": "pam4", "sequence": sequence}}}
+    assert linkpost.link_report({"traces": [], "x": []}, meta,
+                                {"probe": "out"}, log) is None
+    assert "level pattern" in log[0]

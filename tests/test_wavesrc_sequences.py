@@ -59,3 +59,15 @@ def test_square_and_staircase():
 def test_unknown_sequence_is_rejected():
     with pytest.raises(ValueError, match="sequence"):
         _sym("nrz", "ssprq")
+
+
+@pytest.mark.parametrize("run_ui", [0, 65, float("inf"), float("nan")])
+def test_run_ui_out_of_range_is_rejected(run_ui):
+    with pytest.raises(ValueError, match="run_ui"):
+        _sym("pam4", "square", run_ui=run_ui)
+
+
+def test_first_oma_runs_clear_flow_settling():
+    import flow
+    # flows score after SETTLE_UI, and stateye drops 2 UI more
+    assert wavesrc.OMA_RUNS_START >= flow.SETTLE_UI + 2

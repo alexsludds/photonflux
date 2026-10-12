@@ -306,6 +306,11 @@ def link_report(result: dict, meta: dict, cfg: dict, log: list) -> dict | None:
     if pattern is None:
         log.append(f"link report: no PRBS instance {pat_inst!r}")
         return None
+    if pattern.get("sequence", "prbs") not in ("prbs", "prbs+oma"):
+        log.append(f"link report: skipped, {pattern['sequence']} is a level "
+                   "pattern, not data; set the PRBS source's sequence to prbs "
+                   "or prbs+oma for BER and TDECQ")
+        return None
     probe = cfg.get("probe")
     # multi-seed noise runs produce a family "probe#k" sharing tr["probe"]
     trs = [t for t in result["traces"]

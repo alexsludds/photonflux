@@ -118,6 +118,10 @@ def measure(payload: dict) -> dict:
 
         symbols = None
         pattern = payload.get("pattern")
+        if pattern and pattern.get("sequence", "prbs") not in ("prbs",
+                                                               "prbs+oma"):
+            return {"ok": False, "error": "TDECQ needs a data pattern: set "
+                    "the PRBS source's sequence to prbs or prbs+oma"}
         if cfg.get("use_pattern", True) and pattern:
             nsym = int(np.ceil((tu[-1] - 0.0) / ui)) + 2
             symbols = np.rint(wavesrc._symbols(pattern, nsym) * 3).astype(int)

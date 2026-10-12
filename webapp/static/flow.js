@@ -829,8 +829,8 @@ function flowRenderTab() {
     score += `<div class="fl-h">Scorecard &mdash; ${escapeHtml(s.title)}</div>
       <table class="fl-table"><tr><th>figure of merit</th><th>before</th><th>evaluated</th><th>spec</th><th></th></tr>${rows}</table>
       <div class="rp-note">before = the value the earlier steps measured (the optimizer's short
-        record); evaluated = ${s.family === "outer" ? "the full PRBS period, OMA<sub>outer</sub>"
-        : "this record (no OMA<sub>outer</sub> pattern: crossing-point OMA)"}${s.p_in_mw ? `;
+        record); evaluated = ${s.family === "outer" ? "this record, OMA<sub>outer</sub>"
+        : "this record (no OMA<sub>outer</sub> runs: crossing-point OMA)"}${s.p_in_mw ? `;
         P<sub>in</sub> ${flowFmt(s.p_in_mw)} mW at ${escapeHtml(byId[s.id]?.probes?.in || "")}` : ""}.
         relOMA = OMA / P<sub>in</sub>, IL = P<sub>in</sub> / top level.</div>`;
   }

@@ -54,8 +54,14 @@ def prbs_bits(order: int, n: int, seed: int = 1) -> np.ndarray:
 
 
 SEQUENCES = ("prbs", "prbs+oma", "square", "staircase")
-OMA_RUNS_EVERY = 512     # symbols between the OMA runs of "prbs+oma"
-OMA_RUNS_START = 16      # first OMA runs after a short runway
+# "prbs+oma" runs: the first block sits past the settling a flow and stateye
+# drop, then one every 512 symbols. Denser blocks skew TDECQ: their
+# full-swing edges after a settled level are worst-case ISI that fills the
+# SER-target tail of a short record (every 256 UI read 10.7 dB on example 46
+# against 4.7 dB for a full PRBS-13Q).
+OMA_RUNS_EVERY = 512
+OMA_RUNS_START = 64
+RUN_UI_MAX = 64
 
 
 def _symbols(settings: dict, nsym: int) -> np.ndarray:
@@ -79,7 +85,10 @@ def _symbols(settings: dict, nsym: int) -> np.ndarray:
     order = int(settings.get("order", 7))
     seed = int(settings.get("seed", 1))
     seq = str(settings.get("sequence", "prbs"))
-    run = max(int(settings.get("run_ui", 8)), 1)
+    run = float(settings.get("run_ui", 8))
+    if not 1 <= run <= RUN_UI_MAX:
+        raise ValueError(f"run_ui must be 1..{RUN_UI_MAX} UI")
+    run = int(run)
     if seq not in SEQUENCES:
         raise ValueError(f"sequence must be one of {SEQUENCES}")
     if mode == "pulse":

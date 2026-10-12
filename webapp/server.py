@@ -112,6 +112,14 @@ except ValueError:
 # schematic to the next and let anyone inject documents into connected
 # editors. Defaults ON for local dev; the container image sets it to "0".
 _ENABLE_BRIDGE = os.environ.get("PHOTONFLUX_ENABLE_BRIDGE", "1") == "1"
+# Data uploads (Touchstone files for the s2p channel) land on disk: cap one
+# file and the whole directory, evicting the oldest files past the total, so
+# a public host cannot be filled up through /api/upload.
+_UPLOAD_MAX_BYTES = 4 << 20
+_UPLOAD_DIR_MAX_BYTES = 64 << 20
+# The Eye tab's stateye measurement is CPU-bound and skips _RUN_LOCK; one at
+# a time (a second request gets 429) keeps it from saturating the host.
+_EYE_LOCK = threading.Lock()
 # Cap concurrent SSE subscribers: each holds a handler thread for its whole
 # lifetime, so an uncapped public endpoint is a trivial thread/socket DoS.
 _SSE_LIMIT = 32
@@ -296,8 +304,8 @@ class Handler(BaseHTTPRequestHandler):
             return
         try:
             length = int(self.headers.get("Content-Length", "0"))
-            if length > 20_000_000:
-                raise ValueError("payload too large")
+            if length < 0 or length > 20_000_000:
+                raise ValueError("bad payload length")
             payload = json.loads(self.rfile.read(length) or b"{}")
         except (ValueError, json.JSONDecodeError) as exc:
             # an unread body would desync the keep-alive connection: the next
@@ -332,7 +340,15 @@ class Handler(BaseHTTPRequestHandler):
             # stateye scoring of an eye the browser already has: CPU-bound
             # numpy/Cython, no circuit state, so it skips _RUN_LOCK
             import eyemeasure
-            res = eyemeasure.measure(payload)
+            if not _EYE_LOCK.acquire(blocking=False):
+                self._json({"ok": False, "error": "a stateye measurement is "
+                            "already running; try again when it finishes"},
+                           429)
+                return
+            try:
+                res = eyemeasure.measure(payload)
+            finally:
+                _EYE_LOCK.release()
             self._json(res, 200 if res.get("ok") else 422)
             return
         if route == "/api/upload_va":
@@ -428,12 +444,31 @@ class Handler(BaseHTTPRequestHandler):
         content = str(payload.get("content", ""))
         if not content:
             return {"ok": False, "error": "empty upload"}
+        data = content.encode()
+        if len(data) > _UPLOAD_MAX_BYTES:
+            return {"ok": False, "error": f"upload too large (limit "
+                    f"{_UPLOAD_MAX_BYTES >> 20} MB)"}
         safe = "".join(c for c in name if c.isalnum() or c in "._-")[-48:]
-        digest = hashlib.sha256(content.encode()).hexdigest()[:10]
+        digest = hashlib.sha256(data).hexdigest()[:10]
         fid = f"{digest}_{safe or 'file'}"
         uploads = HERE / "uploads"
         uploads.mkdir(exist_ok=True)
-        (uploads / fid).write_text(content)
+        (uploads / fid).write_bytes(data)
+        # keep the directory bounded: drop the oldest files past the total
+        # (stat once; a concurrent upload may evict a file under us)
+        files = []
+        for f in uploads.iterdir():
+            try:
+                st = f.stat()
+            except OSError:
+                continue
+            files.append((st.st_mtime, st.st_size, f))
+        total = 0
+        for _mtime, size, f in sorted(files, key=lambda e: e[0],
+                                      reverse=True):
+            total += size
+            if total > _UPLOAD_DIR_MAX_BYTES and f.name != fid:
+                f.unlink(missing_ok=True)
         return {"ok": True, "id": fid, "name": safe}
 
     def log_message(self, fmt: str, *args) -> None:

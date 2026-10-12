@@ -21,7 +21,7 @@
         "rot": 0,
         "settings": {
           "wavelength_nm": 1309.6,
-          "power": 1.5e-05,
+          "power": 6e-05,
           "ref_wavelength_nm": 1310.0,
           "phase": 0.0
         }
@@ -83,7 +83,7 @@
         "rot": 0,
         "settings": {
           "wavelength_nm": 1310.0,
-          "power": 1.5e-05,
+          "power": 6e-05,
           "ref_wavelength_nm": 1310.0,
           "phase": 1.9
         }
@@ -145,7 +145,7 @@
         "rot": 0,
         "settings": {
           "wavelength_nm": 1310.4,
-          "power": 1.5e-05,
+          "power": 6e-05,
           "ref_wavelength_nm": 1310.0,
           "phase": 3.7
         }

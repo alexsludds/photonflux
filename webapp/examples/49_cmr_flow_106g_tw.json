@@ -35,7 +35,9 @@
           "reference equalizer boost by C_eq ~1.7 (~2.4 dB of TDECQ alone);",
           "6 Vpp drive or VpiL 1 V*cm still leave relOMA ~-3.5 dB, TDECQ",
           "~2.7 dB. The 1000-UI eye step reads RLM ~0.05-0.1 above the full",
-          "period on this ring."
+          "period on this ring, so Run flow can trade it away: 60 evals from",
+          "a nearby start ended at relOMA -4.0 dB, ER 3.3 dB, RLM 0.84,",
+          "TDECQ 2.8 dB -- a lower worst margin than this start design."
         ]
       }
     ],

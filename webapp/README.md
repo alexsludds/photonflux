@@ -194,7 +194,9 @@ previous start: -4.7 dB, 2.3 dB, 0.94, 2.9 dB -- the same worst margin). The
 ring's photon lifetime (~5 UI) limits: the reference equalizer's C_eq
 ~1.7 costs ~2.4 dB of TDECQ by itself, and a 6 Vpp drive or a 1 V*cm VpiL
 still leaves relOMA near -3.5 dB. Its 1000-UI eye step reads RLM about
-0.05-0.1 above the full period.
+0.05-0.1 above the full period, so the optimizer can trade RLM away: 60
+evaluations from a nearby start ended at relOMA -4.0 dB, ER 3.3 dB, RLM
+0.84, TDECQ 2.8 dB, a lower worst margin than the start design.
 
 ## Serial-link (SERDES) workflow
 

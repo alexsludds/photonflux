@@ -120,6 +120,9 @@
         "y": -80,
         "rot": 0,
         "settings": {
+          "rj_ui": 0.05,
+          "sj_ui": 0.05,
+          "dj_ui": 0.05,
           "mode": "nrz",
           "order": 13,
           "v0": 0.0,

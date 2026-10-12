@@ -1620,17 +1620,21 @@ CATALOG: dict[str, dict] = {
                rebuild=True),
             _p("v0", -0.5, "V", "Low level", rebuild=True),
             _p("v1", 0.5, "V", "High level", rebuild=True),
-            _p("tr", 20e-12, "s", "Edge time (20-80%)", rebuild=True),
+            # wavesrc draws each edge as a raised cosine lasting tr (0-100 %);
+            # its 20-80 % time is 0.41 tr
+            _p("tr", 20e-12, "s", "Edge time (0-100%)", rebuild=True),
             _p("seed", 1, "", "PRBS seed", rebuild=True),
             _p("ffe_pre", 0.0, "", "TX FFE pre-cursor (c-1/c0)",
                rebuild=True),
             _p("ffe_post", 0.0, "", "TX FFE post-cursor (c+1/c0)",
                rebuild=True),
             _p("rlm_vpi", 0.0, "V", "RLM V-pi (0 = off)", rebuild=True),
-            _p("rj_ui", 0.05, "UI", "Random jitter (rms)", rebuild=True),
-            _p("sj_ui", 0.05, "UI", "Sinusoidal jitter (peak)", rebuild=True),
+            # a clean source by default, like every other ideal source: the
+            # old 0.05 UI of RJ, SJ and DJ each is ~0.85 UI of TJ at 1e-12
+            _p("rj_ui", 0.0, "UI", "Random jitter (rms)", rebuild=True),
+            _p("sj_ui", 0.0, "UI", "Sinusoidal jitter (peak)", rebuild=True),
             _p("sj_freq", 10e6, "Hz", "SJ frequency", rebuild=True),
-            _p("dj_ui", 0.05, "UI", "Deterministic jitter (pk-pk)",
+            _p("dj_ui", 0.0, "UI", "Deterministic jitter (pk-pk)",
                rebuild=True),
             _p("dcd_ui", 0.0, "UI", "Duty-cycle distortion", rebuild=True),
         ],

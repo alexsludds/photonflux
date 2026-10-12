@@ -37,7 +37,7 @@ import numpy as np
 # saturation floor of OMA - TDEC (see photonflux.tdec.oma_tdec_floor_dbm), and
 # ref_bw is the reference-receiver bandwidth TDEC is defined through.
 TDEC_DEFAULTS = {"s_noise_mW": 0.01, "ber": 1e-12,
-                 "ref_bw_factor": 0.75, "ref_bw_order": 4}
+                 "ref_bw_factor": 0.5, "ref_bw_order": 4}
 
 
 def _tdec_objective(res: dict, probe: str, ui_hint: float | None,

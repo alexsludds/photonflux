@@ -278,7 +278,8 @@ def pattern(order: int) -> np.ndarray:
 
 
 def score(spec: LinkSpec, *, order: int | None = None, s_noise_mW: float = 0.01,
-          ber: float = 1e-12, ref_bw_factor: float = 0.75, ref_order: int = 4):
+          ber: float = 1e-12, ref_bw_factor: float = tdec.TDEC_REF_BW_FACTOR,
+          ref_order: int = 4):
     """Simulate + measure. Returns a tdec.Measurement, or None if it failed.
 
     A full-period PRBS-13 populates the `_8180` metrics; PRBS-9 only supports
@@ -739,7 +740,7 @@ def main() -> None:
     ap.add_argument("--det-hi", type=float, default=150.0)
     ap.add_argument("--n-gap", type=int, default=7)
     ap.add_argument("--n-det", type=int, default=7)
-    ap.add_argument("--ref-bw", type=float, default=0.75,
+    ap.add_argument("--ref-bw", type=float, default=tdec.TDEC_REF_BW_FACTOR,
                     help="reference-receiver -3 dB bandwidth / baud")
     ap.add_argument("--ref-order", type=int, default=4,
                     help="reference-receiver Bessel order")

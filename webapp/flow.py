@@ -609,7 +609,7 @@ class _Runner:
         history: list[dict] = []
         best: dict = {"J": math.inf}
         # a long objective expression would swamp every eval's log line
-        obj_name = objective if len(objective) <= 24 else "objective"
+        obj_name = objective if len(objective) <= 28 else "objective"
         first_err: list[str] = []
 
         def f(x):
@@ -869,8 +869,9 @@ def run_flow(payload: dict) -> dict:
     try:
         body = runner.run(analysis.get("start"), analysis.get("only"),
                           analysis.get("prior") or {})
-    except FlowError as exc:
-        return {"ok": False, "error": str(exc), "log": log}
+    except FlowError as exc:   # before any step ran: no log yet
+        return {"ok": False, "error": str(exc),
+                "log": log or [f"flow: {flow.get('name') or 'untitled'}"]}
     runner.say("flow: " + ("all checks pass" if body["passed"] else
                            "a step failed" if body["failed"] else
                            "some checks FAIL"))

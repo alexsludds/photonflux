@@ -183,15 +183,23 @@ def test_flow_live_status():
                                        "max": 215.0}],
         "objective": "contrast", "maximize": False, "iters": 6})
     seen = []    # (line, elapsed, live record at that moment)
-    PROGRESS.flow_echo = lambda line, dt: seen.append(
-        (line, dt, PROGRESS.snapshot().get("flow")))
+
+    def echo(line, dt):
+        seen.append((line, dt, PROGRESS.snapshot("tok").get("flow")))
+        # the live record is only for the client that started the run
+        assert "flow" not in PROGRESS.snapshot()
+        assert "flow" not in PROGRESS.snapshot("other")
+
+    PROGRESS.flow_echo = echo
     try:
-        fr = _run(sch, fl)
+        res = simulate.run({"schematic": sch, "run_token": "tok",
+                            "analysis": {"mode": "flow", "flow": fl}})
     finally:
         PROGRESS.flow_echo = None
+    fr = res["flow"]
     assert fr["passed"], fr
     lines = [ln for ln, _, _ in seen]
-    assert lines[0] == "flow: MZI null"
+    assert lines == res["log"] and lines[0] == "flow: MZI null"
     assert lines[-1] == "flow: all checks pass"
     live = {ln: rec for ln, _, rec in seen}
     # entering step 2: step 1 is done with its outputs, step 3 still pending
@@ -210,7 +218,7 @@ def test_flow_live_status():
     assert [s["status"] for s in final["steps"]] == ["ok", "ok", "ok"]
     assert final["log_n"] == len(lines)
     # the record ends with the run
-    assert "flow" not in PROGRESS.snapshot()
+    assert "flow" not in PROGRESS.snapshot("tok")
 
 
 def test_flow_errors():

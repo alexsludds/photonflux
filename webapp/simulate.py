@@ -1934,7 +1934,7 @@ def run(payload: dict) -> dict:
     # bar appear on Run and clear when the result lands. Re-entrancy safe: the
     # recursive run() calls a parameter sweep makes nest without resetting.
     from progress import PROGRESS
-    PROGRESS.enter()
+    PROGRESS.enter(payload.get("run_token"))   # gates the live flow record
     try:
         return _run_inner(payload)
     finally:

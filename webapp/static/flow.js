@@ -182,6 +182,7 @@ function flowCheckout(t) {
   if ($("tab-flow").classList.contains("active")) {
     if (t.flowResult || t.flowLive) flowRenderTab(); else setResultsTab("plots");
   }
+  if (t.flowLive) t.flowLive.key = "";   // the next poll repaints, Log included
 }
 
 // ---------------------------------------------------------------------------
@@ -500,7 +501,7 @@ function flowRenderSteps() {
   if (!t?.flowOn || !t.flow) return;
   if (document.activeElement !== $("flow-name")) $("flow-name").value = t.flow.name || "";
   // while the flow runs, the live record (flowLiveUpdate) replaces the last result
-  const recs = Object.fromEntries(((t.flowLive ? t.flowLive.live?.steps : t.flowResult?.steps)
+  const recs = Object.fromEntries(((t.flowLive ? flowLiveSteps(t) : t.flowResult?.steps)
     || []).map((s) => [s.id, s]));
   t.flow.steps.forEach((st, i) => {
     const rec = recs[st.id];
@@ -702,6 +703,15 @@ function flowLiveBest(s) {
   return { entry: best, values };
 }
 
+// the live steps, with the last result standing in for steps a partial
+// re-run (Run from / Run only) skips, as flowStoreResult merges them after
+function flowLiveSteps(t) {
+  const live = t.flowLive?.live;
+  if (!live) return null;
+  const prev = Object.fromEntries((t.flowResult?.steps || []).map((s) => [s.id, s]));
+  return live.steps.map((s) => (s.status === "skipped" && prev[s.id]) || s);
+}
+
 function flowLiveStart(tab) {
   tab.flowLive = { live: null, key: "" };
   if (tab !== flowTab()) return;
@@ -716,7 +726,7 @@ function flowLiveUpdate(tab, live) {
   if (!L || !live) return;
   L.live = live;
   if (tab !== flowTab()) return;
-  const key = `${live.log_n}|${live.steps.map((s) => s.status).join()}`;
+  const key = `${live.log_n}|${live.steps.map((s) => s.status + (s.iters || "")).join()}`;
   if (key === L.key) {             // nothing new: just tick the clock
     const clk = $("fl-live-clock");
     if (clk) clk.textContent = flowDur(live.elapsed_s);
@@ -745,9 +755,10 @@ function flowRenderLive(t) {
   const holder = $("tab-flow"), live = t.flowLive.live, doc = t.flow;
   if (!live) { holder.innerHTML = `<div class="insp-empty">Starting the flow…</div>`; return; }
   const byId = Object.fromEntries((doc?.steps || []).map((s) => [s.id, s]));
-  const running = live.steps.find((s) => s.status === "running");
+  const steps = flowLiveSteps(t);
+  const running = steps.find((s) => s.status === "running");
   let pipe = "";
-  live.steps.forEach((s, i) => {
+  steps.forEach((s, i) => {
     const nfail = (s.checks || []).filter((c) => !c.ok && !c.info).length;
     const icon = s.status === "running" ? `<span class="fl-spin"></span>`
       : s.status === "ok" ? (nfail ? `<span class="err">&#10007;</span>` : `<span class="ok">&#10003;</span>`)
@@ -762,7 +773,7 @@ function flowRenderLive(t) {
   });
   // Optimize steps: the convergence plot and where the best design sits
   let plots = "", best = "";
-  live.steps.forEach((s, i) => {
+  steps.forEach((s, i) => {
     if (!s.iters) return;
     const p = flowPlotHistory(byId[s.id] || {}, { history: s.history || [], iters: s.iters,
                                                  objective: s.objective || "objective" });
@@ -781,10 +792,10 @@ function flowRenderLive(t) {
       ${escapeHtml(s.objective.length > 28 ? "objective" : s.objective)} = ${flowFmt(b.entry.obj)}</div>
       <table class="fl-table"><tr><th>parameter</th><th>value</th><th>within its range</th></tr>${rows}</table>`;
   });
-  const outs = live.steps.filter((s) => s.status === "ok" && !s.iters)
+  const outs = steps.filter((s) => s.status === "ok" && !s.iters)
     .flatMap((s) => Object.entries(s.outputs || {}))
     .map(([k, v]) => `<tr><td class="mono">${escapeHtml(k)}</td><td>${flowFmt(v)}</td></tr>`).join("");
-  const checks = live.steps.flatMap((s) => (s.checks || []).map((c) =>
+  const checks = steps.flatMap((s) => (s.checks || []).map((c) =>
     `<div class="fl-check">${c.ok ? `<span class="ok">&#10003;</span>`
       : c.info ? `<span class="warn">!</span>` : `<span class="err">&#10007;</span>`}
       <span><code>${escapeHtml(c.expr)}</code></span>
@@ -802,6 +813,8 @@ function flowRenderLive(t) {
       ${outs ? `<div class="fl-h">Outputs</div><table class="fl-table">${outs}</table>` : ""}
       ${checks ? `<div class="fl-h">Checks</div>${checks}` : ""}
     </div></div>`;
+  const lg = holder.querySelector(".fl-log");
+  lg.scrollTop = lg.scrollHeight;     // keep the newest line in view
 }
 
 // ---------------------------------------------------------------------------

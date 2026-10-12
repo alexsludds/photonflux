@@ -195,7 +195,11 @@ class Handler(BaseHTTPRequestHandler):
             # _RUN_LOCK), so it answers on its own handler thread while the run
             # worker holds the lock and updates the shared state.
             import progress
-            self._json(progress.PROGRESS.snapshot())
+            from urllib.parse import parse_qs
+
+            query = parse_qs(self.path.partition("?")[2])
+            self._json(progress.PROGRESS.snapshot(
+                (query.get("run") or [None])[0]))
             return
         if path == "/api/veriloga":
             import catalog

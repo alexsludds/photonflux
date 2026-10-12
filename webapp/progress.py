@@ -18,9 +18,11 @@ each seed of each sweep point owns an equal ``1 / (runs * seeds)`` slice.
 
 A flow (``webapp/flow.py``) additionally publishes its live state through the
 ``flow_*`` methods: each step's status, its outputs and checks once done, every
-Optimize evaluation as it lands, and the flow log. The snapshot carries it as
-``flow`` so the Flow tab, the notebook bridge and the CLI can show a long flow
-advancing; ``flow_echo`` (a callable) also prints each log line as it is added.
+Optimize evaluation as it lands, and the flow log. ``snapshot(token)`` carries
+it as ``flow`` only for the client that started the run (the ``run_token`` it
+sent with /api/run), so the Flow tab and the notebook bridge never show another
+visitor's flow; ``flow_echo`` (a callable) also prints each log line as it is
+added, which is how the server console and the in-process CLI show it.
 """
 from __future__ import annotations
 
@@ -62,6 +64,7 @@ class _Progress:
         self._label = ""      # flow stage text (set_label)
         self._span = 0.0      # simulated t_stop of the current solve
         self._flow: dict | None = None   # live flow state (flow_begin)
+        self._token = ""      # run_token of the outermost run (snapshot gate)
         self.flow_echo = None  # optional callable(line, elapsed_s) per log line
 
     def enable(self) -> None:
@@ -78,10 +81,11 @@ class _Progress:
             return self._enabled
 
     # --- lifecycle: bracket a whole run() ---------------------------------
-    def enter(self) -> None:
+    def enter(self, token: str | None = None) -> None:
         with self._lock:
             self._depth += 1
             if self._depth == 1:  # outermost run(): start fresh
+                self._token = str(token or "")
                 self._active = True
                 self._cancel = False  # a stale Stop must not kill the next run
                 self._frac = 0.0
@@ -236,14 +240,15 @@ class _Progress:
             except Exception:  # noqa: BLE001
                 pass
 
-    def snapshot(self) -> dict:
+    def snapshot(self, token: str | None = None) -> dict:
+        """Run progress; the live flow record only for the run's own token."""
         with self._lock:
             out = {"active": self._active, "frac": round(self._frac, 4),
                    "phase": self._phase,
                    "runs": self._runs, "run": self._run_i,
                    "label": self._label}
             fl = self._flow
-            if fl is not None:
+            if fl is not None and token and token == self._token:
                 out["flow"] = {
                     "name": fl["name"],
                     "elapsed_s": round(time.monotonic() - fl["t0"], 2),

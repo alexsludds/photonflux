@@ -36,6 +36,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import secrets
 import sys
 import threading
 import time
@@ -771,10 +772,12 @@ class Session:
                                  "overrides": keep(prior.overrides),
                                  "origin": keep(origin)}
         show = self.progress if progress is None else progress
-        bar = _ProgressBar(self) if show else None
+        token = secrets.token_hex(12)   # lets only this bar read the live log
+        bar = _ProgressBar(self, token) if show else None
         try:
             raw = self._req("/api/run", {"schematic": sch,
-                                         "analysis": analysis}, timeout=None)
+                                         "analysis": analysis,
+                                         "run_token": token}, timeout=None)
         except KeyboardInterrupt:
             self.cancel()
             raise
@@ -892,8 +895,10 @@ class _ProgressBar:
     (step starts, optimizer evaluations, checks) prints above the bar as it
     grows."""
 
-    def __init__(self, session: Session, interval: float = 0.3):
+    def __init__(self, session: Session, token: str = "",
+                 interval: float = 0.3):
         self._s = session
+        self._path = f"/api/progress?run={token}" if token else "/api/progress"
         self._stop = threading.Event()
         self._drew = False
         self._log_n = 0           # flow log lines already printed
@@ -905,7 +910,7 @@ class _ProgressBar:
         started = time.monotonic()
         while not self._stop.wait(interval):
             try:
-                p = self._s._req("/api/progress", timeout=3.0)
+                p = self._s._req(self._path, timeout=3.0)
             except SessionError:
                 continue
             if not p.get("active"):

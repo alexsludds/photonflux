@@ -1226,22 +1226,49 @@ def _ac_system(circuit):
     detected and pinned before factorization.
     """
     from circulax.solvers.ac_sweep import _build_index_arrays
-    from circulax.solvers.assembly import assemble_gc_real
 
     if any(getattr(g, "is_fdomain", False) for g in circuit.groups.values()):
         raise NetlistError("AC analysis does not support frequency-domain "
                            "(dispersive optical) components")
     y_dc = solvers.dc(circuit)
-    G_vals, C_vals = assemble_gc_real(y_dc, circuit.groups)
+    G_vals, C_vals = _jit_assembly("assemble_gc_real")(y_dc, circuit.groups)
     rows, cols, gnd, _ = _build_index_arrays(
         circuit.groups, circuit.sys_size, is_complex=False)
-    return _dense_gc(rows, cols, gnd, circuit.sys_size, G_vals, C_vals)
+    return _dense_gc(rows, cols, gnd, circuit.sys_size, G_vals, C_vals,
+                     _g_leak(circuit))
 
 
-def _dense_gc(rows, cols, gnd, n, g_vals, c_vals) -> dict:
+_ASSEMBLY_JIT: dict[str, Any] = {}
+
+
+def _jit_assembly(name: str):
+    """A circulax assembly function under one filter_jit (cached by name, so
+    a repeat analysis of the same structure reuses the compiled program).
+    Called eagerly, the linearisation dispatched every JAX op on its own:
+    ~18 s cold and ~1.4 s warm for a 22-unknown EO AC sweep."""
+    if name not in _ASSEMBLY_JIT:
+        import equinox as eqx
+        from circulax.solvers import assembly
+
+        _ASSEMBLY_JIT[name] = eqx.filter_jit(getattr(assembly, name))
+    return _ASSEMBLY_JIT[name]
+
+
+def _g_leak(circuit) -> float:
+    """The diagonal leak conductance circulax's DC and transient solvers
+    stamp on every unknown (DenseSolver.g_leak, 1 nS by default)."""
+    return float(getattr(circuit.solver, "g_leak", 1e-9))
+
+
+def _dense_gc(rows, cols, gnd, n, g_vals, c_vals, g_leak=0.0) -> dict:
     """Scatter (G, C) triplets into dense matrices and pin the all-zero
     rows/columns of decoupled unknowns (collapsed OSDI nodes, unused field
-    DOFs) to 1 on G's diagonal so the AC solves stay nonsingular."""
+    DOFs) to 1 on G's diagonal so the AC solves stay nonsingular.
+
+    ``g_leak`` goes on every diagonal entry, as the operating-point solve
+    has it: a group of internal nodes tied only to each other (a SKY130
+    FET's collapsed substrate network) is otherwise a floating island that
+    makes G + jwC singular at every frequency."""
     import numpy as np
 
     rows = np.asarray(rows).reshape(-1)
@@ -1253,6 +1280,7 @@ def _dense_gc(rows, cols, gnd, n, g_vals, c_vals) -> dict:
     dead = ((~np.abs(G).any(axis=1)) & (~np.abs(C).any(axis=1))
             & (~np.abs(G).any(axis=0)) & (~np.abs(C).any(axis=0)))
     G[dead, dead] = 1.0
+    G[np.arange(n), np.arange(n)] += g_leak
     return {"G": G, "C": C, "gnd": np.asarray(gnd).reshape(-1),
             "n": n, "n_dead": int(dead.sum())}
 
@@ -1275,7 +1303,6 @@ def _ac_system_complex(circuit):
 
     import jax.numpy as jnp
     from circulax.solvers.ac_sweep import _build_index_arrays
-    from circulax.solvers.assembly import assemble_system_complex
 
     if any(getattr(g, "is_fdomain", False) for g in circuit.groups.values()):
         raise NetlistError("AC analysis does not support frequency-domain "
@@ -1284,14 +1311,16 @@ def _ac_system_complex(circuit):
     # two well-separated step sizes; J is affine in 1/dt so any pair recovers
     # (G, C) exactly (float64 keeps the 1e6 spread well-conditioned).
     dt1, dt2 = 1e-6, 1e-12
-    j1 = np.asarray(assemble_system_complex(y_dc, circuit.groups, 0.0, dt1)[2])
-    j2 = np.asarray(assemble_system_complex(y_dc, circuit.groups, 0.0, dt2)[2])
+    asm = _jit_assembly("assemble_system_complex")
+    zero = jnp.asarray(0.0)
+    j1 = np.asarray(asm(y_dc, circuit.groups, zero, jnp.asarray(dt1))[2])
+    j2 = np.asarray(asm(y_dc, circuit.groups, zero, jnp.asarray(dt2))[2])
     c_vals = (j1 - j2) / ((1.0 / dt1) - (1.0 / dt2))
     g_vals = j1 - c_vals * (1.0 / dt1)
 
     rows, cols, gnd, n = _build_index_arrays(
         circuit.groups, circuit.sys_size, is_complex=True)
-    return _dense_gc(rows, cols, gnd, n, g_vals, c_vals)
+    return _dense_gc(rows, cols, gnd, n, g_vals, c_vals, _g_leak(circuit))
 
 
 def _ac_Y(sysm, f):
@@ -2043,8 +2072,14 @@ def run(payload: dict) -> dict:
 def _run_inner(payload: dict) -> dict:
     try:
         sch = with_global_ui(payload.get("schematic") or {})
-        payload = {**payload, "schematic": sch}
         analysis = payload.get("analysis") or {"mode": "dc"}
+        if analysis.get("sweep_enabled") is False and \
+                analysis.get("sweep_values"):
+            # a testbench can ship its AC sweep configured but off; the
+            # browser then sends no sweep_values, so neither run them here
+            analysis = {k: v for k, v in analysis.items()
+                        if k != "sweep_values"}
+        payload = {**payload, "schematic": sch, "analysis": analysis}
         mode = analysis.get("mode", "dc")
         if mode == "flow":
             import flow

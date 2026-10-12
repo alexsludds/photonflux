@@ -36,6 +36,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import secrets
 import sys
 import threading
 import time
@@ -771,16 +772,20 @@ class Session:
                                  "overrides": keep(prior.overrides),
                                  "origin": keep(origin)}
         show = self.progress if progress is None else progress
-        bar = _ProgressBar(self) if show else None
+        token = secrets.token_hex(12)   # lets only this bar read the live log
+        bar = _ProgressBar(self, token) if show else None
         try:
             raw = self._req("/api/run", {"schematic": sch,
-                                         "analysis": analysis}, timeout=None)
+                                         "analysis": analysis,
+                                         "run_token": token}, timeout=None)
         except KeyboardInterrupt:
             self.cancel()
             raise
         finally:
             if bar:
                 bar.stop()
+        if bar:
+            bar.finish_log(raw.get("log"))
         if not raw.get("ok"):
             raise RunError(raw.get("error") or "flow failed",
                            log=raw.get("log"))
@@ -886,12 +891,17 @@ class Session:
 class _ProgressBar:
     """Poll ``/api/progress`` while a run is in flight and draw one stderr
     line. Quiet runs (compile-cached DC sweeps) never draw: the first paint
-    waits until the run has been active for half a second."""
+    waits until the run has been active for half a second. A flow's log
+    (step starts, optimizer evaluations, checks) prints above the bar as it
+    grows."""
 
-    def __init__(self, session: Session, interval: float = 0.3):
+    def __init__(self, session: Session, token: str = "",
+                 interval: float = 0.3):
         self._s = session
+        self._path = f"/api/progress?run={token}" if token else "/api/progress"
         self._stop = threading.Event()
         self._drew = False
+        self._log_n = 0           # flow log lines already printed
         self._t = threading.Thread(target=self._loop, args=(interval,),
                                    daemon=True)
         self._t.start()
@@ -900,10 +910,13 @@ class _ProgressBar:
         started = time.monotonic()
         while not self._stop.wait(interval):
             try:
-                p = self._s._req("/api/progress", timeout=3.0)
+                p = self._s._req(self._path, timeout=3.0)
             except SessionError:
                 continue
-            if not p.get("active") or time.monotonic() - started < 0.5:
+            if not p.get("active"):
+                continue
+            self._flow_lines(p.get("flow"))
+            if time.monotonic() - started < 0.5:
                 continue
             frac = float(p.get("frac") or 0.0)
             phase = p.get("phase") or "running"
@@ -917,11 +930,31 @@ class _ProgressBar:
             sys.stderr.flush()
             self._drew = True
 
+    def _flow_lines(self, fl: dict | None) -> None:
+        if not fl:
+            return
+        n, log = int(fl.get("log_n") or 0), fl.get("log") or []
+        new = log[len(log) - min(n - self._log_n, len(log)):] \
+            if n > self._log_n else []
+        self._log_n = n
+        if new:
+            if self._drew:        # clear the bar, print, the next poll redraws
+                sys.stderr.write("\r" + " " * 100 + "\r")
+            sys.stderr.write("".join(f"{line}\n" for line in new))
+            sys.stderr.flush()
+
     def stop(self) -> None:
         self._stop.set()
         self._t.join(timeout=1.0)
         if self._drew:
-            sys.stderr.write("\r" + " " * 60 + "\r")
+            sys.stderr.write("\r" + " " * 100 + "\r")
+            sys.stderr.flush()
+
+    def finish_log(self, log: list | None) -> None:
+        """After stop(): print the flow log lines that landed after the last
+        poll (only when some were printed live, so a quick flow stays quiet)."""
+        if log and 0 < self._log_n < len(log):
+            sys.stderr.write("".join(f"{line}\n" for line in log[self._log_n:]))
             sys.stderr.flush()
 
 

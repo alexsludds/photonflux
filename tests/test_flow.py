@@ -170,6 +170,57 @@ def test_flow_optimize_carries_forward_and_only():
     assert again["vars"]["p_after"] == pytest.approx(fr["vars"]["p_after"])
 
 
+def test_flow_live_status():
+    """The live record /api/progress carries while a flow runs: step states,
+    each Optimize evaluation as it lands, and the log, echoed line by line."""
+    from progress import PROGRESS
+
+    sch = _example("15_imbalanced_mzi_sweep")["schematic"]
+    fl = _mzi_flow()
+    fl["steps"].insert(1, {
+        "id": "opt", "kind": "optimize", "title": "Deepen the null",
+        "inner": ["null"], "params": [{"var": "dl_um", "min": 214.0,
+                                       "max": 215.0}],
+        "objective": "contrast", "maximize": False, "iters": 6})
+    seen = []    # (line, elapsed, live record at that moment)
+
+    def echo(line, dt):
+        seen.append((line, dt, PROGRESS.snapshot("tok").get("flow")))
+        # the live record is only for the client that started the run
+        assert "flow" not in PROGRESS.snapshot()
+        assert "flow" not in PROGRESS.snapshot("other")
+
+    PROGRESS.flow_echo = echo
+    try:
+        res = simulate.run({"schematic": sch, "run_token": "tok",
+                            "analysis": {"mode": "flow", "flow": fl}})
+    finally:
+        PROGRESS.flow_echo = None
+    fr = res["flow"]
+    assert fr["passed"], fr
+    lines = [ln for ln, _, _ in seen]
+    assert lines == res["log"] and lines[0] == "flow: MZI null"
+    assert lines[-1] == "flow: all checks pass"
+    live = {ln: rec for ln, _, rec in seen}
+    # entering step 2: step 1 is done with its outputs, step 3 still pending
+    rec = live["[2] Deepen the null (optimize)"]
+    assert [s["status"] for s in rec["steps"]] == ["ok", "running", "pending"]
+    assert rec["steps"][0]["outputs"]["contrast"] < -20
+    # each evaluation is on the record by the time its log line prints
+    evals = [rec for ln, _, rec in seen if ln.startswith("  eval ")]
+    assert 1 <= len(evals) <= 6
+    for n, rec in enumerate(evals, 1):
+        opt = rec["steps"][1]
+        assert opt["eval"] == n and len(opt["history"]) == n
+        assert opt["iters"] == 6 and opt["params"][0]["name"] == "dl_um"
+        assert opt["history"][-1]["t_s"] >= 0
+    final = seen[-1][2]
+    assert [s["status"] for s in final["steps"]] == ["ok", "ok", "ok"]
+    assert final["log_n"] == len(lines)
+    # the record ends with the run
+    assert "flow" not in PROGRESS.snapshot("tok")
+
+
 def test_flow_errors():
     sch = _example("15_imbalanced_mzi_sweep")["schematic"]
     fl = _mzi_flow()

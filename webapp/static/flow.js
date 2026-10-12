@@ -180,8 +180,9 @@ function flowCheckout(t) {
   flowFillVars();
   flowSyncPanel(); flowRenderSteps(); flowSyncResultsBar();
   if ($("tab-flow").classList.contains("active")) {
-    if (t.flowResult) flowRenderTab(); else setResultsTab("plots");
+    if (t.flowResult || t.flowLive) flowRenderTab(); else setResultsTab("plots");
   }
+  if (t.flowLive) t.flowLive.key = "";   // the next poll repaints, Log included
 }
 
 // ---------------------------------------------------------------------------
@@ -499,7 +500,9 @@ function flowRenderSteps() {
   holder.innerHTML = "";
   if (!t?.flowOn || !t.flow) return;
   if (document.activeElement !== $("flow-name")) $("flow-name").value = t.flow.name || "";
-  const recs = Object.fromEntries((t.flowResult?.steps || []).map((s) => [s.id, s]));
+  // while the flow runs, the live record (flowLiveUpdate) replaces the last result
+  const recs = Object.fromEntries(((t.flowLive ? flowLiveSteps(t) : t.flowResult?.steps)
+    || []).map((s) => [s.id, s]));
   t.flow.steps.forEach((st, i) => {
     const rec = recs[st.id];
     const el = document.createElement("div");
@@ -507,7 +510,9 @@ function flowRenderSteps() {
     let status = "";
     if (rec) {
       const nfail = (rec.checks || []).filter((c) => !c.ok && !c.info).length;
-      status = rec.status === "ok"
+      status = rec.status === "running"
+        ? `<span class="fl-run"><span class="fl-spin"></span>${flowLiveTag(rec)}</span>`
+        : rec.status === "ok"
         ? (nfail ? `<span class="err">&#10007; ${nfail} check${nfail > 1 ? "s" : ""}</span>`
                  : `<span class="ok">&#10003; ${(rec.time_s || 0).toFixed(1)} s</span>`)
         : rec.status === "failed" ? `<span class="err">&#10007; failed</span>`
@@ -516,7 +521,8 @@ function flowRenderSteps() {
     const outs = st.kind === "optimize" ? (st.params || []).map((p) => p.var || `${p.inst}.${p.param}`)
       : st.kind === "evaluate" ? Object.keys(st.fom || {})
       : Object.keys(st.outputs || {});
-    const got = rec?.status === "ok" ? { ...(rec.outputs || {}) } : {};
+    const got = rec?.status === "ok" ? { ...(rec.outputs || {}) }
+      : rec?.status === "running" ? flowLiveBest(rec).values : {};
     const chips = outs.slice(0, 6).map((n) =>
       `<span class="flow-chip">${escapeHtml(n)}${n in got
         ? ` ${flowFmt(got[n])}` : ""}</span>`).join("")
@@ -603,7 +609,7 @@ function flowShowResult(tab) {
 
 function flowSyncResultsBar() {
   const t = flowTab(), fr = t?.flowResult;
-  $("rtab-flow").hidden = !fr;
+  $("rtab-flow").hidden = !fr && !t?.flowLive;
   $("flow-view-wrap").hidden = !fr;
   if (!fr) return;
   const sel = $("flow-view");
@@ -662,6 +668,153 @@ function flowReport() {
   fr.steps.forEach((s) => (s.checks || []).forEach((c) =>
     L.push(`- ${c.ok ? "pass" : "FAIL"} — ${s.title}: \`${c.expr}\` (${flowFmt(c.value)})`)));
   download("flow-report.md", L.join("\n") + "\n", "text/markdown");
+}
+
+// ---------------------------------------------------------------------------
+// live status while a flow runs: the progress poll hands over the server's
+// running record (progress.py flow_*: step states, outputs and checks, every
+// Optimize evaluation, the log) a few times a second
+// ---------------------------------------------------------------------------
+function flowDur(sec) {
+  sec = Math.max(0, Math.round(sec));
+  if (sec < 60) return `${sec}s`;
+  const m = Math.floor(sec / 60);
+  return m < 60 ? `${m}m${String(sec % 60).padStart(2, "0")}s`
+    : `${Math.floor(m / 60)}h${String(m % 60).padStart(2, "0")}m`;
+}
+
+// "eval 12/60" (the one in flight) for a running Optimize, else "running"
+const flowLiveTag = (s) => (s.iters
+  ? `eval ${Math.min(s.iters, (s.eval || 0) + 1)}/${s.iters}` : "running");
+
+// time left in a running Optimize step, from its mean evaluation time
+function flowLiveEta(s) {
+  const h = s.history || [], n = h.length;
+  if (!s.iters || !n || n >= s.iters) return "";
+  return `~${flowDur((h[n - 1].t_s / n) * (s.iters - n))} left`;
+}
+
+// the best evaluation so far: {entry, values: {param: value}}
+function flowLiveBest(s) {
+  let best = null;
+  for (const e of s.history || []) if (e.J !== null && e.J !== undefined && (!best || e.J < best.J)) best = e;
+  const values = {};
+  if (best) (s.params || []).forEach((p, i) => { values[p.name] = best.x[i]; });
+  return { entry: best, values };
+}
+
+// the live steps, with the last result standing in for steps a partial
+// re-run (Run from / Run only) skips, as flowStoreResult merges them after
+function flowLiveSteps(t) {
+  const live = t.flowLive?.live;
+  if (!live) return null;
+  const prev = Object.fromEntries((t.flowResult?.steps || []).map((s) => [s.id, s]));
+  return live.steps.map((s) => (s.status === "skipped" && prev[s.id]) || s);
+}
+
+function flowLiveStart(tab) {
+  tab.flowLive = { live: null, key: "" };
+  if (tab !== flowTab()) return;
+  flowSyncResultsBar();
+  flowRenderSteps();
+  $("results").classList.remove("collapsed");
+  setResultsTab("flow");
+}
+
+function flowLiveUpdate(tab, live) {
+  const L = tab.flowLive;
+  if (!L || !live) return;
+  L.live = live;
+  if (tab !== flowTab()) return;
+  const key = `${live.log_n}|${live.steps.map((s) => s.status + (s.iters || "")).join()}`;
+  if (key === L.key) {             // nothing new: just tick the clock
+    const clk = $("fl-live-clock");
+    if (clk) clk.textContent = flowDur(live.elapsed_s);
+    return;
+  }
+  L.key = key;
+  flowRenderSteps();
+  if ($("tab-flow").classList.contains("active")) flowRenderTab();
+  $("log-pre").textContent = live.log.join("\n");   // the Log tab streams too
+}
+
+// the run is over: a finished flow renders its result next (flowShowResult);
+// a stopped or failed one falls back to the last result
+function flowLiveEnd(tab, finished) {
+  if (!tab?.flowLive) return;
+  delete tab.flowLive;
+  if (finished || tab !== flowTab()) return;
+  flowSyncResultsBar();
+  flowRenderSteps();
+  if ($("tab-flow").classList.contains("active")) {
+    if (tab.flowResult) flowRenderTab(); else setResultsTab("log");
+  }
+}
+
+function flowRenderLive(t) {
+  const holder = $("tab-flow"), live = t.flowLive.live, doc = t.flow;
+  if (!live) { holder.innerHTML = `<div class="insp-empty">Starting the flow…</div>`; return; }
+  const byId = Object.fromEntries((doc?.steps || []).map((s) => [s.id, s]));
+  const steps = flowLiveSteps(t);
+  const running = steps.find((s) => s.status === "running");
+  let pipe = "";
+  steps.forEach((s, i) => {
+    const nfail = (s.checks || []).filter((c) => !c.ok && !c.info).length;
+    const icon = s.status === "running" ? `<span class="fl-spin"></span>`
+      : s.status === "ok" ? (nfail ? `<span class="err">&#10007;</span>` : `<span class="ok">&#10003;</span>`)
+      : s.status === "failed" ? `<span class="err">&#10007;</span>` : `<span class="dim">&ndash;</span>`;
+    const sub = s.status === "running" ? [flowLiveTag(s), flowLiveEta(s)].filter(Boolean).join(" · ")
+      : s.time_s ? `${s.time_s.toFixed(1)} s` : s.status;
+    if (i) pipe += `<div class="fl-edge">&rarr;</div>`;
+    pipe += `<div class="fl-node${s.status === "running" ? " run" : ""}">
+      <div class="fl-node-h"><span>${circled(i)} ${escapeHtml(s.title)}</span>${icon}</div>
+      <div class="fl-node-s">${escapeHtml(flowStepSummary(byId[s.id] || s, doc))} · ${escapeHtml(sub)}</div>
+      ${s.error ? `<div class="fl-node-e">${escapeHtml(s.error)}</div>` : ""}</div>`;
+  });
+  // Optimize steps: the convergence plot and where the best design sits
+  let plots = "", best = "";
+  steps.forEach((s, i) => {
+    if (!s.iters) return;
+    const p = flowPlotHistory(byId[s.id] || {}, { history: s.history || [], iters: s.iters,
+                                                 objective: s.objective || "objective" });
+    plots += `<div class="fl-plot${s.status === "running" ? " sel" : ""}">
+      <div class="fl-plot-h">${circled(i)} ${escapeHtml(s.title)}</div>${p ? `${p.svg}
+      <div class="fl-cap">${escapeHtml(p.cap)}</div>` : `<div class="insp-empty">waiting for the first evaluation…</div>`}</div>`;
+    const b = flowLiveBest(s);
+    if (!b.entry) return;
+    const rows = (s.params || []).map((q) => {
+      const v = b.values[q.name], u = (v - q.min) / (q.max - q.min || 1);
+      return `<tr><td class="mono">${escapeHtml(q.name)}</td><td>${flowFmt(v)}</td>
+        <td><div class="fl-rng" title="${flowFmt(q.min)} … ${flowFmt(q.max)}"><i style="left:${
+          (100 * Math.min(1, Math.max(0, u))).toFixed(1)}%"></i></div></td></tr>`;
+    }).join("");
+    best += `<div class="fl-h">Best so far &mdash; ${circled(i)} eval ${s.history.indexOf(b.entry) + 1}:
+      ${escapeHtml(s.objective.length > 28 ? "objective" : s.objective)} = ${flowFmt(b.entry.obj)}</div>
+      <table class="fl-table"><tr><th>parameter</th><th>value</th><th>within its range</th></tr>${rows}</table>`;
+  });
+  const outs = steps.filter((s) => s.status === "ok" && !s.iters)
+    .flatMap((s) => Object.entries(s.outputs || {}))
+    .map(([k, v]) => `<tr><td class="mono">${escapeHtml(k)}</td><td>${flowFmt(v)}</td></tr>`).join("");
+  const checks = steps.flatMap((s) => (s.checks || []).map((c) =>
+    `<div class="fl-check">${c.ok ? `<span class="ok">&#10003;</span>`
+      : c.info ? `<span class="warn">!</span>` : `<span class="err">&#10007;</span>`}
+      <span><code>${escapeHtml(c.expr)}</code></span>
+      <span class="dim">${c.value !== null && c.value !== undefined ? flowFmt(c.value) : ""}</span></div>`)).join("");
+  const now = running ? `${escapeHtml(running.title)} · ${flowLiveTag(running)}` : "finishing";
+  holder.innerHTML = `<div class="fl-res">
+    <div class="fl-left"><div class="fl-pipe">${pipe}</div>
+      ${plots ? `<div class="fl-plots">${plots}</div>` : ""}
+      <div class="fl-h">Log</div><pre class="fl-log">${escapeHtml(live.log.slice(-14).join("\n"))}</pre></div>
+    <div class="fl-right">
+      <div class="fl-h">${escapeHtml(doc?.name || live.name || "Flow")} &mdash;
+        <span class="fl-run">running <span id="fl-live-clock">${flowDur(live.elapsed_s)}</span></span></div>
+      <div class="rp-note">Now: ${now}</div>
+      ${best}
+      ${outs ? `<div class="fl-h">Outputs</div><table class="fl-table">${outs}</table>` : ""}
+      ${checks ? `<div class="fl-h">Checks</div>${checks}` : ""}
+    </div></div>`;
+  const lg = holder.querySelector(".fl-log");
+  lg.scrollTop = lg.scrollHeight;     // keep the newest line in view
 }
 
 // ---------------------------------------------------------------------------
@@ -757,7 +910,8 @@ function flowPlotEye(st, rec) {
 function flowPlotHistory(st, rec) {
   const h = (rec.history || []).filter((e) => e.obj !== null && e.obj !== undefined);
   if (!h.length) return "";
-  const f = fsvgFrame(), n = rec.history.length;
+  // live (flowRenderLive): the x axis spans the evaluation budget
+  const f = fsvgFrame(), n = Math.max(rec.history.length, rec.iters || 0);
   const [y0, y1] = fsvgRange([h.map((e) => e.obj)]);
   let svg = f.open, bestJ = Infinity, best = null;
   const line = [];
@@ -783,6 +937,7 @@ function flowPlotHistory(st, rec) {
 function flowRenderTab() {
   const holder = $("tab-flow");
   const t = flowTab(), fr = t?.flowResult, doc = t?.flow;
+  if (t?.flowLive) { flowRenderLive(t); return; }
   if (!fr || !doc) { holder.innerHTML = `<div class="insp-empty">Run the flow to see its results here.</div>`; return; }
   const byId = Object.fromEntries(doc.steps.map((s) => [s.id, s]));
   const idx = Object.fromEntries(fr.steps.map((s, i) => [s.id, i]));

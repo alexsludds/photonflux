@@ -470,6 +470,15 @@ class _Runner:
         self.step_title = ""
         self.design_set: dict | None = None   # set of the step the design is read at
         self.design_tr = False
+        self.step_id = ""      # the top-level step running (live status)
+        self.step_t0 = 0.0
+
+    def say(self, line: str) -> None:
+        """Add a log line, published live (progress.flow_log)."""
+        from progress import PROGRESS
+
+        self.log.append(line)
+        PROGRESS.flow_log(line)
 
     # --- one simulate.run --------------------------------------------------
     def simulate(self, sch: dict, analysis: dict) -> dict:
@@ -592,9 +601,15 @@ class _Runner:
             hi.append(b)
             x0.append(0.5 * (a + b) if cur is None else float(cur))
         lo, hi = np.asarray(lo), np.asarray(hi)
+        PROGRESS.flow_step(self.step_id, iters=iters, objective=objective,
+                           maximize=maximize, params=[
+                               {"name": name, "min": float(a), "max": float(b)}
+                               for (_, name), a, b in zip(keys, lo, hi)])
 
         history: list[dict] = []
         best: dict = {"J": math.inf}
+        # a long objective expression would swamp every eval's log line
+        obj_name = objective if len(objective) <= 28 else "objective"
         first_err: list[str] = []
 
         def f(x):
@@ -618,7 +633,9 @@ class _Runner:
                     first_err.append(str(exc))
                 entry.update(obj=None, J=None, feasible=False, error=str(exc))
                 history.append(entry)
-                self.log.append(f"  eval {n}: failed — {exc}")
+                PROGRESS.flow_eval(self.step_id, {
+                    **entry, "t_s": time.perf_counter() - self.step_t0})
+                self.say(f"  eval {n}: failed — {exc}")
                 return math.inf
             J = ((-obj if maximize else obj) + pen
                  if math.isfinite(obj) else math.inf)
@@ -627,10 +644,12 @@ class _Runner:
                          feasible=(bool(pen == 0 and math.isfinite(obj))
                                    if constraints else None))
             history.append(entry)
-            self.log.append(
+            PROGRESS.flow_eval(self.step_id, {
+                **entry, "t_s": time.perf_counter() - self.step_t0})
+            self.say(
                 f"  eval {n}: " + ", ".join(
                     f"{nm}={xi:.6g}" for (_, nm), xi in zip(keys, x))
-                + f" -> {objective} {obj:.4g}"
+                + f" -> {obj_name} {obj:.4g}"
                 + ("" if pen == 0 else f", penalty {pen:.3g}"))
             if J < best["J"]:
                 best.update(J=J, obj=obj, x=np.array(x), vars=v2, overrides=o2,
@@ -648,7 +667,7 @@ class _Runner:
         # the step's checks but the flow's verdict is the specs' business
         checks = [{**check(c, v2), "info": True} for c in constraints]
         feasible = all(c["ok"] for c in checks)
-        self.log.append(
+        self.say(
             f"optimize: best {objective} = {best['obj']:.6g} after "
             f"{len(history)} evaluations"
             + ("" if feasible else " — constraints NOT met"))
@@ -701,7 +720,7 @@ class _Runner:
         sc = score_eye(res["x"], traces[out_p]["values"], pattern,
                        self.flow.get("stateye"))
         for line in sc["log"]:
-            self.log.append(f"  stateye: {line}")
+            self.say(f"  stateye: {line}")
         fom = fom_values(sc, p_in or 0.0)
         if p_in is None:
             for k in ("rel_oma", "rel_oma_db", "il_db"):
@@ -738,6 +757,13 @@ class _Runner:
             overrides.update(prior.get("overrides") or {})
             origin.update(prior.get("origin") or {})
         first = ids.index(only or start) if (start or only) else 0
+        PROGRESS.flow_begin(self.flow.get("name") or "", [
+            {"id": s["id"], "title": s.get("title") or s["id"],
+             "kind": s.get("kind", "analysis"),
+             "status": ("skipped" if k < first or (only and s["id"] != only)
+                        else "pending")}
+            for k, s in enumerate(self.steps)])
+        self.say(f"flow: {self.flow.get('name') or 'untitled'}")
         out, failed = [], None
         for k, step in enumerate(self.steps):
             kind = step.get("kind", "analysis")
@@ -749,13 +775,16 @@ class _Runner:
                 continue
             if failed:
                 rec["status"] = "not run"
+                PROGRESS.flow_step(step["id"], status="not run")
                 out.append(rec)
                 continue
             self.step_tag = f"step {k + 1}/{len(self.steps)}"
             self.step_title = rec["title"]
             PROGRESS.set_label(f"{self.step_tag}, {self.step_title}")
-            t0 = time.perf_counter()
-            self.log.append(f"[{k + 1}] {rec['title']} ({kind})")
+            t0 = self.step_t0 = time.perf_counter()
+            self.step_id = step["id"]
+            PROGRESS.flow_step(step["id"], status="running")
+            self.say(f"[{k + 1}] {rec['title']} ({kind})")
             try:
                 if kind == "analysis":
                     vars2, ovr2, info = self.run_analysis(step, vars_,
@@ -778,7 +807,9 @@ class _Runner:
                        else f"{type(exc).__name__}: {exc}")
                 rec.update(status="failed", error=msg,
                            time_s=time.perf_counter() - t0)
-                self.log.append(f"  FAILED: {exc}")
+                PROGRESS.flow_step(step["id"], status="failed", error=msg,
+                                   time_s=rec["time_s"])
+                self.say(f"  FAILED: {exc}")
                 out.append(rec)
                 failed = step["id"]
                 continue
@@ -791,7 +822,9 @@ class _Runner:
             vars_, overrides = vars2, ovr2
             rec.update(status="ok", checks=checks,
                        time_s=time.perf_counter() - t0, **info)
-            self.log.append(
+            PROGRESS.flow_step(step["id"], status="ok", time_s=rec["time_s"],
+                               checks=checks, outputs=info.get("outputs"))
+            self.say(
                 f"  done in {rec['time_s']:.1f}s"
                 + "".join(f"; {c['expr']}: {'pass' if c['ok'] else 'FAIL'}"
                           + (" (optimizer constraint)" if c.get("info") else "")
@@ -828,17 +861,18 @@ def run_flow(payload: dict) -> dict:
     sch = payload.get("schematic") or {}
     analysis = payload.get("analysis") or {}
     flow = analysis.get("flow") or {}
-    log: list[str] = [f"flow: {flow.get('name') or 'untitled'}"]
+    log: list[str] = []
     if len(simulate.sch_corners(sch)) > 1:
         return {"ok": False, "error": "flows run at one process corner — pick "
                 "a single corner in the Corner menu"}
+    runner = _Runner(sch, flow, log)
     try:
-        body = _Runner(sch, flow, log).run(analysis.get("start"),
-                                           analysis.get("only"),
-                                           analysis.get("prior") or {})
-    except FlowError as exc:
-        return {"ok": False, "error": str(exc), "log": log}
-    log.append("flow: " + ("all checks pass" if body["passed"] else
+        body = runner.run(analysis.get("start"), analysis.get("only"),
+                          analysis.get("prior") or {})
+    except FlowError as exc:   # before any step ran: no log yet
+        return {"ok": False, "error": str(exc),
+                "log": log or [f"flow: {flow.get('name') or 'untitled'}"]}
+    runner.say("flow: " + ("all checks pass" if body["passed"] else
                            "a step failed" if body["failed"] else
                            "some checks FAIL"))
     return {"ok": True, "kind": "flow", "flow": body, "log": log}

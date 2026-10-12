@@ -81,6 +81,11 @@ git -C /tmp/stateye apply "$PWD/docs/patches/stateye-modern-toolchain.patch"
 .venv-circulax/bin/pip install --no-deps /tmp/stateye
 .venv-circulax/bin/pip install h5py Pint tqdm colorama
 
+# BoTorch (torch + GPyTorch) for the flow Optimize step's Bayesian method.
+# On Linux install torch from the CPU index first, or pip pulls ~2.5 GB of CUDA:
+#   .venv-circulax/bin/pip install --index-url https://download.pytorch.org/whl/cpu torch
+.venv-circulax/bin/pip install -e '.[bo]'
+
 # SKY130 PDK (used for FET model-card extraction)
 .venv-circulax/bin/pip install volare
 .venv-circulax/bin/python -m volare enable --pdk sky130 <commit>   # -> ~/.volare/sky130A

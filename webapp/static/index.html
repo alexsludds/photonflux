@@ -145,8 +145,13 @@
       <div class="flow-lbl">subject to <span class="dim">one per line</span></div>
       <textarea id="flow-opt-cons" rows="3" spellcheck="false"
         placeholder="rlm >= 0.96&#10;tdecq_db <= 1.3"></textarea>
+      <label>method <select id="flow-opt-method"
+        title="Bayesian: a Gaussian-process model of each min()/max() term and each constraint, the next design chosen by expected improvement (BoTorch) — for expensive evaluations. Nelder-Mead: a simplex search, model-free, needs many more evaluations.">
+        <option value="bayes">Bayesian (GP)</option>
+        <option value="nelder-mead">Nelder-Mead</option></select></label>
       <label>evals <input id="flow-opt-iters" type="text" value="30"></label>
-      <div class="rp-note">Nelder-Mead; a constraint shortfall costs 100&times; its
+      <div class="rp-note">Bayesian models each argument of a top-level
+        min()/max() objective separately. A constraint shortfall costs 100&times; its
         relative size in objective units. The optimum carries into later steps.</div>
       <div class="flow-err" id="flow-opt-err"></div>
     </section>

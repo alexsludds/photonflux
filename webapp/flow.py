@@ -19,18 +19,20 @@ Its steps share *flow variables*::
          "params": [{"var": "detune_pm", "min": 1, "max": 6},
                     {"inst": "WG_A", "param": "length_m", "min": .., "max": ..}],
          "objective": "rel_oma_db", "maximize": true,
-         "constraints": ["rlm >= 0.96"], "iters": 30},
+         "constraints": ["rlm >= 0.96"], "method": "bayes", "iters": 30},
         {"id": "eval", "kind": "evaluate", "inner": ["res", "eye"],
          "record": "full_period", "probes": {"in": "mod_in", "out": "thru"},
          "fom": {"rel_oma_db": ">= -2", "tdecq_db": "<= 1.5", "il_db": null}}]}
 
 ``set`` targets are ``INST.param`` (``*.param`` broadcasts like a sweep) and
 values are numbers or expressions over the variables. Optimize re-runs its
-``inner`` step chain per Nelder-Mead evaluation, so a resonance found by the
-first step is re-found for every candidate design. Evaluate re-runs the chain
-at the current design (the optimum, after an Optimize step) with the
-transient stretched over a full PRBS period, then scores the built-in figures
-of merit with stateye using the Eye tab's settings.
+``inner`` step chain per evaluation -- Bayesian (``"method": "bayes"``, see
+bayesopt.py) or Nelder-Mead (the default for steps saved without a method) --
+so a resonance found by the first step is re-found for every candidate
+design. Evaluate re-runs the chain at the current design (the optimum, after
+an Optimize step) with the transient stretched over a full PRBS period, then
+scores the built-in figures of merit with stateye using the Eye tab's
+settings.
 
 The schematic is never edited: optimized instance parameters stay in the
 flow's ``overrides`` and come back as ``design`` for an explicit Apply.
@@ -49,6 +51,7 @@ import exprs
 
 MAX_STEPS = 12
 MAX_ITERS = 120
+METHODS = ("bayes", "nelder-mead")     # optimize: Bayesian (GP) or simplex
 SAMPLES_PER_UI = 16    # evaluate: save points per UI of the full-period record
 SETTLE_UI = 16         # figures of merit: start-up dropped before scoring
 _PENALTY = 100.0       # optimize: objective units per 100 % constraint violation
@@ -186,22 +189,49 @@ def check(text: str, vars_: dict) -> dict:
             "op": _CMP[op][0], "bound": rhs}
 
 
-def penalty(constraints: list, vars_: dict) -> float:
-    """Sum of relative violations (0 when feasible; inf when undefined)."""
-    total = 0.0
+def slacks(constraints: list, vars_: dict) -> list[float]:
+    """Each constraint's relative margin: >= 0 when met, NaN when undefined."""
+    ctx = _var_ctx(vars_)
+    out = []
     for text in constraints or []:
         cmp_ = _comparison(text)
         if cmp_ is None or cmp_[1] in (ast.Eq, ast.NotEq):
             raise FlowError(f"constraint {text!r}: write it as 'name >= value' "
                             "or 'name <= value'")
         lhs_s, op, rhs_s = cmp_
-        ctx = _var_ctx(vars_)
         lhs, rhs = _num(lhs_s, ctx), _num(rhs_s, ctx)
-        if not math.isfinite(lhs):
-            return math.inf
-        viol = rhs - lhs if op in (ast.Gt, ast.GtE) else lhs - rhs
-        total += max(0.0, viol) / max(abs(rhs), 0.1)
-    return _PENALTY * total
+        margin = lhs - rhs if op in (ast.Gt, ast.GtE) else rhs - lhs
+        out.append(margin / max(abs(rhs), 0.1)
+                   if math.isfinite(lhs) and math.isfinite(rhs)
+                   else float("nan"))
+    return out
+
+
+def penalty(constraints: list, vars_: dict) -> float:
+    """Sum of relative violations (0 when feasible; inf when undefined)."""
+    return _slack_penalty(slacks(constraints, vars_))
+
+
+def _slack_penalty(s: list[float]) -> float:
+    if any(math.isnan(v) for v in s):
+        return math.inf
+    return _PENALTY * sum(max(0.0, -v) for v in s)
+
+
+def objective_terms(objective: str) -> tuple[list[str], str | None]:
+    """A top-level ``min(...)``/``max(...)`` objective split into its
+    arguments (Bayesian optimization models each one), else the whole
+    expression as one term."""
+    try:
+        tree = ast.parse(str(objective).strip(), mode="eval").body
+    except SyntaxError:
+        raise FlowError(f"cannot parse objective {objective!r}") from None
+    if (isinstance(tree, ast.Call) and isinstance(tree.func, ast.Name)
+            and tree.func.id in ("min", "max") and len(tree.args) >= 2
+            and not tree.keywords
+            and not any(isinstance(a, ast.Starred) for a in tree.args)):
+        return [ast.unparse(a) for a in tree.args], tree.func.id
+    return [str(objective).strip()], None
 
 
 # ---------------------------------------------------------------------------
@@ -581,6 +611,13 @@ class _Runner:
         maximize = bool(step.get("maximize", True))
         constraints = list(step.get("constraints") or [])
         iters = max(4, min(int(step.get("iters", 30)), MAX_ITERS))
+        method = str(step.get("method") or "nelder-mead")
+        if method not in METHODS:
+            raise FlowError(f"optimize: unknown method {method!r} — use "
+                            + " or ".join(METHODS))
+        terms, combine = (objective_terms(objective) if method == "bayes"
+                          else ([objective], None))
+        n_out = len(terms) + len(constraints)
         keys, lo, hi, x0 = [], [], [], []
         start_sch = _prepare(self.base, self.flow, overrides, None, vars_)
         for p in params:
@@ -602,7 +639,7 @@ class _Runner:
             x0.append(0.5 * (a + b) if cur is None else float(cur))
         lo, hi = np.asarray(lo), np.asarray(hi)
         PROGRESS.flow_step(self.step_id, iters=iters, objective=objective,
-                           maximize=maximize, params=[
+                           maximize=maximize, method=method, params=[
                                {"name": name, "min": float(a), "max": float(b)}
                                for (_, name), a, b in zip(keys, lo, hi)])
 
@@ -613,6 +650,8 @@ class _Runner:
         first_err: list[str] = []
 
         def f(x):
+            """(J, outcomes): the penalized objective Nelder-Mead minimizes,
+            and the objective terms + constraint slacks Bayes models."""
             x = np.clip(x, lo, hi)
             n = len(history) + 1
             PROGRESS.set_label(f"{self.step_tag}, eval {n}/{iters}, "
@@ -626,8 +665,12 @@ class _Runner:
             entry = {"x": [float(v) for v in x]}
             try:
                 v2, res, _ = self.chain(ids, v2, o2)
-                obj = _num(objective, _var_ctx(v2))
-                pen = penalty(constraints, v2)
+                ctx = _var_ctx(v2)
+                obj = _num(objective, ctx)
+                sl = slacks(constraints, v2)
+                pen = _slack_penalty(sl)
+                y = ([_num(t, ctx) for t in terms] + sl
+                     if method == "bayes" else [])
             except FlowError as exc:
                 if not first_err:
                     first_err.append(str(exc))
@@ -636,7 +679,7 @@ class _Runner:
                 PROGRESS.flow_eval(self.step_id, {
                     **entry, "t_s": time.perf_counter() - self.step_t0})
                 self.say(f"  eval {n}: failed — {exc}")
-                return math.inf
+                return math.inf, np.full(n_out, np.nan)
             J = ((-obj if maximize else obj) + pen
                  if math.isfinite(obj) else math.inf)
             entry.update(obj=obj if math.isfinite(obj) else None,
@@ -654,9 +697,21 @@ class _Runner:
             if J < best["J"]:
                 best.update(J=J, obj=obj, x=np.array(x), vars=v2, overrides=o2,
                             res=res)
-            return J
+            return J, np.asarray(y, float)
 
-        nelder_mead(f, np.asarray(x0, float), lo, hi, iters)
+        if method == "bayes":
+            import bayesopt
+            try:
+                bayesopt.require()
+            except ImportError as exc:
+                raise FlowError(str(exc)) from None
+            bayesopt.bayes_opt(
+                lambda x: f(x)[1], np.asarray(x0, float), lo, hi, iters,
+                n_terms=len(terms), combine=combine, maximize=maximize,
+                n_slack=len(constraints), penalty=_PENALTY, say=self.say)
+        else:
+            nelder_mead(lambda x: f(x)[0], np.asarray(x0, float), lo, hi,
+                        iters)
         if not math.isfinite(best["J"]):
             raise FlowError("optimize: no evaluation succeeded"
                             + (f" — first error: {first_err[0]}"
@@ -674,7 +729,7 @@ class _Runner:
         return v2, o2, {"result": best["res"], "outputs": bx,
                         "best_objective": best["obj"],
                         "history": history, "objective": objective,
-                        "maximize": maximize, "params": [
+                        "maximize": maximize, "method": method, "params": [
                             {"name": name, "kind": kind, "min": float(a),
                              "max": float(b), "start": float(s),
                              "value": bx[name]}

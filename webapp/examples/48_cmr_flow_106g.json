@@ -471,6 +471,7 @@
         "objective": "min((rlm - 0.95)/0.05, (1.5 - tdecq_db)/1.5, (rel_oma_db + 2)/2, (er_db - 3.5)/3.5)",
         "maximize": true,
         "constraints": [],
+        "method": "bayes",
         "iters": 50
       },
       {

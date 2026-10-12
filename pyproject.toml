@@ -21,6 +21,8 @@ dev = ["pytest"]
 # and has no pyproject.toml; apply docs/patches/stateye-modern-toolchain.patch
 # (see docs/stateye-integration-plan.md section 2) until that lands.
 eye = ["stateye @ git+https://github.com/DerekK44/stateye"]
+# Bayesian optimization for the webapp flow Optimize step (webapp/bayesopt.py)
+bo = ["botorch>=0.14"]
 
 [project.scripts]
 photonflux = "photonflux.cli:main"

@@ -299,6 +299,7 @@ function flowLoadStep() {
       $("flow-opt-obj").value = st.objective || "";
       $("flow-opt-max").value = st.maximize === false ? "0" : "1";
       $("flow-opt-cons").value = (st.constraints || []).join("\n");
+      $("flow-opt-method").value = st.method || "nelder-mead";
       $("flow-opt-iters").value = st.iters || 30;
     } else {
       flowInnerBoxes($("flow-eval-inner"), st);
@@ -347,6 +348,7 @@ function flowSaveCards() {
     st.objective = $("flow-opt-obj").value.trim();
     st.maximize = $("flow-opt-max").value === "1";
     st.constraints = flowLines($("flow-opt-cons").value);
+    st.method = $("flow-opt-method").value;
     st.iters = parseInt($("flow-opt-iters").value) || 30;
     $("flow-opt-err").textContent = errs.join("; ");
   } else {
@@ -432,7 +434,7 @@ function flowAddStep(kind) {
   const probes = state.probes.map((p) => p.name);
   const st = kind === "optimize"
     ? { id, kind, title: "Optimize", inner: before, params: [], objective: "",
-        maximize: true, constraints: [], iters: 30 }
+        maximize: true, constraints: [], method: "bayes", iters: 30 }
     : kind === "evaluate"
       ? { id, kind, title: "Evaluate", inner: before, record: "full_period",
           probes: { in: "", out: probes[0] || "" },
@@ -486,7 +488,8 @@ function flowStepSummary(st, doc) {
   const kind = st.kind || "analysis";
   const refs = [].concat(st.inner || []).map((id) => circled(doc.steps.findIndex((s) => s.id === id)))
     .join("");
-  if (kind === "optimize") return `Optimize · re-runs ${refs || "—"}`;
+  if (kind === "optimize")
+    return `Optimize · ${st.method === "bayes" ? "Bayesian" : "Nelder-Mead"} · re-runs ${refs || "—"}`;
   if (kind === "evaluate")
     return `Evaluate · ${st.record === "inner" ? "as set up" : "full PRBS"} · ${refs || "—"}`;
   const a = st.analysis || {};

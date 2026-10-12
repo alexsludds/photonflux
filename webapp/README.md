@@ -135,12 +135,21 @@ brings the tab's own analysis back. Steps share **flow variables**:
   stateye figures of merit `rlm`, `er_db`, `tdecq`, `tdec`, `oma_dbm`,
   `rel_oma_db(out, in)`, `il_db(out, in)` (scored exactly like the Eye tab's
   Measure button, with its settings).
-* **Optimize step**: Nelder-Mead over variables and/or `INST.param` ranges,
+* **Optimize step**: searches variables and/or `INST.param` ranges,
   re-running the chosen *inner* steps per evaluation (so a resonance found by
   step 1 is re-found for every candidate). The objective is an output name or
   expression; constraints (`rlm >= 0.96`) are penalties (100x the relative
   shortfall, in objective units). The optimum carries into later steps.
-  Repeated points (a reflection clipped onto a bound) are not re-simulated.
+  `method` picks the search:
+  * `bayes` (new steps, examples 48/49): Bayesian optimization with BoTorch.
+    The start design and a Sobol space-filling set, then one design per
+    evaluation chosen by qLogNEI. Each argument of a top-level `min(...)` /
+    `max(...)` objective and each constraint slack gets its own GP, and the
+    acquisition samples the min/max of those -- the worst-margin objective is
+    kinked, its terms are smooth. Needs `pip install -e '.[bo]'`.
+  * `nelder-mead` (steps saved without a `method`): a bounded simplex; repeated
+    points (a reflection clipped onto a bound) are not re-simulated. Needs far
+    more evaluations than `bayes` once there are more than ~3 knobs.
 * **Evaluate step**: re-runs the inner steps at the current design (the
   optimum) with the transient stretched over a **full PRBS period** at
   16 samples/UI, so TDECQ uses OMA<sub>outer</sub>, and scores the built-in
@@ -630,6 +639,7 @@ Signals, waveforms & link post-processing
   linkpost.py        BER/Q/bathtub link report, RX LS-EQ, pulse/COM, eye metric
   exprs.py           derived-trace expression engine (whitelisted AST)
   optimize.py        Nelder-Mead parameter optimizer + FD sensitivities
+  bayesopt.py        BoTorch Bayesian optimizer (flow Optimize, method bayes)
   flow.py            testbench flows: step chains sharing variables, the flow
                      Optimize / Evaluate steps, stateye figures of merit
 

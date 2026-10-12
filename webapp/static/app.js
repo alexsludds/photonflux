@@ -3283,7 +3283,11 @@ function drawEye(canvas, shown, t, perSweep, metricsEl, width) {
   // is not cut off at the default dock height
   const body = $("results-body").getBoundingClientRect();
   const top = canvas.getBoundingClientRect().top;
-  const fit = body.height > 0 && top > 0 ? Math.floor(body.bottom - top - 14) : 420;
+  // the room is in CSS pixels; when CSS stretches the canvas (the paired
+  // view's width: 100%), its pixel height scales with the same factor
+  const scale = canvas.clientWidth > 0 ? canvas.width / canvas.clientWidth : 1;
+  const fit = body.height > 0 && top > 0
+    ? Math.floor((body.bottom - top - 14) * scale) : 420;
   const height = Math.max(150, Math.min(420, fit));
   if (canvas.height !== height) canvas.height = height;
   const swSel = $("eye-sweep");
@@ -3728,7 +3732,6 @@ function renderLink() {
                        holder.querySelector("#link-plot")));
 }
 
-/* tiny 1-D k-means for eye levels (k = 2 or 4), quantile-initialised */
 // Decision phase of a folded eye (0..osr-1): the middle of the widest run of
 // phases whose samples keep the most distance from every level threshold
 // (levels from a k-means over all samples, so transitions only blur them).
@@ -3763,6 +3766,7 @@ function eyeDecisionPhase(records, n, osr, nlv) {
   return Math.round(bestEnd - (bestLen - 1) / 2) % osr;
 }
 
+/* tiny 1-D k-means for eye levels (k = 2 or 4), quantile-initialised */
 function kmeans1d(xs, k) {
   const sorted = [...xs].sort((a, b) => a - b);
   let levels = Array.from({ length: k }, (_, i) =>

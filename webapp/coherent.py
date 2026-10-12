@@ -147,8 +147,10 @@ def cma_equalize(sig: np.ndarray, ntaps: int, mu: float, sps: int = 2,
     """T/sps fractionally-spaced single-pol CMA -> symbol-rate output.
 
     Constant-modulus (Godard p=2) blind equalizer with a centre-spike init.
-    Returns (symbols, taps). Radius ``R2 = E|s|^4 / E|s|^2`` (2 for a
-    normalised constellation dominated by the ring; auto if None).
+    Returns (symbols, taps). Godard radius ``R2 = E|s|^4 / E|s|^2`` of the
+    transmitted constellation (1 for unit-power QPSK, 1.32 for unit-power
+    16-QAM); None means 1. ``receive`` passes the constellation's value and
+    feeds a power-normalised input so ``mu`` is scale-free.
     """
     sig = np.asarray(sig, complex)
     if R2 is None:
@@ -379,12 +381,17 @@ def receive(rx: np.ndarray, const: np.ndarray, m: int, cfg: dict,
                             float(cd.get("S_ps", 0.0)))
         log.append(f"coherent: CD comp D={cd.get('D_ps')} ps/nm/km over "
                    f"{cd.get('length_km')} km")
-    # 3. equalize / downsample to symbol rate
+    # 3. equalize / downsample to symbol rate. Photocurrents arrive in amps,
+    # so normalise to the constellation's power first: the adaptive step
+    # sizes and the decision distances below assume unit-scale symbols.
+    c_pow = np.mean(np.abs(const) ** 2)
+    sig = _to_power(sig, c_pow)
     eq = str(cfg.get("eq", "none"))
     ntaps = int(cfg.get("eq_taps", 15))
     mu = float(cfg.get("eq_mu", 1e-3))
     if eq == "cma" and sps >= 1:
-        syms, _w = cma_equalize(sig, ntaps, mu, sps=max(sps, 1))
+        r2 = float(np.mean(np.abs(const) ** 4) / c_pow)
+        syms, _w = cma_equalize(sig, ntaps, mu, sps=max(sps, 1), R2=r2)
         log.append(f"coherent: CMA EQ {ntaps} taps, mu={mu:g}")
     elif eq == "dd-lms":
         syms, _w = dd_lms_equalize(sig, const, ntaps, mu, sps=max(sps, 1))
@@ -392,6 +399,9 @@ def receive(rx: np.ndarray, const: np.ndarray, m: int, cfg: dict,
     else:
         # sample at symbol centres (best of sps phases if pulse-shaped)
         syms = _downsample(sig, sps, const)
+    # blind phase search measures distance to the constellation points, so
+    # the symbol-rate cloud must sit at the constellation's scale
+    syms = _to_power(syms, c_pow)
     # 4. frequency-offset removal
     f_off = 0.0
     if cfg.get("freq_recover"):
@@ -407,6 +417,12 @@ def receive(rx: np.ndarray, const: np.ndarray, m: int, cfg: dict,
                                   int(cfg.get("bps_test", 32)),
                                   int(cfg.get("cpr_window", 25)))
     return {"syms": syms, "freq_offset_hz": float(f_off), "eq": eq, "cpr": cpr}
+
+
+def _to_power(sig: np.ndarray, power: float) -> np.ndarray:
+    """Scale ``sig`` to mean power ``power`` (no-op on an all-zero input)."""
+    p = np.mean(np.abs(sig) ** 2) if len(sig) else 0.0
+    return sig * np.sqrt(power / p) if p > 0.0 else sig
 
 
 def _downsample(sig: np.ndarray, sps: int, const) -> np.ndarray:

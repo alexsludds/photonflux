@@ -238,6 +238,23 @@ def test_coherent_report_16qam_per_cluster_evm():
     assert len(rep["const_re"]) == 16 and len(rep["rx_re"]) > 100
 
 
+@pytest.mark.parametrize("eq", ["none", "cma"])
+def test_coherent_report_is_scale_free(eq):
+    # balanced-receiver photocurrents arrive in amps (~1e-3), not at the
+    # constellation's unit power; blind phase search and CMA must not care
+    rng = np.random.default_rng(5)
+    ui = 1.0 / 25e9
+    pat = {"mode": "qam", "qam": "qam16", "order": 15, "seed": 1, "ui": ui,
+           "sps": 1, "rrc_beta": 0.0}
+    tx = w.qam_symbols(pat, 20_000)
+    rx = 1e-3 * co.awgn(tx * np.exp(1j * 0.2), 22.0, rng=rng)
+    rep = co.coherent_report(_iq_result(tx, rx, ui), {"patterns": {"src": pat}},
+                             {"probe_i": "I", "probe_q": "Q", "eq": eq,
+                              "eq_taps": 7}, [])
+    assert rep["evm_db"] == pytest.approx(-22.0, abs=1.5)
+    assert rep["counted"]["ber"] < 1e-3
+
+
 def test_coherent_report_needs_qam_source():
     meta = {"patterns": {"p": {"mode": "nrz"}}}
     log = []

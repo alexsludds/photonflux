@@ -71,8 +71,9 @@ def test_link_report_samples_at_the_eye_centre():
     ui, osr, nsym = 1e-10, 16, 1200
     pattern = {"mode": "nrz", "order": 9, "seed": 1, "ui": ui}
     tx = wavesrc._symbols(pattern, nsym + 16)[:nsym]
-    # 16 samples per UI: 10-sample flat top, 6-sample linear edge, the whole
-    # record delayed by 3 samples -> the flat top spans phases 3..12
+    # 16 samples per UI: a 6-sample linear edge, then the symbol holds for
+    # 11 samples (6..15 and the next slot's first, still on the old value);
+    # the whole record is delayed by 3 samples
     frac = (np.arange(nsym * osr) % osr) / osr
     prev = np.repeat(np.roll(tx, 1), osr)
     cur = np.repeat(tx, osr)
@@ -84,8 +85,8 @@ def test_link_report_samples_at_the_eye_centre():
         {"x": t.tolist(), "traces": [{"name": "o", "unit": "V",
                                       "values": wave.tolist()}]},
         {"patterns": {"P": pattern}}, {"probe": "o"}, [])
-    # flat top 3+6 = 9 .. 3+15 = 18 -> centre at phase 13.5 (mod 16)
-    assert abs(rep["sampling_phase_ui"] * osr - 13.5) <= 1.0
+    # flat top 3+6 = 9 .. 3+16 = 19 -> centre at phase 14
+    assert abs(rep["sampling_phase_ui"] * osr - 14.0) <= 0.5
     assert rep["counted"]["bit_errors"] == 0
     ph = np.asarray(rep["bathtub"]["phase_ui"])
     lb = np.asarray(rep["bathtub"]["log10_ber"])

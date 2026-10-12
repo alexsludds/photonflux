@@ -300,21 +300,27 @@ def _centre_on_bathtub(samples: np.ndarray, tx: np.ndarray, osr: int,
     """(phase, lag) moved to the middle of the bathtub's floor -- the run of
     phases within a decade of the best BER around it -- the way a BERT picks
     its sampling point. The correlation peak finds the symbol lag reliably
-    but can sit next to an eye edge."""
-    tub = _bathtub(samples, tx, osr, phase, lag, skip, nlv)
-    ph = np.asarray(tub["phase_ui"])
-    lb = np.asarray(tub["log10_ber"])
-    if ph.size < 4:
-        return phase, lag
-    floor = lb <= lb.min() + 1.0
-    lo = hi = int(np.argmin(lb))
-    while lo > 0 and floor[lo - 1]:
-        lo -= 1
-    while hi < len(lb) - 1 and floor[hi + 1]:
-        hi += 1
-    new = phase + int(round(0.5 * (ph[lo] + ph[hi]) * osr))
-    # past a UI boundary the decision sample belongs to the next symbol slot
-    return new % osr, lag + new // osr
+    but can sit next to an eye edge, where the +-1/2 UI bathtub window cuts
+    the floor short: re-centre until the point stops moving."""
+    for _ in range(3):
+        tub = _bathtub(samples, tx, osr, phase, lag, skip, nlv)
+        ph = np.asarray(tub["phase_ui"])
+        lb = np.asarray(tub["log10_ber"])
+        if ph.size < 4:
+            break
+        floor = lb <= lb.min() + 1.0
+        lo = hi = int(np.argmin(lb))
+        while lo > 0 and floor[lo - 1]:
+            lo -= 1
+        while hi < len(lb) - 1 and floor[hi + 1]:
+            hi += 1
+        new = phase + int(round(0.5 * (ph[lo] + ph[hi]) * osr))
+        # past a UI boundary the decision sample belongs to the next slot
+        new_phase, new_lag = new % osr, lag + new // osr
+        if new_lag < 0 or (new_phase, new_lag) == (phase, lag):
+            break
+        phase, lag = new_phase, new_lag
+    return phase, lag
 
 
 # ---------------------------------------------------------------------------

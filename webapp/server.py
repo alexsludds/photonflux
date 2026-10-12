@@ -344,26 +344,40 @@ class Handler(BaseHTTPRequestHandler):
     def _run(payload: dict) -> dict:
         """Run one simulation, serialized by _RUN_LOCK. When a wall-clock
         limit is set, the solve runs in a worker that keeps holding the lock
-        until it finishes (JAX solves can't be interrupted cleanly), so a
-        timed-out run never corrupts the shared circuit caches — the next
-        request simply queues behind it."""
+        until it finishes, so a timed-out run never corrupts the shared
+        circuit caches — the next request queues behind it. A timed-out run
+        is asked to stop the way the Stop button does (it ends at its next
+        transient save point or flow step); one still queued never starts."""
         if _RUN_TIMEOUT_S <= 0:
             with _RUN_LOCK:
                 return simulate.run(payload)
         box: dict = {}
+        gate = threading.Lock()   # orders the worker's start/finish vs timeout
 
         def _work() -> None:
             with _RUN_LOCK:
+                with gate:
+                    if box.get("abandoned"):
+                        return
+                    box["started"] = True
                 try:
                     box["result"] = simulate.run(payload)
                 except Exception as exc:  # defensive: worker must not vanish
                     box["result"] = {"ok": False,
                                      "error": f"{type(exc).__name__}: {exc}"}
+                with gate:
+                    box["done"] = True
 
         worker = threading.Thread(target=_work, daemon=True)
         worker.start()
         worker.join(_RUN_TIMEOUT_S)
         if worker.is_alive():
+            import progress
+            with gate:
+                box["abandoned"] = True
+                # still holding _RUN_LOCK, so the active run is this one
+                if box.get("started") and not box.get("done"):
+                    progress.PROGRESS.request_cancel()
             return {"ok": False, "_timeout": True,
                     "error": f"run exceeded the {_RUN_TIMEOUT_S:g}s time "
                              "limit on this server"}

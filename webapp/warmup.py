@@ -7,6 +7,7 @@ already populated and the native toolchain proven:
   * build_models()  -> lowers all photonic *.va to models/__jax__/*.py and
                        compiles the SKY130 FET flavors to **Linux** .osdi
                        (via the freshly-built bin/openvaf-ir).
+  * stateye         -> the TDECQ backend flows and the Eye tab score with.
   * a representative example set is solved to JIT-warm the circulax solvers and
     to force each FET flavor's OSDI compile through a real run.
 
@@ -67,6 +68,17 @@ def main() -> int:
     except Exception:
         traceback.print_exc()
         results.append(("build_models", False, "see traceback above"))
+
+    # flows and the Eye tab score TDECQ through stateye (an optional extra):
+    # without it every flow eye step that asks for tdecq() fails at run time
+    try:
+        from photonflux import tdec
+        tdec._require_stateye()
+        results.append(("stateye", True, "TDECQ backend importable"))
+        print("[warmup] PASS stateye", flush=True)
+    except Exception as exc:
+        results.append(("stateye", False, f"{type(exc).__name__}: {exc}"))
+        print(f"[warmup] FAIL stateye — {exc}", flush=True)
 
     for ex in WARM_EXAMPLES:
         t0 = time.perf_counter()

@@ -664,14 +664,18 @@ def _build_circuit(sch, wave_span, noise_cfg, log):
     for line in meta["lti_log"]:
         log.append(line)
     t0 = time.perf_counter()
+    # build only the models this netlist uses (the first run otherwise
+    # lowered every Verilog-A model in the catalog)
+    needed = sorted({i["component"] for i in net["instances"].values()})
     mkey = ",".join(sorted(meta["sky130_geoms"]) + sorted(meta["waveforms"])
                     + sorted(meta["noisy"]) + sorted(meta["ltis"]))
+    mkey += "|" + ",".join(needed)
     if meta["noisy"]:
         mkey += "|" + json.dumps(noise_cfg, sort_keys=True)
     if mkey not in _MODELS_CACHE:
         _MODELS_CACHE[mkey] = build_models(meta["sky130_geoms"],
                                            meta["waveforms"], meta["noisy"],
-                                           meta["ltis"])
+                                           meta["ltis"], needed=set(needed))
         # waveform/noise closures hold arrays; keep every live structure's
         if len(_MODELS_CACHE) > max(8, _MAX_LIVE_STRUCTURES + 2):
             _MODELS_CACHE.pop(next(iter(_MODELS_CACHE)))

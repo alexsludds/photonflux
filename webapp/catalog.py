@@ -2495,13 +2495,20 @@ def _waveguide_transit(n_st: int):
     transmission at the operating wavelength (phase, loss) times a chain of
     n_st Pade all-pass stages of length * n_group / (n_st c) per direction.
     At DC identical to OpticalWaveguide."""
+    import jax
     import jax.numpy as jnp
     from circulax.components.base_component import Signals, States, component
 
     c0 = 299792458.0
     n = int(n_st)
-    states = tuple([f"f{k}" for k in range(n)] + [f"r{k}" for k in range(n)]
-                   + ["b1", "b2"])
+    fwd = tuple(f"f{k}" for k in range(n))
+    bwd = tuple(f"r{k}" for k in range(n))
+    states = fwd + bwd + ("b1", "b2")
+
+    def stage(z, x):
+        """_transit_stage as a scan step: carry the stage output 2 x - z,
+        emit the residual x - z of (tau/2) x' + x = z."""
+        return 2.0 * x - z, x - z
 
     @component(ports=("p1", "p2"), states=states)
     def WaveguideTransit(signals: Signals, s: States, length_um: float = 100.0,
@@ -2518,15 +2525,21 @@ def _waveguide_transit(n_st: int):
         f: dict = {}
         q: dict = {}
 
-        def chain(prefix):
+        # each direction's stage chain is one lax.scan, not an unrolled loop:
+        # circulax differentiates with a JVP per unknown, so the unrolled
+        # chain made the compiled program grow with the square of the stage
+        # count (49 s for a 3 mm guide's 64 stages)
+        def chain(names):
+            x = jnp.stack([getattr(s, k) for k in names])
+
             def run(z):
-                for k in range(n):
-                    z = _transit_stage(f, q, getattr(s, f"{prefix}{k}"),
-                                       f"{prefix}{k}", z, tau)
-                return z
+                z_out, res = jax.lax.scan(stage, z + 0j, x)
+                f.update(zip(names, res))
+                q.update(zip(names, 0.5 * tau * x))
+                return z_out
             return run
 
-        _transit_ports(f, s, signals, Ts, chain("f"), chain("r"))
+        _transit_ports(f, s, signals, Ts, chain(fwd), chain(bwd))
         return f, q
 
     return WaveguideTransit
@@ -2796,6 +2809,7 @@ def _fiber_nl_field(poles, res, d, gamma: float, dz: float, n_seg: int):
     uses the symmetric split and shares the beta2/beta3/gamma definitions, and
     is what the soliton / SPM / FWM analytics are pinned against.
     """
+    import jax
     import jax.numpy as jnp
     from circulax.components.base_component import Signals, States, component
 
@@ -2804,23 +2818,30 @@ def _fiber_nl_field(poles, res, d, gamma: float, dz: float, n_seg: int):
     d_c = complex(d)
     n = len(poles)
     g_dz = float(gamma * dz)
-    st = tuple(f"x{j}_{i}" for j in range(n_seg) for i in range(n)) + ("i_out",)
+    xs = tuple(f"x{j}_{i}" for j in range(n_seg) for i in range(n))
+    st = xs + ("i_out",)
+
+    def segment(u, x):
+        """One split step: dispersion over dz (output from the segment's
+        states), then the Kerr phase; carries the next segment's input."""
+        v = jnp.sum(c_c * x) + d_c * u
+        return v * jnp.exp(-1j * g_dz * (v * jnp.conj(v)).real), u
 
     @component(ports=("p1", "p2"), states=st)
     def FiberNL(signals: Signals, s: States) -> tuple[dict, dict]:
-        u = signals.p1
-        f = {"p1": u}                                  # matched input tap
-        q: dict = {}
-        for j in range(n_seg):
-            x = jnp.stack([getattr(s, f"x{j}_{i}") for i in range(n)])
-            v = jnp.sum(c_c * x) + d_c * u             # dispersion over dz
-            for i in range(n):
-                f[f"x{j}_{i}"] = -(p_c[i] * x[i] + u)
-                q[f"x{j}_{i}"] = x[i]
-            u = v * jnp.exp(-1j * g_dz * (v * jnp.conj(v)).real)   # Kerr over dz
-        f["p2"] = s.i_out
-        f["i_out"] = signals.p2 - u
-        return f, q
+        # The segment chain runs as one lax.scan: circulax differentiates a
+        # component with a JVP per unknown, and an unrolled Python loop over
+        # n_seg x n_poles states made that program (and its compile time and
+        # memory) grow with the square of the segment count -- 40 s and 2 GB
+        # for the default 20 segments, out of memory at 60.
+        x = jnp.stack([getattr(s, k) for k in xs]).reshape(n_seg, n)
+        # (a complex carry: the dry run hands the ports in as real floats)
+        u_out, u_in = jax.lax.scan(segment, signals.p1 + 0j, x)
+        fx = (-(p_c[None, :] * x + u_in[:, None])).reshape(-1)
+        f = {"p1": signals.p1,                        # matched input tap
+             "p2": s.i_out, "i_out": signals.p2 - u_out}
+        f.update(zip(xs, fx))
+        return f, {k: getattr(s, k) for k in xs}
 
     return FiberNL
 
@@ -3256,102 +3277,117 @@ for _entry in CATALOG.values():
 del _entry
 
 
+# Built-in models are parameter-free, so each is built once per process: a
+# Verilog-A entry is a full lowering + exec of the emitted module and every
+# other one a component-class build. Rebuilding them on every models-cache
+# miss (each new waveform, SKY130 geometry, noise bank or LTI fit) cost about
+# a second per call, and the first call lowered all of them.
+_BUILTIN_MODELS: dict[str, Any] = {}
+
+
+def _builtin_factories() -> dict[str, Any]:
+    """name -> zero-argument constructor of every built-in model."""
+    from circulax.components import electronic as el
+    from circulax.components import photonic as ph
+
+    from photonflux import cx
+
+    def va(stem):
+        return lambda: cx.va(stem)
+
+    def const(model):
+        return lambda: model
+
+    return {
+        "ground": lambda: (lambda: 0),
+        "cw_laser": cx.cw_laser,
+        "mzm": cx.mzm,
+        "pulse_mod": _pulse_mod,
+        "waveguide": const(ph.OpticalWaveguide),
+        "splitter": const(ph.Splitter),
+        "dir_coupler": const(ph.DirectionalCoupler),
+        "grating": _grating_r,
+        "opt_mirror": _opt_mirror,
+        "pn_phase_shifter": _pn_phase_shifter,
+        "opt_term": cx.terminator,
+        "opt_atten": cx.attenuator,
+        "photodiode": _photodiode,
+        "apd": _apd,
+        "iq_modulator": _iq_modulator,
+        "coherent_rx": _coherent_rx,
+        "_f2ri": cx.field_to_ri,
+        "_f2ri_m": _field_to_ri_matched,
+        "_ri2f": cx.ri_to_field,
+        "_ring_va": va("ring_mod"),
+        "_phaseshift_va": va("phase_shifter"),
+        "_p2f": _power_to_field,
+        "_f2p": _field_to_power,
+        "_dml_va": va("laser_dml"),
+        "_rate_va": va("laser_rate"),
+        "_tw_va": va("mzm_tw"),
+        "_ring_inj_va": va("ring_mod_inj"),
+        "_seg_va": va("mzm_seg"),
+        "_soa_va": va("soa"),
+        "_edfa_va": va("edfa"),
+        "_raman_va": va("raman_amp"),
+        "_sbs_va": va("sbs_fiber"),
+        "_mirror_va": va("mirror"),
+        "_circ_va": va("circulator"),
+        "_ringcomb_va": va("ring_filter"),
+        "_ringnl_va": va("ring_nl"),
+        "_ringkerr_va": va("ring_kerr"),
+        "_ringselfheat_va": va("ring_selfheat"),
+        "_wgnl_va": va("waveguide_nl"),
+        "_twseg_va": va("tw_seg"),
+        "_twgain_va": va("tw_gain_seg"),
+        "_phasepad_va": va("phase_pad"),
+        "vdc": const(el.VoltageSource),
+        "vpulse": const(el.PulseVoltageSource),
+        "vsin": const(el.VoltageSourceAC),
+        "idc": const(el.CurrentSource),
+        "resistor": const(el.Resistor),
+        "capacitor": const(el.Capacitor),
+        "inductor": const(el.Inductor),
+        "diode": const(el.Diode),
+        "nmos": const(el.NMOS),
+        "pmos": const(el.PMOS),
+        "opamp": const(el.IdealOpAmp),
+        "tia": _tia,
+        "ctle": _ctle,
+        "rx_ffe": _rx_eq_buffer,
+        "rx_dfe": _rx_eq_buffer,
+        "opt_f2p": _field_to_power,
+        "opt_p2f": _power_to_field,
+        "ase_src": _ase_src_plain,
+    }
+
+
 def build_models(sky130_geoms: dict[str, tuple[str, float, float, str]] | None = None,
                  waveforms: dict[str, tuple] | None = None,
                  noisy: dict[str, tuple] | None = None,
-                 ltis: dict[str, dict] | None = None) -> dict:
+                 ltis: dict[str, dict] | None = None,
+                 needed=None) -> dict:
     """models_map for compile_circuit.
 
     ``sky130_geoms`` maps a model key (e.g. ``"sky130_nfet:1x0.15@tt"``) to
     (device, w_um, l_um, corner) — each distinct FET flavor + geometry +
     process corner is its own OSDI descriptor. ``waveforms`` maps a model key (``"prbs:<hash>"``) to its
-    (t, v) breakpoint arrays for the pattern/PWL sources.
+    (t, v) breakpoint arrays for the pattern/PWL sources. ``needed`` (a set
+    of component names) limits the built-in models to the ones a netlist
+    uses; None builds them all (the image warmup).
     """
-    from circulax.components.electronic import (
-        NMOS,
-        PMOS,
-        Capacitor,
-        CurrentSource,
-        Diode,
-        IdealOpAmp,
-        Inductor,
-        PulseVoltageSource,
-        Resistor,
-        VoltageSource,
-        VoltageSourceAC,
-    )
-    from circulax.components.photonic import (
-        DirectionalCoupler,
-        OpticalWaveguide,
-        Splitter,
-    )
-
     from photonflux import cx
 
-    models: dict[str, Any] = {
-        "ground": lambda: 0,
-        "cw_laser": cx.cw_laser(),
-        "mzm": cx.mzm(),
-        "pulse_mod": _pulse_mod(),
-        "waveguide": OpticalWaveguide,
-        "splitter": Splitter,
-        "dir_coupler": DirectionalCoupler,
-        "grating": _grating_r(),
-        "opt_mirror": _opt_mirror(),
-        "pn_phase_shifter": _pn_phase_shifter(),
-        "opt_term": cx.terminator(),
-        "opt_atten": cx.attenuator(),
-        "photodiode": _photodiode(),
-        "apd": _apd(),
-        "iq_modulator": _iq_modulator(),
-        "coherent_rx": _coherent_rx(),
-        "_f2ri": cx.field_to_ri(),
-        "_f2ri_m": _field_to_ri_matched(),
-        "_ri2f": cx.ri_to_field(),
-        "_ring_va": cx.va("ring_mod"),
-        "_phaseshift_va": cx.va("phase_shifter"),
-        "_p2f": _power_to_field(),
-        "_f2p": _field_to_power(),
-        "_dml_va": cx.va("laser_dml"),
-        "_rate_va": cx.va("laser_rate"),
-        "_tw_va": cx.va("mzm_tw"),
-        "_ring_inj_va": cx.va("ring_mod_inj"),
-        "_seg_va": cx.va("mzm_seg"),
-        "_soa_va": cx.va("soa"),
-        "_edfa_va": cx.va("edfa"),
-        "_raman_va": cx.va("raman_amp"),
-        "_sbs_va": cx.va("sbs_fiber"),
-        "_mirror_va": cx.va("mirror"),
-        "_circ_va": cx.va("circulator"),
-        "_ringcomb_va": cx.va("ring_filter"),
-        "_ringnl_va": cx.va("ring_nl"),
-        "_ringkerr_va": cx.va("ring_kerr"),
-        "_ringselfheat_va": cx.va("ring_selfheat"),
-        "_wgnl_va": cx.va("waveguide_nl"),
-        "_twseg_va": cx.va("tw_seg"),
-        "_twgain_va": cx.va("tw_gain_seg"),
-        "_phasepad_va": cx.va("phase_pad"),
-        "vdc": VoltageSource,
-        "vpulse": PulseVoltageSource,
-        "vsin": VoltageSourceAC,
-        "idc": CurrentSource,
-        "resistor": Resistor,
-        "capacitor": Capacitor,
-        "inductor": Inductor,
-        "diode": Diode,
-        "nmos": NMOS,
-        "pmos": PMOS,
-        "opamp": IdealOpAmp,
-        "tia": _tia(),
-        "ctle": _ctle(),
-        "rx_ffe": _rx_eq_buffer(),
-        "rx_dfe": _rx_eq_buffer(),
-        "opt_f2p": _field_to_power(),
-        "opt_p2f": _power_to_field(),
-        "ase_src": _ase_src_plain(),
-    }
+    factories = _builtin_factories()
+    models: dict[str, Any] = {}
+    for name, make in factories.items():
+        if needed is not None and name not in needed:
+            continue
+        if name not in _BUILTIN_MODELS:
+            _BUILTIN_MODELS[name] = make()
+        models[name] = _BUILTIN_MODELS[name]
     for key, entry in CATALOG.items():
-        if entry.get("user_va"):
+        if entry.get("user_va") and (needed is None or key in needed):
             models[key] = cx.va(USER_VA_DIR / f"{entry['user_va']}.va")
     for key, (device, w_um, l_um, corner) in (sky130_geoms or {}).items():
         models[key] = cx.sky130_fet(device, w=w_um, l=l_um, corner=corner)

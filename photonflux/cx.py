@@ -252,6 +252,8 @@ def attenuator():
     with a = 10^(-atten_db/20): optical power drops by ``atten_db`` in either
     direction.
     """
+    if "attenuator" in _COMPONENT_CACHE:
+        return _COMPONENT_CACHE["attenuator"]
     import jax.numpy as jnp
     from circulax.components.base_component import Signals, States, component
     from circulax.s_transforms import s_to_y
@@ -265,6 +267,7 @@ def attenuator():
         iv = s_to_y(S) @ v
         return {"p1": iv[0], "p2": iv[1]}, {}
 
+    _COMPONENT_CACHE["attenuator"] = OptAtten
     return OptAtten
 
 
@@ -276,6 +279,8 @@ def terminator():
     Y = (1-r)/(1+r) (r = 0 is the matched absorber, i = E). Terminate every
     otherwise-open optical port -- an open port reflects like an open line.
     """
+    if "terminator" in _COMPONENT_CACHE:
+        return _COMPONENT_CACHE["terminator"]
     from circulax.components.base_component import Signals, States, component
     import jax.numpy as jnp
 
@@ -285,6 +290,7 @@ def terminator():
         r = 10.0 ** (-jnp.abs(return_loss_db) / 20.0)
         return {"p1": (1.0 - r) / (1.0 + r) * signals.p1}, {}
 
+    _COMPONENT_CACHE["terminator"] = OptTerm
     return OptTerm
 
 
@@ -1118,6 +1124,8 @@ def _lower_cached(
         CACHE_DIR.mkdir(parents=True, exist_ok=True)
         cache.write_text(src)
 
+    if cache in _LOADED:
+        return _LOADED[cache]
     ns: dict[str, Any] = {}
     # applied at load time (not baked into the cache) so cached models pick
     # it up without being re-lowered
@@ -1125,7 +1133,15 @@ def _lower_cached(
     exec(code, ns)  # noqa: S102 — our own generated, cached source
     if class_name not in ns:
         raise RuntimeError(f"emitted module {cache} does not define {class_name}")
+    _LOADED[cache] = ns
     return ns
+
+
+# Exec'd model modules by cache file: the file name carries the content hash
+# of every lowering input, so a repeat cx.va() / sky130_fet(backend="jax")
+# returns the same class instead of re-parsing, rewriting and re-exec'ing
+# the emitted source (~50 ms per model, and a new class each time).
+_LOADED: dict[Path, dict[str, Any]] = {}
 
 
 # ---------------------------------------------------------------------------

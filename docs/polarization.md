@@ -66,7 +66,7 @@ the reactive side dtype-honest for the complex assembly.
 | `polarization_rotator.va` | real rotation `R(θ)` | `theta_deg`, `il_db` |
 | `pbs.va` | routes X→port1, Y→port2 | `er_db`, `il_db` |
 | `pbc.va` | X from port1, Y from port2 | `er_db`, `il_db` |
-| `birefringent_wg.va` | `diag(e^{jφx}, e^{jφy})`, `φ=2πnL/λ` | `n_te`, `n_tm`, `length_um`, `lambda_nm`, `loss_db_m` |
+| `birefringent_wg.va` | `diag(e^{-jφx}, e^{-jφy})`, `φ=2πnL/λ` (a phase lag, like circulax's waveguide) | `n_te`, `n_tm`, `length_um`, `lambda_nm`, `loss_db_m` |
 | `pdl.va` | `diag(10^{-il/20}, 10^{-(il+pdl)/20})` | `il_db`, `pdl_db` |
 
 The PBS/PBC use `lk = 10^{-er_db/20}` for the cross-leakage amplitude and
@@ -123,7 +123,7 @@ birefringence that the concatenation model is made of; the DGD *delay* and the
 ## 5. Roadmap (scoped follow-ups)
 
 1. **Webapp catalog + wiring.** The browser represents an optical port as a
-   single node mapped through the `_f2ri`/`_ri2f` adapters. A dual-pol port is
+   single node mapped through the `_f2ri_m`/`_ri2f` adapters. A dual-pol port is
    two field pairs (X and Y), so it needs either a distinct `"optical-jones"`
    port domain (four nodes) or an X/Y port split, plus Jones adapters and the
    `app.js` domain-compatibility rule (scalar-optical ↔ Jones is the TE

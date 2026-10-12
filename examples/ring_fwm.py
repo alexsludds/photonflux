@@ -5,9 +5,12 @@
 modes (m = -2..+2, spaced by the FSR) share the intracavity chi(3) Kerr
 nonlinearity — the modal (Lugiato-Lefever) picture of a Kerr comb:
 
-    dA_m/dt = (j*delta_m - 1/tau) A_m
-              + j*g_eff * sum_{j+l-k=m} A_j A_l conj(A_k)      <- chi(3)
+    dA_m/dt = (-j*delta_m - 1/tau) A_m
+              - j*g_eff * sum_{j+l-k=m} A_j A_l conj(A_k)      <- chi(3)
               + j*kappa^2 * s_in
+
+(engineering convention e^{+j*w*t}: an envelope tone at +f is the optical
+frequency f0 + f, so mode m resonates at envelope m*FSR).
 
 The single momentum-matched triple sum produces every chi(3) effect with
 the textbook coefficients: SPM (x1), XPM (x2), and four-wave mixing.
@@ -18,8 +21,8 @@ matching when the comb is dispersion-free).
 
 Device: R = 1988 um (FSR = 6.000 GHz), 30 dB/m, kappa2 = 0.035 both buses
 -> loaded linewidth 149 MHz (Q = 1.5e6), photon lifetime tau = 2.13 ns.
-Pump at envelope 0 (mode 0), signal at envelope -FSR (mode +1, one FSR
-blue); the idler appears at envelope +FSR = mode -1, one FSR red.
+Pump at envelope 0 (mode 0), signal at envelope +FSR (mode +1, one FSR
+blue); the idler appears at envelope -FSR = mode -1, one FSR red.
 
 Self-checks (all asserted):
   1. identity    — the strongest generated line is at 2*f_p - f_s, exactly
@@ -84,8 +87,8 @@ LOSS_DB_M = 30.0
 K2_IN = K2_DROP = 0.035
 
 P_P0, P_S0 = 100e-6, 10e-6     # base drive [W]
-F_P, F_S = 0.0, -FSR           # envelope: pump on mode 0, signal on mode +1
-F_I = 2 * F_P - F_S            # idler: +FSR -> mode -1
+F_P, F_S = 0.0, FSR            # envelope: pump on mode 0, signal on mode +1
+F_I = 2 * F_P - F_S            # idler: -FSR -> mode -1
 
 DT = 1e-12                     # scaling checks (relative ratios; BDF2 bias
                                # cancels between numerator and denominator)
@@ -172,7 +175,7 @@ def golden_lines(p_p: float, p_s: float, r: dict, t_full: np.ndarray,
         return t_m
 
     def rhs(t, a):
-        return ((1j * delta - 1 / tau) * a + 1j * geff * tsum(a)
+        return ((-1j * delta - 1 / tau) * a - 1j * geff * tsum(a)
                 + 1j * k2c * s_in(t))
 
     # frozen-source steady state (the DC solve the circuit starts from)
@@ -181,7 +184,7 @@ def golden_lines(p_p: float, p_s: float, r: dict, t_full: np.ndarray,
         f = rhs(0.0, a)
         return np.concatenate([f.real, f.imag])
 
-    a_lin = 1j * k2c * s_in(0.0) / (1 / tau - 1j * delta)
+    a_lin = 1j * k2c * s_in(0.0) / (1 / tau + 1j * delta)
     x0 = fsolve(steady, np.concatenate([a_lin.real, a_lin.imag]), xtol=1e-13)
     a0 = x0[:5] + 1j * x0[5:]
 
@@ -342,7 +345,7 @@ def main() -> int:
     t_full = np.arange(int(round(T_STOP / DT))) * DT
     fg, ag = golden_lines(P_P0, P_S0, r, t_full)
     errs = []
-    for fk in (0.0, -FSR, F_I):                # pump, signal, idler lines
+    for fk in (F_P, F_S, F_I):                 # pump, signal, idler lines
         p_sim = abs(line(f, a, fk)) ** 2
         p_gold = abs(line(fg, ag, fk)) ** 2
         errs.append(abs(p_sim / p_gold - 1))
@@ -432,7 +435,7 @@ def main() -> int:
     pp_hi = ps_hi = 500e-6
     f_hi, a_hi = run(c, params={"SRC.p_p": pp_hi, "SRC.p_s": ps_hi}, dt=DT_FINE)
     fg_hi, ag_hi = golden_lines(pp_hi, ps_hi, r, t_full)
-    comb_f = np.array([12.0, 6.0, 0.0, -6.0, -12.0]) * 1e9   # modes -2..+2
+    comb_f = np.array([-12.0, -6.0, 0.0, 6.0, 12.0]) * 1e9   # modes -2..+2
     comb_sim = np.array([abs(line(f_hi, a_hi, fk)) ** 2 for fk in comb_f])
     comb_gold = np.array([abs(line(fg_hi, ag_hi, fk)) ** 2 for fk in comb_f])
     err_c = float(np.max(np.abs(comb_sim / comb_gold - 1)))
@@ -469,8 +472,8 @@ def main() -> int:
     sel0 = po > 1e-22
     a0.vlines(f_off[sel0] / 1e9, -200, dbm(po[sel0]), color="0.75", lw=4,
               alpha=0.8, zorder=0)
-    for fx, name in ((0, "pump\nmode 0"), (-6, "signal\nmode +1"),
-                     (6, "idler\nmode -1"), (12, "mode -2"), (-12, "mode +2")):
+    for fx, name in ((0, "pump\nmode 0"), (6, "signal\nmode +1"),
+                     (-6, "idler\nmode -1"), (-12, "mode -2"), (12, "mode +2")):
         pk = abs(line(f, a, fx * 1e9)) ** 2
         a0.annotate(name, (fx, dbm(pk) + 4), ha="center", fontsize=7.5)
     a0.set(xlim=(-16, 16), ylim=(-130, 5), xlabel="envelope f [GHz]",

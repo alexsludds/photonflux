@@ -17,7 +17,7 @@
 //
 // Single-mode CMT with state A = kappa*a (|A|^2 in W, |a|^2 = U in J):
 //
-//   dA/dt = (j*delta_eff - 1/tau_tot) A + j*kappa^2 s_in,  s_out = s_in + j*A
+//   dA/dt = (-j*delta_eff - 1/tau_tot) A + j*kappa^2 s_in,  s_out = s_in + j*A
 //
 //   U           = |A|^2 / kappa^2,     kappa^2 = 2/tau_e
 //   I_circ      = U*v_g/V_eff          (V_eff = A_eff * 2*pi*R)
@@ -99,9 +99,9 @@ module ring_nl(in_re, in_im, out_re, out_im, gnd);
 
         // CMT rate equations, rows scaled by the constant tau0
         I(are, gnd) <+ tau0 * ddt(V(are, gnd)) + tau0 * inv_tau_tot * V(are, gnd)
-                       + tau0 * delta_eff * V(aim, gnd) + tk2 * V(in_im, gnd);
+                       - tau0 * delta_eff * V(aim, gnd) + tk2 * V(in_im, gnd);
         I(aim, gnd) <+ tau0 * ddt(V(aim, gnd)) + tau0 * inv_tau_tot * V(aim, gnd)
-                       - tau0 * delta_eff * V(are, gnd) - tk2 * V(in_re, gnd);
+                       + tau0 * delta_eff * V(are, gnd) - tk2 * V(in_re, gnd);
 
         // through port: s_out = s_in + j*A
         V(out_re, gnd) <+ V(in_re, gnd) - V(aim, gnd);

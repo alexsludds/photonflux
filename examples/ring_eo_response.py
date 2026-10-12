@@ -134,10 +134,11 @@ def analytic_eo_response(freqs: np.ndarray, design: dict,
                          r_series: float = 0.0) -> np.ndarray:
     """|dP_thru|(f) per unit drive from the linearised ring_mod CMT model.
 
-    Intracavity field a: da/dt = (j*delta - 1/tau) a + j*kappa^2 s_in, output
-    s_out = s_in + j*a. Linearise delta = delta0 + delta1(t) about the DC point
-    a0. A cosine drive puts a sideband at +f and -f, each transferred by
-    G(w) = -a0 / (1/tau + j(w - delta0)); the detected power tone is
+    Intracavity field a: da/dt = (-j*delta - 1/tau) a + j*kappa^2 s_in
+    (engineering convention e^{+j*w*t}), output s_out = s_in + j*a. Linearise
+    delta = delta0 + delta1(t) about the DC point a0. A cosine drive puts a
+    sideband at +f and -f, each transferred by
+    G(w) = a0 / (1/tau + j(w + delta0)); the detected power tone is
     2*Re(s0* s_out1). An optional electrode RC = 1/(1 + j*w*R*Cj) multiplies the
     drive (the junction charges through the source resistance).
     """
@@ -146,11 +147,11 @@ def analytic_eo_response(freqs: np.ndarray, design: dict,
     delta0 = design["delta0"]
     kappa2 = design["tk2"] / tau           # = 2/tau_e (bus coupling rate)
     s_in = np.sqrt(P_LASER)                # real CW field, |s_in|^2 = P_laser
-    a0 = 1j * kappa2 * s_in / (inv_tau - 1j * delta0)
+    a0 = 1j * kappa2 * s_in / (inv_tau + 1j * delta0)
     s0 = s_in + 1j * a0                     # DC through-port field
 
     def transfer(w):
-        g = -a0 / (inv_tau + 1j * (w - delta0))     # field response to delta1
+        g = a0 / (inv_tau + 1j * (w + delta0))      # field response to delta1
         return np.conj(s0) * g                       # -> power via 2 Re(s0* .)
 
     out = np.empty(len(freqs))

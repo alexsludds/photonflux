@@ -35,9 +35,11 @@ import numpy as np
 
 # TDEC settings the browser has no UI for yet. They matter: s_noise sets the
 # saturation floor of OMA - TDEC (see photonflux.tdec.oma_tdec_floor_dbm), and
-# ref_bw is the reference-receiver bandwidth TDEC is defined through.
+# ref_bw is the reference-receiver bandwidth TDEC is defined through
+# (photonflux.tdec.TDEC_REF_BW_FACTOR; spelt out because importing tdec
+# needs the optional stateye).
 TDEC_DEFAULTS = {"s_noise_mW": 0.01, "ber": 1e-12,
-                 "ref_bw_factor": 0.75, "ref_bw_order": 4}
+                 "ref_bw_factor": 0.5, "ref_bw_order": 4}
 
 
 def _tdec_objective(res: dict, probe: str, ui_hint: float | None,
@@ -203,7 +205,7 @@ def _patch(sch: dict, params: list[dict], x: np.ndarray) -> dict:
 
 
 def _objective(res: dict, spec: str, ui_hint: float | None,
-               tdec_cfg: dict | None = None):
+               tdec_cfg: dict | None = None, nlv: int = 2):
     import linkpost
 
     kind, _, arg = spec.partition(":")
@@ -221,7 +223,6 @@ def _objective(res: dict, spec: str, ui_hint: float | None,
                    if (t.get("probe") or t["name"]) == arg), None)
         if tr is None or ui_hint is None:
             return None
-        nlv = 2
         return linkpost.eye_height(res["x"], tr["values"], ui_hint, nlv)
     if kind == "ber":
         rep = res.get("link")
@@ -234,6 +235,23 @@ def _objective(res: dict, spec: str, ui_hint: float | None,
     raise ValueError(f"unknown objective {spec!r} — use expr:<name>, "
                      "eye:<probe>, ber:<probe>, fom, tdec:<probe> or "
                      "omatdec:<probe>")
+
+
+def _pattern_hint(sch: dict) -> tuple[float | None, int]:
+    """(UI, levels) of the first pattern source -- on the canvas or in a
+    subcircuit, its UI filled from the global baud rate like the run does --
+    for the eye objective: a PAM-4 eye scored as two levels measures the gap
+    between the middle clusters, not the three eyes."""
+    import simulate
+
+    sch = simulate.with_global_ui(sch)
+    for group in simulate._instance_groups(sch):
+        for inst in group.values():
+            if inst.get("type") in ("prbs", "qam_source"):
+                st = inst.get("settings") or {}
+                return (float(st.get("ui", 100e-12)),
+                        4 if str(st.get("mode")) == "pam4" else 2)
+    return None, 2
 
 
 def run_optimize(payload: dict) -> dict:
@@ -287,12 +305,7 @@ def run_optimize(payload: dict) -> dict:
 
     lo = np.array([float(p["min"]) for p in params])
     hi = np.array([float(p["max"]) for p in params])
-    # UI hint for the eye objective: the first PRBS source's UI
-    ui_hint = None
-    for inst in (sch.get("instances") or {}).values():
-        if inst.get("type") in ("prbs", "qam_source"):
-            ui_hint = float((inst.get("settings") or {}).get("ui", 100e-12))
-            break
+    ui_hint, nlv = _pattern_hint(sch)
 
     evals = {"n": 0}
     history: list[dict] = []
@@ -306,7 +319,7 @@ def run_optimize(payload: dict) -> dict:
     def corner_objective(x, c):
         res = simulate.run({"schematic": at_corner(x, c), "analysis": inner})
         try:
-            return _objective(res, spec, ui_hint, tdec_cfg)
+            return _objective(res, spec, ui_hint, tdec_cfg, nlv)
         except ValueError as exc:
             # a misconfigured objective (wrong probe domain, no UI) fails
             # the same way at every point, so surface it instead of

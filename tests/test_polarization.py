@@ -133,7 +133,8 @@ def _pbs_pbc_chain():
 # birefringent waveguide
 # ---------------------------------------------------------------------------
 def test_birefringent_phase():
-    # X and Y accumulate 2*pi*n*L/lambda; the differential is 2*pi*dn*L/lambda
+    # X and Y lag by 2*pi*n*L/lambda (e^{-j*phi}, circulax's waveguide
+    # convention); the differential lag is 2*pi*dn*L/lambda
     lam, L, n_te, n_tm = 1550.0, 100.0, 2.40, 2.38
     vals = op(cx.va("birefringent_wg"), _launch(1.0, 1.0),
               settings={"lambda_nm": lam, "length_um": L, "n_te": n_te, "n_tm": n_tm},
@@ -142,7 +143,7 @@ def test_birefringent_phase():
     gy = vals["yout_re"].real + 1j * vals["yout_im"].real
     assert abs(gx) == pytest.approx(1.0, abs=1e-9)  # lossless by default
     assert abs(gy) == pytest.approx(1.0, abs=1e-9)
-    d_phi = np.angle(gx * np.conj(gy))  # differential phase, wrapped
+    d_phi = np.angle(gy * np.conj(gx))  # differential lag of X, wrapped
     expect = 2 * np.pi * (n_te - n_tm) * (L * 1e-6) / (lam * 1e-9)
     assert np.angle(np.exp(1j * (d_phi - expect))) == pytest.approx(0.0, abs=1e-6)
 

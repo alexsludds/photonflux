@@ -32,6 +32,7 @@ import re
 import threading
 import time
 import traceback
+from pathlib import Path
 from typing import Any
 
 from catalog import CATALOG, build_models
@@ -608,13 +609,30 @@ def schematic_to_netlist(sch: dict, wave_span: float = DEFAULT_WAVE_SPAN,
 # compile (cached)
 # ---------------------------------------------------------------------------
 
+_VA_DIR = Path(__file__).resolve().parents[1] / "models"
+
+
+def _va_stamp() -> str:
+    """Fingerprint of the built-in Verilog-A sources (name, mtime, size), so
+    an edited model invalidates the compiled circuits and models built from
+    it without a server restart (~0.1 ms for the 36 files)."""
+    parts = []
+    for f in sorted(_VA_DIR.rglob("*.va")):
+        try:
+            st = f.stat()
+        except OSError:
+            continue
+        parts.append(f"{f.name}:{st.st_mtime_ns}:{st.st_size}")
+    return hashlib.sha256("|".join(parts).encode()).hexdigest()[:16]
+
+
 def _get_circuit(sch: dict, wave_span: float = DEFAULT_WAVE_SPAN,
                  noise_cfg: dict | None = None
                  ) -> tuple[Any, dict, list[str]]:
     log: list[str] = []
     key = hashlib.sha256(
         (json.dumps(sch, sort_keys=True, default=str) + f"|{wave_span:g}"
-         + f"|{json.dumps(noise_cfg, sort_keys=True)}")
+         + f"|{json.dumps(noise_cfg, sort_keys=True)}|{_va_stamp()}")
         .encode()
     ).hexdigest()
     if key in _CIRCUIT_CACHE:
@@ -664,14 +682,18 @@ def _build_circuit(sch, wave_span, noise_cfg, log):
     for line in meta["lti_log"]:
         log.append(line)
     t0 = time.perf_counter()
+    # build only the models this netlist uses (the first run otherwise
+    # lowered every Verilog-A model in the catalog)
+    needed = sorted({i["component"] for i in net["instances"].values()})
     mkey = ",".join(sorted(meta["sky130_geoms"]) + sorted(meta["waveforms"])
                     + sorted(meta["noisy"]) + sorted(meta["ltis"]))
+    mkey += "|" + ",".join(needed) + "|" + _va_stamp()
     if meta["noisy"]:
         mkey += "|" + json.dumps(noise_cfg, sort_keys=True)
     if mkey not in _MODELS_CACHE:
         _MODELS_CACHE[mkey] = build_models(meta["sky130_geoms"],
                                            meta["waveforms"], meta["noisy"],
-                                           meta["ltis"])
+                                           meta["ltis"], needed=set(needed))
         # waveform/noise closures hold arrays; keep every live structure's
         if len(_MODELS_CACHE) > max(8, _MAX_LIVE_STRUCTURES + 2):
             _MODELS_CACHE.pop(next(iter(_MODELS_CACHE)))
@@ -1160,10 +1182,10 @@ def _optical_spectra(circuit, sol, t, names, carrier_nm, log, windows=None):
         X = np.fft.fftshift(np.fft.fft(E * win))
         S = np.abs(X) ** 2
         fb = np.fft.fftshift(np.fft.fftfreq(n, dt))      # baseband offset [Hz]
-        # coherent envelopes use the physics e^{-i w t} convention, so a
-        # baseband component at +fb is an optical tone at f0 - fb: a WDM laser
+        # coherent envelopes use the engineering e^{+j w t} convention, so a
+        # baseband component at +fb is an optical tone at f0 + fb: a WDM laser
         # blue-shifted from the reference (shorter lambda) sits at +fb.
-        wl = _C_LIGHT / (f0 - fb) * 1e9                  # -> wavelength [nm]
+        wl = _C_LIGHT / (f0 + fb) * 1e9                  # -> wavelength [nm]
         sdb = 10.0 * np.log10(S / S.max() + 1e-15)
         order = np.argsort(wl)
         wl, sdb = wl[order], np.maximum(sdb[order], floor_db)
@@ -1173,7 +1195,9 @@ def _optical_spectra(circuit, sol, t, names, carrier_nm, log, windows=None):
         if sig.size < 2:
             continue
         lo, hi = wl[sig[0]], wl[sig[-1]]
-        pad = 0.15 * (hi - lo) + 1e-4
+        # at least 16 bins of floor each side: a clean CW line is only ~7
+        # bins wide above the floor and used to leave no plot at all
+        pad = max(0.15 * (hi - lo), 16.0 * float(np.median(np.diff(wl))))
         band = (wl >= lo - pad) & (wl <= hi + pad)
         wlk, sdk = wl[band], sdb[band]
         if wlk.size < 8:
@@ -1224,22 +1248,49 @@ def _ac_system(circuit):
     detected and pinned before factorization.
     """
     from circulax.solvers.ac_sweep import _build_index_arrays
-    from circulax.solvers.assembly import assemble_gc_real
 
     if any(getattr(g, "is_fdomain", False) for g in circuit.groups.values()):
         raise NetlistError("AC analysis does not support frequency-domain "
                            "(dispersive optical) components")
     y_dc = solvers.dc(circuit)
-    G_vals, C_vals = assemble_gc_real(y_dc, circuit.groups)
+    G_vals, C_vals = _jit_assembly("assemble_gc_real")(y_dc, circuit.groups)
     rows, cols, gnd, _ = _build_index_arrays(
         circuit.groups, circuit.sys_size, is_complex=False)
-    return _dense_gc(rows, cols, gnd, circuit.sys_size, G_vals, C_vals)
+    return _dense_gc(rows, cols, gnd, circuit.sys_size, G_vals, C_vals,
+                     _g_leak(circuit))
 
 
-def _dense_gc(rows, cols, gnd, n, g_vals, c_vals) -> dict:
+_ASSEMBLY_JIT: dict[str, Any] = {}
+
+
+def _jit_assembly(name: str):
+    """A circulax assembly function under one filter_jit (cached by name, so
+    a repeat analysis of the same structure reuses the compiled program).
+    Called eagerly, the linearisation dispatched every JAX op on its own:
+    ~18 s cold and ~1.4 s warm for a 22-unknown EO AC sweep."""
+    if name not in _ASSEMBLY_JIT:
+        import equinox as eqx
+        from circulax.solvers import assembly
+
+        _ASSEMBLY_JIT[name] = eqx.filter_jit(getattr(assembly, name))
+    return _ASSEMBLY_JIT[name]
+
+
+def _g_leak(circuit) -> float:
+    """The diagonal leak conductance circulax's DC and transient solvers
+    stamp on every unknown (DenseSolver.g_leak, 1 nS by default)."""
+    return float(getattr(circuit.solver, "g_leak", 1e-9))
+
+
+def _dense_gc(rows, cols, gnd, n, g_vals, c_vals, g_leak=0.0) -> dict:
     """Scatter (G, C) triplets into dense matrices and pin the all-zero
     rows/columns of decoupled unknowns (collapsed OSDI nodes, unused field
-    DOFs) to 1 on G's diagonal so the AC solves stay nonsingular."""
+    DOFs) to 1 on G's diagonal so the AC solves stay nonsingular.
+
+    ``g_leak`` goes on every diagonal entry, as the operating-point solve
+    has it: a group of internal nodes tied only to each other (a SKY130
+    FET's collapsed substrate network) is otherwise a floating island that
+    makes G + jwC singular at every frequency."""
     import numpy as np
 
     rows = np.asarray(rows).reshape(-1)
@@ -1251,6 +1302,7 @@ def _dense_gc(rows, cols, gnd, n, g_vals, c_vals) -> dict:
     dead = ((~np.abs(G).any(axis=1)) & (~np.abs(C).any(axis=1))
             & (~np.abs(G).any(axis=0)) & (~np.abs(C).any(axis=0)))
     G[dead, dead] = 1.0
+    G[np.arange(n), np.arange(n)] += g_leak
     return {"G": G, "C": C, "gnd": np.asarray(gnd).reshape(-1),
             "n": n, "n_dead": int(dead.sum())}
 
@@ -1273,7 +1325,6 @@ def _ac_system_complex(circuit):
 
     import jax.numpy as jnp
     from circulax.solvers.ac_sweep import _build_index_arrays
-    from circulax.solvers.assembly import assemble_system_complex
 
     if any(getattr(g, "is_fdomain", False) for g in circuit.groups.values()):
         raise NetlistError("AC analysis does not support frequency-domain "
@@ -1282,14 +1333,16 @@ def _ac_system_complex(circuit):
     # two well-separated step sizes; J is affine in 1/dt so any pair recovers
     # (G, C) exactly (float64 keeps the 1e6 spread well-conditioned).
     dt1, dt2 = 1e-6, 1e-12
-    j1 = np.asarray(assemble_system_complex(y_dc, circuit.groups, 0.0, dt1)[2])
-    j2 = np.asarray(assemble_system_complex(y_dc, circuit.groups, 0.0, dt2)[2])
+    asm = _jit_assembly("assemble_system_complex")
+    zero = jnp.asarray(0.0)
+    j1 = np.asarray(asm(y_dc, circuit.groups, zero, jnp.asarray(dt1))[2])
+    j2 = np.asarray(asm(y_dc, circuit.groups, zero, jnp.asarray(dt2))[2])
     c_vals = (j1 - j2) / ((1.0 / dt1) - (1.0 / dt2))
     g_vals = j1 - c_vals * (1.0 / dt1)
 
     rows, cols, gnd, n = _build_index_arrays(
         circuit.groups, circuit.sys_size, is_complex=True)
-    return _dense_gc(rows, cols, gnd, n, g_vals, c_vals)
+    return _dense_gc(rows, cols, gnd, n, g_vals, c_vals, _g_leak(circuit))
 
 
 def _ac_Y(sysm, f):
@@ -2041,8 +2094,14 @@ def run(payload: dict) -> dict:
 def _run_inner(payload: dict) -> dict:
     try:
         sch = with_global_ui(payload.get("schematic") or {})
-        payload = {**payload, "schematic": sch}
         analysis = payload.get("analysis") or {"mode": "dc"}
+        if analysis.get("sweep_enabled") is False and \
+                analysis.get("sweep_values"):
+            # a testbench can ship its AC sweep configured but off; the
+            # browser then sends no sweep_values, so neither run them here
+            analysis = {k: v for k, v in analysis.items()
+                        if k != "sweep_values"}
+        payload = {**payload, "schematic": sch, "analysis": analysis}
         mode = analysis.get("mode", "dc")
         if mode == "flow":
             import flow

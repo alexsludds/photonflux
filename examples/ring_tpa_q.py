@@ -185,6 +185,11 @@ def va_sweep_continuation(d: dict, p_in: float, span: float, n: int = 241):
         i1 = min(int(act.max()) + 8, n - 1)
         y = y_all[i0]
         for i in range(i0, i1 + 1):
+            if (i - i0) % 32 == 31:
+                # every scalar c.dc compiles a new program and JAX keeps them
+                # all: a few hundred exhaust the process's memory mappings
+                # (the script died after its checks, in the part-3 sweeps)
+                jax.clear_caches()
             y = c.dc(y_guess=y, params={"RG.lambda_nm": float(lam_nm[i])},
                      rtol=1e-10, atol=1e-12)
             ti = float(port_power(c, y, "po_re", "po_im")) / p_in

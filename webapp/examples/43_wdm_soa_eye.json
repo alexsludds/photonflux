@@ -21,7 +21,7 @@
         "rot": 0,
         "settings": {
           "wavelength_nm": 1309.6,
-          "power": 1.5e-05,
+          "power": 6e-05,
           "ref_wavelength_nm": 1310.0,
           "phase": 0.0
         }
@@ -58,6 +58,9 @@
         "y": 180,
         "rot": 0,
         "settings": {
+          "rj_ui": 0.05,
+          "sj_ui": 0.05,
+          "dj_ui": 0.05,
           "ui": 1e-10,
           "order": 7,
           "v0": -0.75,
@@ -80,7 +83,7 @@
         "rot": 0,
         "settings": {
           "wavelength_nm": 1310.0,
-          "power": 1.5e-05,
+          "power": 6e-05,
           "ref_wavelength_nm": 1310.0,
           "phase": 1.9
         }
@@ -117,6 +120,9 @@
         "y": 380,
         "rot": 0,
         "settings": {
+          "rj_ui": 0.05,
+          "sj_ui": 0.05,
+          "dj_ui": 0.05,
           "ui": 1e-10,
           "order": 9,
           "v0": -0.75,
@@ -139,7 +145,7 @@
         "rot": 0,
         "settings": {
           "wavelength_nm": 1310.4,
-          "power": 1.5e-05,
+          "power": 6e-05,
           "ref_wavelength_nm": 1310.0,
           "phase": 3.7
         }
@@ -176,6 +182,9 @@
         "y": 580,
         "rot": 0,
         "settings": {
+          "rj_ui": 0.05,
+          "sj_ui": 0.05,
+          "dj_ui": 0.05,
           "ui": 1e-10,
           "order": 11,
           "v0": -0.75,
@@ -722,7 +731,7 @@
           "ASE floor, vout1-3 are the recovered eyes. Transient noise",
           "(seeds = 1) is on, so the ASE is a live noise source.",
           "",
-          "At the default power the SOA is unsaturated (amp_out ~2 mW",
+          "At the default power the SOA is unsaturated (amp_out ~1.3 mW",
           "<< p_sat 10 mW) with high OSNR: the eyes are open. Push it",
           "off either edge of its power window and the eyes collapse:",
           "",

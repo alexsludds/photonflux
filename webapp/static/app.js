@@ -1917,11 +1917,8 @@ function buildPalette() {
   holder.innerHTML = "";
   // "New subcircuit" affordance (top of the palette; disabled while descended)
   const nb = document.createElement("button");
-  nb.className = "pal-newsub";
+  nb.className = "pal-btn pal-newsub";
   nb.textContent = editingSubDef() ? "◀ Back to top document" : "＋ New subcircuit";
-  nb.style.cssText = "width:100%;margin:0 0 6px;padding:5px;font:inherit;"
-    + "cursor:pointer;background:var(--panel2);color:var(--text);"
-    + "border:1px solid var(--border);border-radius:4px";
   nb.addEventListener("click", () => editingSubDef() ? ascendTo(0) : newSubcircuit());
   holder.appendChild(nb);
   const q = paletteFilter.trim();
@@ -2869,8 +2866,8 @@ function renderPlots(res) {
       axes: [
         { ...axisStyle, label: xLabel, labelFont: "11px sans-serif", labelSize: 18,
           ...(pref.x === "log" ? { values: logTicks } : {}) },
-        { ...axisStyle, label: yLabel, labelFont: "11px sans-serif", labelSize: 18,
-          size: 60, ...(yTicks ? { values: yTicks } : {}) },
+        { ...axisStyle, label: axisQuantity(unit, yLabel), labelFont: "11px sans-serif",
+          labelSize: 18, size: 60, ...(yTicks ? { values: yTicks } : {}) },
       ],
       series: [
         { label: xLabel.split(" ")[0],
@@ -3097,7 +3094,7 @@ function stateyeCfg(nlv) {
     return v === "auto" || v === "" ? "auto" : (parse(v) || bad);
   };
   return {
-    rx_bw: rxbw === "auto" ? (nlv === 4 ? 0.5 : 0.75) : (rxbw === "off" ? "off" : parseFloat(rxbw)),
+    rx_bw: rxbw === "auto" ? 0.5 : (rxbw === "off" ? "off" : parseFloat(rxbw)),
     rx_order: parseInt($("tq-rxorder").value) || 4,
     taps: auto("tq-taps", parseInt),
     dfe: auto("tq-dfe", parseInt),
@@ -3162,14 +3159,14 @@ async function measureEye() {
   btn.disabled = false;
   if (!r.ok) { out.innerHTML = `<span class="tq-err">${r.error}</span>`; return; }
   const secs = ((performance.now() - t0) / 1000).toFixed(1);
-  const u = tr.unit ? ` ${tr.unit}` : "";
+  const q = (x) => (x === null || x === undefined) ? "—" : fmtQty(x, tr.unit || "");
   const f = (x, d = 2) => (x === null || x === undefined) ? "—" : x.toFixed(d);
   const notes = (r.log || []).map((l) => `<div class="${
     l.startsWith("outside the 802.3dj") ? "tq-err" : "tq-dim"}">${l}</div>`).join("");
   if (r.format === "NRZ") {
     out.innerHTML = `<span class="tq-big">TDEC ${f(r.tdec_db)} dB</span>
       &nbsp; OMA&minus;TDEC ${f(r.oma_tdec_dbm)} dBm${r.at_floor ? " (at floor)" : ""}
-      &nbsp;|&nbsp; OMA<sub>${r.family}</sub> ${fmtSI(r.oma)}${u}
+      &nbsp;|&nbsp; OMA<sub>${r.family}</sub> ${q(r.oma)}
       &nbsp;|&nbsp; ER ${f(r.er_db)} dB <span class="tq-dim">(${secs} s)</span>${notes}`;
   } else {
     const taps = (r.taps.length || r.dfe_b.length)
@@ -3178,13 +3175,13 @@ async function measureEye() {
         + `, C<sub>eq</sub> ${f(r.ceq, 3)}`
         + (r.evals ? `, ${r.evals} evals` : "")
         + (r.rms_after !== null && r.rms_after !== undefined
-          ? `, rms err ${fmtSI(r.rms_before)} &rarr; ${fmtSI(r.rms_after)}${u}` : "")
+          ? `, rms err ${q(r.rms_before)} &rarr; ${q(r.rms_after)}` : "")
       : "no equalizer";
     out.innerHTML = `<span class="tq-big">TDECQ ${f(r.tdecq_db)} dB</span>
       <span class="tq-dim">(${f(r.tdecq_raw_db)} dB unequalized)</span>
-      &nbsp;|&nbsp; OMA<sub>${r.family}</sub> ${fmtSI(r.oma)}${u}
+      &nbsp;|&nbsp; OMA<sub>${r.family}</sub> ${q(r.oma)}
       &nbsp;|&nbsp; ${taps}
-      &nbsp;|&nbsp; levels ${r.levels.map((x) => x === null ? "—" : fmtSI(x)).join(" / ")}${u}
+      &nbsp;|&nbsp; levels ${r.levels.map((x) => x === null ? "—" : q(x)).join(" / ")}
       <span class="tq-dim">(${r.standard ? `${r.standard} reference, ` : ""}SER ${r.ser_target}; ${secs} s)</span>${notes}`;
   }
   const rxTxt = cfg.rx_bw === "off" ? "no ref Rx" : `BT${cfg.rx_order} ref Rx at ${cfg.rx_bw}×baud`;
@@ -3282,6 +3279,17 @@ function renderEye() {
 // `metricsEl`. `perSweep` tints each record with its sweep colour.
 function drawEye(canvas, shown, t, perSweep, metricsEl, width) {
   if (canvas.width !== width) canvas.width = width;
+  // as tall as the dock leaves below the controls (150-420 px), so the eye
+  // is not cut off at the default dock height
+  const body = $("results-body").getBoundingClientRect();
+  const top = canvas.getBoundingClientRect().top;
+  // the room is in CSS pixels; when CSS stretches the canvas (the paired
+  // view's width: 100%), its pixel height scales with the same factor
+  const scale = canvas.clientWidth > 0 ? canvas.width / canvas.clientWidth : 1;
+  const fit = body.height > 0 && top > 0
+    ? Math.floor((body.bottom - top - 14) * scale) : 420;
+  const height = Math.max(150, Math.min(420, fit));
+  if (canvas.height !== height) canvas.height = height;
   const swSel = $("eye-sweep");
   const isSweep = perSweep || (!$("eye-sweep-wrap").hidden);
   const tr = shown[0];
@@ -3334,6 +3342,10 @@ function drawEye(canvas, shown, t, perSweep, metricsEl, width) {
   const px = (k) => plotX + (k / span) * plotW;
   const py = (y) => plotY + plotH - ((y - lo) / (hi - lo)) * plotH;
   const alpha = Math.max(0.03, 0.10 / Math.sqrt(records.length));
+  // the fold starts at the skip time, not at a symbol boundary: centre the
+  // drawing (and the metrics) on the eye's most open phase
+  const phase0 = eyeDecisionPhase(records, n, osr, nlv);
+  const shift = (osr / 2 - phase0 + osr) % osr;
   // overlaying several swept values: tint each eye with its plot colour so the
   // families stay distinguishable; otherwise use the flat per-domain hue.
   const domHue = tr.domain === "optical"
@@ -3343,7 +3355,7 @@ function drawEye(canvas, shown, t, perSweep, metricsEl, width) {
   records.forEach((ys, ri) => {
     ctx.strokeStyle = perSweep ? traceStroke(shown[ri]) : domHue;
     for (let i = 0; i + 1 < n; i++) {
-      const k = i % osr;                      // phase within one UI
+      const k = (i + shift) % osr;            // phase within one UI
       for (const rep of [0, osr]) {           // draw into both UI windows
         ctx.beginPath();
         ctx.moveTo(px(k + rep), py(ys[i]));
@@ -3366,7 +3378,7 @@ function drawEye(canvas, shown, t, perSweep, metricsEl, width) {
   const centre = [];
   for (const ys of records) {
     for (let i = 0; i + 1 < n; i++) {
-      const ph = i % osr;
+      const ph = (i + shift) % osr;
       if (Math.abs(ph - osr / 2) <= osr * 0.06) centre.push(ys[i]);
     }
   }
@@ -3415,8 +3427,8 @@ function drawEye(canvas, shown, t, perSweep, metricsEl, width) {
     ? (perSweep ? `${records.length} eyes overlaid  |  ` : `${swSel.value}  |  `)
     : "";
   metricsEl.textContent = swNote +
-    `levels: ${km.levels.map((x) => fmtSI(x)).join(" / ")} ${unit}` +
-    `  |  eye height: ${eyes.map((h) => fmtSI(h)).join(" / ")} ${unit}` +
+    `levels: ${km.levels.map((x) => fmtQty(x, unit)).join(" / ")}` +
+    `  |  eye height: ${eyes.map((h) => fmtQty(h, unit)).join(" / ")}` +
     `  |  width: ${(widthUI * 100).toFixed(0)}% UI` +
     `  |  ${centre.length} samples`;
 
@@ -3634,7 +3646,7 @@ function renderLink() {
           ${q.ok ? `
           <tr><th>Q (per eye)</th><td>${q.q.map((x) => x.toFixed(2)).join(" / ")}</td></tr>
           <tr><th>Q-fit BER</th><td>${q.ber_est.toExponential(2)}</td></tr>
-          <tr><th>levels</th><td>${q.levels.map((x) => fmtSI(x)).join(" / ")}</td></tr>`
+          <tr><th>levels</th><td>${q.levels.map((x) => fmtQty(x, rep.unit || "")).join(" / ")}</td></tr>`
           : `<tr><th>Q fit</th><td>${q.reason || "failed"}</td></tr>`}
           ${rep.tdecq ? `
           <tr><th>TDECQ</th><td><b>${rep.tdecq.tdecq_db.toFixed(2)} dB</b>
@@ -3718,6 +3730,40 @@ function renderLink() {
   };
   plots.push(new uPlot(opts, [idx, pul.h, eqAligned],
                        holder.querySelector("#link-plot")));
+}
+
+// Decision phase of a folded eye (0..osr-1): the middle of the widest run of
+// phases whose samples keep the most distance from every level threshold
+// (levels from a k-means over all samples, so transitions only blur them).
+function eyeDecisionPhase(records, n, osr, nlv) {
+  const total = records.length * n;
+  // an odd stride never aliases onto one phase (osr is a power of two)
+  const stride = total > 200000 ? (Math.ceil(total / 200000) | 1) : 1;
+  const all = [];
+  for (const ys of records) for (let i = 0; i < n; i += stride) all.push(ys[i]);
+  const levels = kmeans1d(all, nlv).levels;
+  const thrs = [];
+  for (let e = 0; e + 1 < levels.length; e++) thrs.push(0.5 * (levels[e] + levels[e + 1]));
+  const dist = new Array(osr).fill(Infinity);
+  for (const ys of records) {
+    for (let i = 0; i < n; i++) {
+      const ph = i % osr;
+      for (const thr of thrs) {
+        const d = Math.abs(ys[i] - thr);
+        if (d < dist[ph]) dist[ph] = d;
+      }
+    }
+  }
+  const top = Math.max(...dist);
+  if (!isFinite(top) || top <= 0) return osr / 2;
+  // longest circular run within 2 % of the best margin; its centre
+  const ok = dist.map((d) => d >= 0.98 * top);
+  let bestLen = 0, bestEnd = osr / 2, run = 0;
+  for (let k = 0; k < 2 * osr; k++) {
+    if (ok[k % osr]) { run++; if (run > bestLen && run <= osr) { bestLen = run; bestEnd = k; } }
+    else run = 0;
+  }
+  return Math.round(bestEnd - (bestLen - 1) / 2) % osr;
 }
 
 /* tiny 1-D k-means for eye levels (k = 2 or 4), quantile-initialised */

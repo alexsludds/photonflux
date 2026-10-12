@@ -17,9 +17,12 @@
 //   * gamma [1/m] is the saturable AMPLITUDE gain from the local reservoir
 //     (below): single-pass power gain over a length L is exp(2*gamma_bar*L),
 //     so 2*gamma*L plays the role of the SOA log-gain h.
-//   * delta = delta0 + alpha_h*gamma folds in the linewidth-enhancement chirp:
-//     the reservoir's index change red/blue-shifts the field with the gain
-//     (Henry alpha_h). delta0 is the static frame->Bragg detuning.
+//   * delta = delta0 - alpha_h*gamma folds in the linewidth-enhancement chirp
+//     (Henry alpha_h): more gain means more carriers and a LOWER index, so
+//     the local propagation constant drops by alpha_h*gamma -- the field
+//     gains gamma*(1 + j*alpha_h) per length in this e^{+j*w*t} stencil, the
+//     conjugate of Agrawal-Olsson's e^{(1 - j*alpha)h/2}. delta0 is the
+//     static frame->Bragg detuning.
 //   * kappa [1/m] Bragg coupling (0 = plain gain section; >0 = index-coupled
 //     active DFB grating).
 //   * tau_s = dz/v_g slice transit time (the ddt gives the cavity its memory).
@@ -92,8 +95,9 @@ module tw_gain_seg(fl_re, fl_im, fr_re, fr_im, bl_re, bl_im, br_re, br_im,
 
         gam    = V(ng, gnd) - loss_pm;          // net amplitude gain [1/m]
         // alpha_h chirp tracks the CARRIER-induced index, i.e. the reservoir
-        // gain V(ng) (not gam) — loss_pm is a background loss with no carriers
-        deleff = delta0 + alpha_h * V(ng, gnd); // gain-coupled chirp
+        // gain V(ng) (not gam) — loss_pm is a background loss with no carriers.
+        // Carriers lower the index: the detuning falls as the gain rises.
+        deleff = delta0 - alpha_h * V(ng, gnd); // gain-coupled chirp
         eseed  = sqrt(p_seed);
 
         // forward field R (fr), fed from the left neighbour fl

@@ -142,19 +142,26 @@ def cd_compensate(sig: np.ndarray, fs: float, D_ps: float, length_km: float,
 
 
 def cma_equalize(sig: np.ndarray, ntaps: int, mu: float, sps: int = 2,
-                 R2: float | None = None, warmup: int | None = None
+                 R2: float | None = None, warmup: int | None = None,
+                 centre: int | None = None
                  ) -> tuple[np.ndarray, np.ndarray]:
     """T/sps fractionally-spaced single-pol CMA -> symbol-rate output.
 
     Constant-modulus (Godard p=2) blind equalizer with a centre-spike init.
-    Returns (symbols, taps). Radius ``R2 = E|s|^4 / E|s|^2`` (2 for a
-    normalised constellation dominated by the ring; auto if None).
+    Returns (symbols, taps). Godard radius ``R2 = E|s|^4 / E|s|^2`` of the
+    transmitted constellation (1 for unit-power QPSK, 1.32 for unit-power
+    16-QAM); None means 1. ``receive`` passes the constellation's value and
+    feeds a power-normalised input so ``mu`` is scale-free. ``centre`` is the
+    spike's tap (default ``ntaps // 2``); at ``sps > 1`` it must land on a
+    symbol sample, see :func:`_spike_tap`. On a multi-ring constellation
+    (16-QAM) CMA's steady-state misadjustment leaves enough noise for blind
+    phase search to cycle-slip: use ``dd-lms`` there.
     """
     sig = np.asarray(sig, complex)
     if R2 is None:
         R2 = 1.0
     w = np.zeros(ntaps, complex)
-    w[ntaps // 2] = 1.0
+    w[ntaps // 2 if centre is None else centre] = 1.0
     out = []
     nsym = (len(sig) - ntaps) // sps
     warmup = 0 if warmup is None else warmup
@@ -171,12 +178,14 @@ def cma_equalize(sig: np.ndarray, ntaps: int, mu: float, sps: int = 2,
 
 
 def dd_lms_equalize(sig: np.ndarray, const: np.ndarray, ntaps: int, mu: float,
-                    sps: int = 2, train: np.ndarray | None = None
+                    sps: int = 2, train: np.ndarray | None = None,
+                    centre: int | None = None
                     ) -> tuple[np.ndarray, np.ndarray]:
-    """Decision-directed (or trained) LMS FSE -> symbol-rate output."""
+    """Decision-directed (or trained) LMS FSE -> symbol-rate output
+    (centre-spike init at tap ``centre``, as :func:`cma_equalize`)."""
     sig = np.asarray(sig, complex)
     w = np.zeros(ntaps, complex)
-    w[ntaps // 2] = 1.0
+    w[ntaps // 2 if centre is None else centre] = 1.0
     out = []
     nsym = (len(sig) - ntaps) // sps
     for k in range(nsym):
@@ -379,19 +388,32 @@ def receive(rx: np.ndarray, const: np.ndarray, m: int, cfg: dict,
                             float(cd.get("S_ps", 0.0)))
         log.append(f"coherent: CD comp D={cd.get('D_ps')} ps/nm/km over "
                    f"{cd.get('length_km')} km")
-    # 3. equalize / downsample to symbol rate
+    # 3. equalize / downsample to symbol rate. Photocurrents arrive in amps,
+    # so normalise to the constellation's power first: the adaptive step
+    # sizes and the decision distances below assume unit-scale symbols.
+    c_pow = np.mean(np.abs(const) ** 2)
+    sig = _to_power(sig, c_pow)
     eq = str(cfg.get("eq", "none"))
     ntaps = int(cfg.get("eq_taps", 15))
     mu = float(cfg.get("eq_mu", 1e-3))
-    if eq == "cma" and sps >= 1:
-        syms, _w = cma_equalize(sig, ntaps, mu, sps=max(sps, 1))
+    sps = max(sps, 1)
+    if eq in ("cma", "dd-lms"):
+        # the centre spike must start on a symbol sample, not between two
+        centre = _spike_tap(ntaps, sps, _best_phase(sig, sps, const))
+    if eq == "cma":
+        r2 = float(np.mean(np.abs(const) ** 4) / c_pow)
+        syms, _w = cma_equalize(sig, ntaps, mu, sps=sps, R2=r2, centre=centre)
         log.append(f"coherent: CMA EQ {ntaps} taps, mu={mu:g}")
     elif eq == "dd-lms":
-        syms, _w = dd_lms_equalize(sig, const, ntaps, mu, sps=max(sps, 1))
+        syms, _w = dd_lms_equalize(sig, const, ntaps, mu, sps=sps,
+                                   centre=centre)
         log.append(f"coherent: DD-LMS EQ {ntaps} taps, mu={mu:g}")
     else:
         # sample at symbol centres (best of sps phases if pulse-shaped)
         syms = _downsample(sig, sps, const)
+    # blind phase search measures distance to the constellation points, so
+    # the symbol-rate cloud must sit at the constellation's scale
+    syms = _to_power(syms, c_pow)
     # 4. frequency-offset removal
     f_off = 0.0
     if cfg.get("freq_recover"):
@@ -409,21 +431,40 @@ def receive(rx: np.ndarray, const: np.ndarray, m: int, cfg: dict,
     return {"syms": syms, "freq_offset_hz": float(f_off), "eq": eq, "cpr": cpr}
 
 
-def _downsample(sig: np.ndarray, sps: int, const) -> np.ndarray:
-    """Pick the symbol-rate sampling phase with the tightest constellation."""
-    if sps <= 1:
-        return sig
-    best = None
-    best_metric = np.inf
-    for ph in range(sps):
+def _to_power(sig: np.ndarray, power: float) -> np.ndarray:
+    """Scale ``sig`` to mean power ``power`` (no-op on an all-zero input)."""
+    p = np.mean(np.abs(sig) ** 2) if len(sig) else 0.0
+    return sig * np.sqrt(power / p) if p > 0.0 else sig
+
+
+def _best_phase(sig: np.ndarray, sps: int, const) -> int:
+    """The symbol-rate sampling phase with the tightest constellation."""
+    best, best_metric = 0, np.inf
+    for ph in range(sps if sps > 1 else 1):
         s = sig[ph::sps]
         # tightness = mean distance to nearest point after coarse power-norm
         sc = s / (np.sqrt(np.mean(np.abs(s) ** 2)) + 1e-30) \
             * np.sqrt(np.mean(np.abs(const) ** 2))
         d = np.mean(np.min(np.abs(sc[:2000, None] - const[None, :]), axis=1))
         if d < best_metric:
-            best_metric, best = d, s
+            best_metric, best = d, ph
     return best
+
+
+def _downsample(sig: np.ndarray, sps: int, const) -> np.ndarray:
+    """Sample at symbol centres (the best of the sps phases)."""
+    if sps <= 1:
+        return sig
+    return sig[_best_phase(sig, sps, const)::sps]
+
+
+def _spike_tap(ntaps: int, sps: int, phase: int) -> int:
+    """Tap nearest the middle whose centre spike picks samples at ``phase``
+    (mod sps): the equalizers read ``sig[k*sps + ntaps - 1 - tap]``. With
+    the spike between symbols (15 taps at sps = 2 on an even phase) CMA and
+    DD-LMS lock to the transitions and the constellation never opens."""
+    c = ntaps // 2 + (ntaps - 1 - ntaps // 2 - phase) % sps
+    return c if c < ntaps else c - sps
 
 
 def coherent_report(result: dict, meta: dict, cfg: dict,

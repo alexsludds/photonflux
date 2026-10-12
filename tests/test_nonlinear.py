@@ -169,7 +169,8 @@ def test_soa_bidirectional_shared_gain():
 
 
 def test_soa_chirp_phase():
-    # alpha_h rotates the output by -alpha_h*h/2
+    # alpha_h rotates the output by +alpha_h*h/2: in the e^{+j*w*t} convention
+    # more gain means more carriers, a lower index and less phase lag
     v = SOA["Von"] + SOA["Rs"] * 80e-3
     vals = op(cx.va("soa"),
               {"fi_re": 1e-6, "fi_im": 0.0, "bi_re": 0.0, "bi_im": 0.0,
@@ -178,7 +179,7 @@ def test_soa_chirp_phase():
               reads=["fo_re", "fo_im"], terms=[("bo_re", "bo_im")])
     phi = np.arctan2(vals["fo_im"].real, vals["fo_re"].real)
     h = np.log(soa_gain(0.0, 80.0))
-    assert np.angle(np.exp(1j * (phi + 0.5 * 4.0 * h))) == pytest.approx(0.0, abs=1e-3)
+    assert np.angle(np.exp(1j * (phi - 0.5 * 4.0 * h))) == pytest.approx(0.0, abs=1e-3)
 
 
 # ===========================================================================
@@ -229,7 +230,7 @@ def rf_drop_analytic(dnu: np.ndarray) -> np.ndarray:
     amp = np.zeros_like(dnu, dtype=complex)
     for m in (-2, -1, 0, 1, 2):
         delta = 2 * np.pi * (dnu - m * fsr)
-        amp += 1j * np.sqrt(2 * ite1) * np.sqrt(2 * ite2) / (1 / tau - 1j * delta)
+        amp += 1j * np.sqrt(2 * ite1) * np.sqrt(2 * ite2) / (1 / tau + 1j * delta)
     return np.abs(amp) ** 2
 
 

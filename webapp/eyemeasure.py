@@ -82,11 +82,12 @@ def measure(payload: dict) -> dict:
     p = np.interp(tu, t, v)
     baud = 1.0 / ui
 
-    # reference receiver: TDECQ's BT4 at baud/2, TDEC's at 0.75 x baud,
-    # unless the caller sets a factor or "off"
+    # reference receiver: the 802.3 BT4 at baud/2 for TDECQ and TDEC alike
+    # (see photonflux.tdec.TDEC_REF_BW_FACTOR), unless the caller sets a
+    # factor or "off"
     rx_bw = cfg.get("rx_bw", "auto")
     if rx_bw in (None, "", "auto"):
-        rx_bw = 0.5 if nlv == 4 else 0.75
+        rx_bw = 0.5
     common = dict(
         ref_rx_bw_factor=None if rx_bw in (0, "off") else float(rx_bw),
         ref_rx_order=int(cfg.get("rx_order", 4)),

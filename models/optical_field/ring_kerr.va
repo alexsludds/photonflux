@@ -17,8 +17,8 @@
 // chi(3) modal sum with the SPATIAL selection rule j + l - k = m (the
 // e^{j m phi} overlap of travelling ring modes):
 //
-//   dA_m/dt = (j*delta_m - 1/tau) A_m
-//             + j*g_eff * sum_{j+l-k=m} A_j A_l conj(A_k)
+//   dA_m/dt = (-j*delta_m - 1/tau) A_m
+//             - j*g_eff * sum_{j+l-k=m} A_j A_l conj(A_k)
 //             + j*kappa1^2 * s_in
 //   s_thru  = s_in + j*sum_m A_m ,  s_drop = j*sqrt(k2_drop/k2_in)*sum_m A_m
 //
@@ -220,31 +220,32 @@ module ring_kerr(in_re, in_im, thru_re, thru_im, drop_re, drop_im, gnd);
                  + (pi_p2p2*ap2r - pr_p2p2*ap2i);
 
         // five CMT mode pairs, rows scaled by the constant tau; the Kerr
-        // term +j*geff*T_m enters like the detuning (resistive, no ddt)
+        // term -j*geff*T_m enters like the detuning (resistive, no ddt;
+        // engineering convention e^{+j*w*t}, as in the header)
         I(ar_m2, gnd) <+ tau * ddt(V(ar_m2, gnd)) + V(ar_m2, gnd)
-                         + tau * d_m2 * am2i + tg * tim_m2 + tk2 * V(in_im, gnd);
+                         - tau * d_m2 * am2i - tg * tim_m2 + tk2 * V(in_im, gnd);
         I(ai_m2, gnd) <+ tau * ddt(V(ai_m2, gnd)) + V(ai_m2, gnd)
-                         - tau * d_m2 * am2r - tg * tre_m2 - tk2 * V(in_re, gnd);
+                         + tau * d_m2 * am2r + tg * tre_m2 - tk2 * V(in_re, gnd);
 
         I(ar_m1, gnd) <+ tau * ddt(V(ar_m1, gnd)) + V(ar_m1, gnd)
-                         + tau * d_m1 * am1i + tg * tim_m1 + tk2 * V(in_im, gnd);
+                         - tau * d_m1 * am1i - tg * tim_m1 + tk2 * V(in_im, gnd);
         I(ai_m1, gnd) <+ tau * ddt(V(ai_m1, gnd)) + V(ai_m1, gnd)
-                         - tau * d_m1 * am1r - tg * tre_m1 - tk2 * V(in_re, gnd);
+                         + tau * d_m1 * am1r + tg * tre_m1 - tk2 * V(in_re, gnd);
 
         I(ar_z0, gnd) <+ tau * ddt(V(ar_z0, gnd)) + V(ar_z0, gnd)
-                         + tau * d_z0 * az0i + tg * tim_z0 + tk2 * V(in_im, gnd);
+                         - tau * d_z0 * az0i - tg * tim_z0 + tk2 * V(in_im, gnd);
         I(ai_z0, gnd) <+ tau * ddt(V(ai_z0, gnd)) + V(ai_z0, gnd)
-                         - tau * d_z0 * az0r - tg * tre_z0 - tk2 * V(in_re, gnd);
+                         + tau * d_z0 * az0r + tg * tre_z0 - tk2 * V(in_re, gnd);
 
         I(ar_p1, gnd) <+ tau * ddt(V(ar_p1, gnd)) + V(ar_p1, gnd)
-                         + tau * d_p1 * ap1i + tg * tim_p1 + tk2 * V(in_im, gnd);
+                         - tau * d_p1 * ap1i - tg * tim_p1 + tk2 * V(in_im, gnd);
         I(ai_p1, gnd) <+ tau * ddt(V(ai_p1, gnd)) + V(ai_p1, gnd)
-                         - tau * d_p1 * ap1r - tg * tre_p1 - tk2 * V(in_re, gnd);
+                         + tau * d_p1 * ap1r + tg * tre_p1 - tk2 * V(in_re, gnd);
 
         I(ar_p2, gnd) <+ tau * ddt(V(ar_p2, gnd)) + V(ar_p2, gnd)
-                         + tau * d_p2 * ap2i + tg * tim_p2 + tk2 * V(in_im, gnd);
+                         - tau * d_p2 * ap2i - tg * tim_p2 + tk2 * V(in_im, gnd);
         I(ai_p2, gnd) <+ tau * ddt(V(ai_p2, gnd)) + V(ai_p2, gnd)
-                         - tau * d_p2 * ap2r - tg * tre_p2 - tk2 * V(in_re, gnd);
+                         + tau * d_p2 * ap2r + tg * tre_p2 - tk2 * V(in_re, gnd);
 
         sum_re = am2r + am1r + az0r + ap1r + ap2r;
         sum_im = am2i + am1i + az0i + ap1i + ap2i;

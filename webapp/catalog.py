@@ -93,7 +93,8 @@ CATALOG: dict[str, dict] = {
                "p1/p2 (ground p2). All modulation belongs in modulators. For "
                "DWDM, set ref_wavelength_nm to a shared reference so several "
                "lasers at different wavelengths become distinct tones on one "
-               "bus, $f_{off} = c\\,(1/\\lambda_{ref} - 1/\\lambda)$; "
+               "bus, $f_{off} = c\\,(1/\\lambda - 1/\\lambda_{ref})$ (a "
+               "bluer laser sits at a positive offset); "
                "0 = single-carrier (default). linewidth_hz > 0 adds a Wiener "
                "phase process (Lorentzian FWHM $\\Delta\\nu$) for coherent / "
                "self-heterodyne studies; needs a transient with noise seeds.",
@@ -179,7 +180,7 @@ CATALOG: dict[str, dict] = {
         # one symbol -> f2ri adapter + VA phase shifter + ri2f adapter
         "expand": {
             "instances": {
-                "tap": {"component": "_f2ri"},
+                "tap": {"component": "_f2ri_m"},
                 "ps": {"component": "_phaseshift_va", "settings": "ALL"},
                 "join": {"component": "_ri2f"},
             },
@@ -420,7 +421,7 @@ CATALOG: dict[str, dict] = {
         ],
         "expand": {
             "instances": {
-                "tap": {"component": "_f2ri"},
+                "tap": {"component": "_f2ri_m"},
                 "ring": {"component": "_ring_inj_va", "settings": "ALL"},
                 "join": {"component": "_ri2f"},
             },
@@ -505,7 +506,7 @@ CATALOG: dict[str, dict] = {
         # one symbol -> f2ri adapter + VA ring + ri2f adapter
         "expand": {
             "instances": {
-                "tap": {"component": "_f2ri"},
+                "tap": {"component": "_f2ri_m"},
                 "ring": {"component": "_ring_va", "settings": "ALL"},
                 "join": {"component": "_ri2f"},
             },
@@ -522,10 +523,12 @@ CATALOG: dict[str, dict] = {
         },
     },
     # --- SOA + cavity building blocks (directed-wave VA models) ------------
-    # These four carry DIRECTED waves: optical inputs are read at infinite
-    # impedance, outputs are driven. Wire outputs to inputs (never output to
-    # output); terminate dark inputs and unused outputs with the optical
-    # terminator.
+    # These four carry DIRECTED waves: optical inputs are matched receivers
+    # (they absorb the incoming wave, see _field_to_ri_matched), outputs are
+    # driven. Wire outputs to inputs (never output to output), one input per
+    # node: feed two inputs through a splitter, and keep terminators and
+    # photodiodes off an input's node. Terminate unused outputs with the
+    # optical terminator.
     "soa": {
         "label": "SOA (VA)",
         "category": "Lasers",
@@ -556,8 +559,8 @@ CATALOG: dict[str, dict] = {
         ],
         "expand": {
             "instances": {
-                "fi": {"component": "_f2ri"},
-                "bi": {"component": "_f2ri"},
+                "fi": {"component": "_f2ri_m"},
+                "bi": {"component": "_f2ri_m"},
                 "amp": {"component": "_soa_va", "settings": "ALL"},
                 "fo": {"component": "_ri2f"},
                 "bo": {"component": "_ri2f"},
@@ -610,8 +613,8 @@ CATALOG: dict[str, dict] = {
         ],
         "expand": {
             "instances": {
-                "fli": {"component": "_f2ri"},
-                "bri": {"component": "_f2ri"},
+                "fli": {"component": "_f2ri_m"},
+                "bri": {"component": "_f2ri_m"},
                 "amp": {"component": "_twgain_va", "settings": "ALL"},
                 "fro": {"component": "_ri2f"},
                 "blo": {"component": "_ri2f"},
@@ -655,8 +658,8 @@ CATALOG: dict[str, dict] = {
         ],
         "expand": {
             "instances": {
-                "fli": {"component": "_f2ri"},
-                "bri": {"component": "_f2ri"},
+                "fli": {"component": "_f2ri_m"},
+                "bri": {"component": "_f2ri_m"},
                 "seg": {"component": "_twseg_va", "settings": "ALL"},
                 "fro": {"component": "_ri2f"},
                 "blo": {"component": "_ri2f"},
@@ -691,8 +694,8 @@ CATALOG: dict[str, dict] = {
         ],
         "expand": {
             "instances": {
-                "fli": {"component": "_f2ri"},
-                "bri": {"component": "_f2ri"},
+                "fli": {"component": "_f2ri_m"},
+                "bri": {"component": "_f2ri_m"},
                 "pad": {"component": "_phasepad_va", "settings": "ALL"},
                 "fro": {"component": "_ri2f"},
                 "blo": {"component": "_ri2f"},
@@ -746,7 +749,7 @@ CATALOG: dict[str, dict] = {
         ],
         "expand": {
             "instances": {
-                "fi": {"component": "_f2ri"},
+                "fi": {"component": "_f2ri_m"},
                 "amp": {"component": "_edfa_va", "settings": "ALL"},
                 "fo": {"component": "_ri2f"},
             },
@@ -794,8 +797,8 @@ CATALOG: dict[str, dict] = {
         ],
         "expand": {
             "instances": {
-                "l_in": {"component": "_f2ri"},
-                "r_in": {"component": "_f2ri"},
+                "l_in": {"component": "_f2ri_m"},
+                "r_in": {"component": "_f2ri_m"},
                 "mir": {"component": "_mirror_va", "settings": "ALL"},
                 "l_out": {"component": "_ri2f"},
                 "r_out": {"component": "_ri2f"},
@@ -884,7 +887,7 @@ CATALOG: dict[str, dict] = {
         ],
         "expand": {
             "instances": {
-                "tap": {"component": "_f2ri"},
+                "tap": {"component": "_f2ri_m"},
                 "ring": {"component": "_ringcomb_va", "settings": "ALL"},
                 "jt": {"component": "_ri2f"},
                 "jd": {"component": "_ri2f"},
@@ -932,7 +935,7 @@ CATALOG: dict[str, dict] = {
         ],
         "expand": {
             "instances": {
-                "tap": {"component": "_f2ri"},
+                "tap": {"component": "_f2ri_m"},
                 "ring": {"component": "_ringkerr_va", "settings": "ALL"},
                 "jt": {"component": "_ri2f"},
                 "jd": {"component": "_ri2f"},
@@ -982,7 +985,7 @@ CATALOG: dict[str, dict] = {
         ],
         "expand": {
             "instances": {
-                "tap": {"component": "_f2ri"},
+                "tap": {"component": "_f2ri_m"},
                 "ring": {"component": "_ringnl_va", "settings": "ALL"},
                 "join": {"component": "_ri2f"},
             },
@@ -1030,7 +1033,7 @@ CATALOG: dict[str, dict] = {
         ],
         "expand": {
             "instances": {
-                "tap": {"component": "_f2ri"},
+                "tap": {"component": "_f2ri_m"},
                 "ring": {"component": "_ringselfheat_va", "settings": "ALL"},
                 "join": {"component": "_ri2f"},
             },
@@ -1069,7 +1072,7 @@ CATALOG: dict[str, dict] = {
         ],
         "expand": {
             "instances": {
-                "tap": {"component": "_f2ri"},
+                "tap": {"component": "_f2ri_m"},
                 "wg": {"component": "_wgnl_va", "settings": "ALL"},
                 "join": {"component": "_ri2f"},
             },
@@ -1308,9 +1311,9 @@ CATALOG: dict[str, dict] = {
         ],
         "expand": {
             "instances": {
-                "si": {"component": "_f2ri"},
-                "pc": {"component": "_f2ri"},
-                "px": {"component": "_f2ri"},
+                "si": {"component": "_f2ri_m"},
+                "pc": {"component": "_f2ri_m"},
+                "px": {"component": "_f2ri_m"},
                 "amp": {"component": "_raman_va", "settings": "ALL"},
                 "so": {"component": "_ri2f"},
                 "pco": {"component": "_ri2f"},
@@ -1357,8 +1360,8 @@ CATALOG: dict[str, dict] = {
         ],
         "expand": {
             "instances": {
-                "fi": {"component": "_f2ri"},
-                "bi": {"component": "_f2ri"},
+                "fi": {"component": "_f2ri_m"},
+                "bi": {"component": "_f2ri_m"},
                 "amp": {"component": "_sbs_va", "settings": "ALL"},
                 "fo": {"component": "_ri2f"},
                 "bo": {"component": "_ri2f"},
@@ -1619,17 +1622,21 @@ CATALOG: dict[str, dict] = {
                rebuild=True),
             _p("v0", -0.5, "V", "Low level", rebuild=True),
             _p("v1", 0.5, "V", "High level", rebuild=True),
-            _p("tr", 20e-12, "s", "Edge time (20-80%)", rebuild=True),
+            # wavesrc draws each edge as a raised cosine lasting tr (0-100 %);
+            # its 20-80 % time is 0.41 tr
+            _p("tr", 20e-12, "s", "Edge time (0-100%)", rebuild=True),
             _p("seed", 1, "", "PRBS seed", rebuild=True),
             _p("ffe_pre", 0.0, "", "TX FFE pre-cursor (c-1/c0)",
                rebuild=True),
             _p("ffe_post", 0.0, "", "TX FFE post-cursor (c+1/c0)",
                rebuild=True),
             _p("rlm_vpi", 0.0, "V", "RLM V-pi (0 = off)", rebuild=True),
-            _p("rj_ui", 0.05, "UI", "Random jitter (rms)", rebuild=True),
-            _p("sj_ui", 0.05, "UI", "Sinusoidal jitter (peak)", rebuild=True),
+            # a clean source by default, like every other ideal source: the
+            # old 0.05 UI of RJ, SJ and DJ each is ~0.85 UI of TJ at 1e-12
+            _p("rj_ui", 0.0, "UI", "Random jitter (rms)", rebuild=True),
+            _p("sj_ui", 0.0, "UI", "Sinusoidal jitter (peak)", rebuild=True),
             _p("sj_freq", 10e6, "Hz", "SJ frequency", rebuild=True),
-            _p("dj_ui", 0.05, "UI", "Deterministic jitter (pk-pk)",
+            _p("dj_ui", 0.0, "UI", "Deterministic jitter (pk-pk)",
                rebuild=True),
             _p("dcd_ui", 0.0, "UI", "Duty-cycle distortion", rebuild=True),
         ],
@@ -2245,7 +2252,9 @@ def _pulse_mod():
         env = jax.nn.sigmoid(k * (t - t0)) - jax.nn.sigmoid(k * (t - t1))
         trans = jnp.sqrt((p_off + (p_on - p_off) * env) / p_on)
         constraint = signals.pout - trans * signals.pin
-        return {"pin": 0.0, "pout": s.i_out, "i_out": constraint}, {}
+        # matched input, like the directed VA models' receivers: an open one
+        # reflects whatever reciprocal element feeds it
+        return {"pin": signals.pin, "pout": s.i_out, "i_out": constraint}, {}
 
     return PulseModulator
 
@@ -2490,13 +2499,20 @@ def _waveguide_transit(n_st: int):
     transmission at the operating wavelength (phase, loss) times a chain of
     n_st Pade all-pass stages of length * n_group / (n_st c) per direction.
     At DC identical to OpticalWaveguide."""
+    import jax
     import jax.numpy as jnp
     from circulax.components.base_component import Signals, States, component
 
     c0 = 299792458.0
     n = int(n_st)
-    states = tuple([f"f{k}" for k in range(n)] + [f"r{k}" for k in range(n)]
-                   + ["b1", "b2"])
+    fwd = tuple(f"f{k}" for k in range(n))
+    bwd = tuple(f"r{k}" for k in range(n))
+    states = fwd + bwd + ("b1", "b2")
+
+    def stage(z, x):
+        """_transit_stage as a scan step: carry the stage output 2 x - z,
+        emit the residual x - z of (tau/2) x' + x = z."""
+        return 2.0 * x - z, x - z
 
     @component(ports=("p1", "p2"), states=states)
     def WaveguideTransit(signals: Signals, s: States, length_um: float = 100.0,
@@ -2513,15 +2529,21 @@ def _waveguide_transit(n_st: int):
         f: dict = {}
         q: dict = {}
 
-        def chain(prefix):
+        # each direction's stage chain is one lax.scan, not an unrolled loop:
+        # circulax differentiates with a JVP per unknown, so the unrolled
+        # chain made the compiled program grow with the square of the stage
+        # count (49 s for a 3 mm guide's 64 stages)
+        def chain(names):
+            x = jnp.stack([getattr(s, k) for k in names])
+
             def run(z):
-                for k in range(n):
-                    z = _transit_stage(f, q, getattr(s, f"{prefix}{k}"),
-                                       f"{prefix}{k}", z, tau)
-                return z
+                z_out, res = jax.lax.scan(stage, z + 0j, x)
+                f.update(zip(names, res))
+                q.update(zip(names, 0.5 * tau * x))
+                return z_out
             return run
 
-        _transit_ports(f, s, signals, Ts, chain("f"), chain("r"))
+        _transit_ports(f, s, signals, Ts, chain(fwd), chain(bwd))
         return f, q
 
     return WaveguideTransit
@@ -2791,6 +2813,7 @@ def _fiber_nl_field(poles, res, d, gamma: float, dz: float, n_seg: int):
     uses the symmetric split and shares the beta2/beta3/gamma definitions, and
     is what the soliton / SPM / FWM analytics are pinned against.
     """
+    import jax
     import jax.numpy as jnp
     from circulax.components.base_component import Signals, States, component
 
@@ -2799,23 +2822,30 @@ def _fiber_nl_field(poles, res, d, gamma: float, dz: float, n_seg: int):
     d_c = complex(d)
     n = len(poles)
     g_dz = float(gamma * dz)
-    st = tuple(f"x{j}_{i}" for j in range(n_seg) for i in range(n)) + ("i_out",)
+    xs = tuple(f"x{j}_{i}" for j in range(n_seg) for i in range(n))
+    st = xs + ("i_out",)
+
+    def segment(u, x):
+        """One split step: dispersion over dz (output from the segment's
+        states), then the Kerr phase; carries the next segment's input."""
+        v = jnp.sum(c_c * x) + d_c * u
+        return v * jnp.exp(-1j * g_dz * (v * jnp.conj(v)).real), u
 
     @component(ports=("p1", "p2"), states=st)
     def FiberNL(signals: Signals, s: States) -> tuple[dict, dict]:
-        u = signals.p1
-        f = {"p1": u}                                  # matched input tap
-        q: dict = {}
-        for j in range(n_seg):
-            x = jnp.stack([getattr(s, f"x{j}_{i}") for i in range(n)])
-            v = jnp.sum(c_c * x) + d_c * u             # dispersion over dz
-            for i in range(n):
-                f[f"x{j}_{i}"] = -(p_c[i] * x[i] + u)
-                q[f"x{j}_{i}"] = x[i]
-            u = v * jnp.exp(-1j * g_dz * (v * jnp.conj(v)).real)   # Kerr over dz
-        f["p2"] = s.i_out
-        f["i_out"] = signals.p2 - u
-        return f, q
+        # The segment chain runs as one lax.scan: circulax differentiates a
+        # component with a JVP per unknown, and an unrolled Python loop over
+        # n_seg x n_poles states made that program (and its compile time and
+        # memory) grow with the square of the segment count -- 40 s and 2 GB
+        # for the default 20 segments, out of memory at 60.
+        x = jnp.stack([getattr(s, k) for k in xs]).reshape(n_seg, n)
+        # (a complex carry: the dry run hands the ports in as real floats)
+        u_out, u_in = jax.lax.scan(segment, signals.p1 + 0j, x)
+        fx = (-(p_c[None, :] * x + u_in[:, None])).reshape(-1)
+        f = {"p1": signals.p1,                        # matched input tap
+             "p2": s.i_out, "i_out": signals.p2 - u_out}
+        f.update(zip(xs, fx))
+        return f, {k: getattr(s, k) for k in xs}
 
     return FiberNL
 
@@ -2904,8 +2934,8 @@ def _cw_laser_noisy(bank, dt_n):
         # select the never-zero reference before dividing
         ref_safe = jnp.where(ref_wavelength_nm > 0.0,
                              ref_wavelength_nm, wavelength_nm)
-        w_off = 2.0 * jnp.pi * c0 * (1.0 / (ref_safe * 1e-9)
-                                     - 1.0 / (wavelength_nm * 1e-9))
+        w_off = 2.0 * jnp.pi * c0 * (1.0 / (wavelength_nm * 1e-9)
+                                     - 1.0 / (ref_safe * 1e-9))
         field = jnp.sqrt(power * rel) * jnp.exp(
             1j * (w_off * t + phase + phi_n))
         constraint = (signals.p1 - signals.p2) - field
@@ -2941,22 +2971,23 @@ def _photodiode_noisy(bank, dt_n):
         iph = R * power + Idk
         tau = jnp.where(f3db > 0.0,
                         0.6436 / (2.0 * jnp.pi * jnp.maximum(f3db, 1.0)), 0.0)
-        f_x1 = s.x1 - iph
+        # shot noise on the instantaneous photocurrent: S_i = 2 q I  ->
+        # scale sqrt(2 q I/(2 dt_n)) = sqrt(q I/dt_n). It is a fluctuation of
+        # that current, so it goes in ahead of the transit-time poles, which
+        # filter it like the signal. The amplitude is held out of the
+        # Jacobian (stop_gradient): d(sqrt I)/dI diverges at I -> 0 and
+        # knocks Newton over, while physically the noise amplitude is
+        # quasi-static within a step.
+        i_qs = jax.lax.stop_gradient(jnp.maximum(iph.real, 0.0))
+        i_shot = jnp.sqrt(q_e * i_qs / dt_n) * nval(t, seed_idx)
+        f_x1 = s.x1 - (iph + i_shot)
         f_x2 = s.x2 - s.x1
         i_bw = s.x2.real
-        # shot noise on the instantaneous current: S_i = 2 q I  ->  scale
-        # sqrt(2 q I/(2 dt_n)) = sqrt(q I/dt_n). The amplitude is held out
-        # of the Jacobian (stop_gradient): d(sqrt I)/dI diverges at I -> 0
-        # and knocks Newton over, while physically the noise amplitude is
-        # quasi-static within a step.
-        i_qs = jax.lax.stop_gradient(jnp.maximum(i_bw, 0.0))
-        i_shot = jnp.sqrt(q_e * i_qs / dt_n) * nval(t, seed_idx)
-        i_tot = i_bw + i_shot
         i_out = jnp.where(
             isat > 0.0,
             jnp.maximum(isat, 1e-30) * jnp.tanh(
-                i_tot / jnp.maximum(isat, 1e-30)),
-            i_tot)
+                i_bw / jnp.maximum(isat, 1e-30)),
+            i_bw)
         f = {"po_p": i_opt, "po_n": -i_opt, "cat": i_out, "an": -i_out,
              "x1": f_x1, "x2": f_x2}
         vj = signals.cat - signals.an
@@ -2999,26 +3030,26 @@ def _apd_noisy(bank, dt_n):
         i_prim = R * power + Idk_bulk
         i_mult = Mc * i_prim + Idk_surf
         tau = _apd_tau(f3db, gbp, Mc)
-        f_x1 = s.x1 - i_mult
-        f_x2 = s.x2 - s.x1
-        i_bw = s.x2.real
         # McIntyre excess noise: multiplication amplifies the shot noise
         # super-linearly. The multiplied primary shot-noise PSD is
         # S_i = 2 q I_prim M^2 F(M), F(M) = k M + (2 - 1/M)(1 - k); the surface
         # dark current is not multiplied and adds plain 2 q Idk_surf. Scale to
         # sqrt(S_i/(2 dt_n)) per unit-variance sample -> sqrt(q S/(2q) / dt_n).
-        # The amplitude is held out of the Jacobian (stop_gradient) exactly as
-        # the PIN photodiode: d(sqrt I)/dI diverges at I -> 0 and stalls Newton.
+        # Like the PIN photodiode it enters ahead of the bandwidth poles (the
+        # avalanche build-up filters the noise it multiplies), with the
+        # amplitude held out of the Jacobian: d(sqrt I)/dI diverges at I -> 0.
         F = k_ion * Mc + (2.0 - 1.0 / Mc) * (1.0 - k_ion)
         i_prim_qs = jax.lax.stop_gradient(jnp.maximum(i_prim, 0.0))
         s_over_2q = i_prim_qs * Mc * Mc * F + jnp.maximum(Idk_surf, 0.0)
         i_shot = jnp.sqrt(q_e * s_over_2q / dt_n) * nval(t, seed_idx)
-        i_tot = i_bw + i_shot
+        f_x1 = s.x1 - (i_mult + i_shot)
+        f_x2 = s.x2 - s.x1
+        i_bw = s.x2.real
         i_out = jnp.where(
             isat > 0.0,
             jnp.maximum(isat, 1e-30) * jnp.tanh(
-                i_tot / jnp.maximum(isat, 1e-30)),
-            i_tot)
+                i_bw / jnp.maximum(isat, 1e-30)),
+            i_bw)
         f = {"po_p": i_opt, "po_n": -i_opt, "cat": i_out, "an": -i_out,
              "x1": f_x1, "x2": f_x2}
         vj = signals.cat - signals.an
@@ -3080,7 +3111,7 @@ def _ase_src_plain():
         t: float,
         s_ase_dbm_hz: float = -135.0,
     ) -> tuple[dict, dict]:
-        return {"pin": 0.0, "pout": s.i_out,
+        return {"pin": signals.pin, "pout": s.i_out,     # matched input
                 "i_out": signals.pout - signals.pin}, {}
 
     return ASESrcOff
@@ -3113,7 +3144,7 @@ def _ase_src_noisy(bank, dt_n):
         nr = jnp.interp(t, tn, jnp.take(bank_c, 2 * k, axis=0))
         ni = jnp.interp(t, tn, jnp.take(bank_c, 2 * k + 1, axis=0))
         nval = sigma * (nr + 1j * ni)
-        return {"pin": 0.0, "pout": s.i_out,
+        return {"pin": signals.pin, "pout": s.i_out,     # matched input
                 "i_out": signals.pout - (signals.pin + nval)}, {}
 
     return ASESrc
@@ -3250,102 +3281,124 @@ for _entry in CATALOG.values():
 del _entry
 
 
+# Built-in models are parameter-free, so each component class is built once
+# per process (Verilog-A entries rely on cx.va's content-hash memo instead,
+# see _builtin_factories). Rebuilding them on every models-cache miss (each
+# new waveform, SKY130 geometry, noise bank or LTI fit) cost about a second
+# per call, and the first call lowered all of them.
+_BUILTIN_MODELS: dict[str, Any] = {}
+
+
+def _builtin_factories() -> dict[str, Any]:
+    """name -> zero-argument constructor of every built-in model."""
+    from circulax.components import electronic as el
+    from circulax.components import photonic as ph
+
+    from photonflux import cx
+
+    def va(stem):
+        # not held in _BUILTIN_MODELS: cx.va memoises by the content hash of
+        # the model source (~2 ms a hit), so an edited .va is picked up on
+        # the next models-cache miss without restarting the server
+        make = lambda: cx.va(stem)  # noqa: E731
+        make.uncached = True
+        return make
+
+    def const(model):
+        return lambda: model
+
+    return {
+        "ground": lambda: (lambda: 0),
+        "cw_laser": cx.cw_laser,
+        "mzm": cx.mzm,
+        "pulse_mod": _pulse_mod,
+        "waveguide": const(ph.OpticalWaveguide),
+        "splitter": const(ph.Splitter),
+        "dir_coupler": const(ph.DirectionalCoupler),
+        "grating": _grating_r,
+        "opt_mirror": _opt_mirror,
+        "pn_phase_shifter": _pn_phase_shifter,
+        "opt_term": cx.terminator,
+        "opt_atten": cx.attenuator,
+        "photodiode": _photodiode,
+        "apd": _apd,
+        "iq_modulator": _iq_modulator,
+        "coherent_rx": _coherent_rx,
+        "_f2ri_m": _field_to_ri_matched,
+        "_ri2f": cx.ri_to_field,
+        "_ring_va": va("ring_mod"),
+        "_phaseshift_va": va("phase_shifter"),
+        "_p2f": _power_to_field,
+        "_f2p": _field_to_power,
+        "_dml_va": va("laser_dml"),
+        "_rate_va": va("laser_rate"),
+        "_tw_va": va("mzm_tw"),
+        "_ring_inj_va": va("ring_mod_inj"),
+        "_seg_va": va("mzm_seg"),
+        "_soa_va": va("soa"),
+        "_edfa_va": va("edfa"),
+        "_raman_va": va("raman_amp"),
+        "_sbs_va": va("sbs_fiber"),
+        "_mirror_va": va("mirror"),
+        "_circ_va": va("circulator"),
+        "_ringcomb_va": va("ring_filter"),
+        "_ringnl_va": va("ring_nl"),
+        "_ringkerr_va": va("ring_kerr"),
+        "_ringselfheat_va": va("ring_selfheat"),
+        "_wgnl_va": va("waveguide_nl"),
+        "_twseg_va": va("tw_seg"),
+        "_twgain_va": va("tw_gain_seg"),
+        "_phasepad_va": va("phase_pad"),
+        "vdc": const(el.VoltageSource),
+        "vpulse": const(el.PulseVoltageSource),
+        "vsin": const(el.VoltageSourceAC),
+        "idc": const(el.CurrentSource),
+        "resistor": const(el.Resistor),
+        "capacitor": const(el.Capacitor),
+        "inductor": const(el.Inductor),
+        "diode": const(el.Diode),
+        "nmos": const(el.NMOS),
+        "pmos": const(el.PMOS),
+        "opamp": const(el.IdealOpAmp),
+        "tia": _tia,
+        "ctle": _ctle,
+        "rx_ffe": _rx_eq_buffer,
+        "rx_dfe": _rx_eq_buffer,
+        "opt_f2p": _field_to_power,
+        "opt_p2f": _power_to_field,
+        "ase_src": _ase_src_plain,
+    }
+
+
 def build_models(sky130_geoms: dict[str, tuple[str, float, float, str]] | None = None,
                  waveforms: dict[str, tuple] | None = None,
                  noisy: dict[str, tuple] | None = None,
-                 ltis: dict[str, dict] | None = None) -> dict:
+                 ltis: dict[str, dict] | None = None,
+                 needed=None) -> dict:
     """models_map for compile_circuit.
 
     ``sky130_geoms`` maps a model key (e.g. ``"sky130_nfet:1x0.15@tt"``) to
     (device, w_um, l_um, corner) — each distinct FET flavor + geometry +
     process corner is its own OSDI descriptor. ``waveforms`` maps a model key (``"prbs:<hash>"``) to its
-    (t, v) breakpoint arrays for the pattern/PWL sources.
+    (t, v) breakpoint arrays for the pattern/PWL sources. ``needed`` (a set
+    of component names) limits the built-in models to the ones a netlist
+    uses; None builds them all (the image warmup).
     """
-    from circulax.components.electronic import (
-        NMOS,
-        PMOS,
-        Capacitor,
-        CurrentSource,
-        Diode,
-        IdealOpAmp,
-        Inductor,
-        PulseVoltageSource,
-        Resistor,
-        VoltageSource,
-        VoltageSourceAC,
-    )
-    from circulax.components.photonic import (
-        DirectionalCoupler,
-        OpticalWaveguide,
-        Splitter,
-    )
-
     from photonflux import cx
 
-    models: dict[str, Any] = {
-        "ground": lambda: 0,
-        "cw_laser": cx.cw_laser(),
-        "mzm": cx.mzm(),
-        "pulse_mod": _pulse_mod(),
-        "waveguide": OpticalWaveguide,
-        "splitter": Splitter,
-        "dir_coupler": DirectionalCoupler,
-        "grating": _grating_r(),
-        "opt_mirror": _opt_mirror(),
-        "pn_phase_shifter": _pn_phase_shifter(),
-        "opt_term": cx.terminator(),
-        "opt_atten": cx.attenuator(),
-        "photodiode": _photodiode(),
-        "apd": _apd(),
-        "iq_modulator": _iq_modulator(),
-        "coherent_rx": _coherent_rx(),
-        "_f2ri": cx.field_to_ri(),
-        "_f2ri_m": _field_to_ri_matched(),
-        "_ri2f": cx.ri_to_field(),
-        "_ring_va": cx.va("ring_mod"),
-        "_phaseshift_va": cx.va("phase_shifter"),
-        "_p2f": _power_to_field(),
-        "_f2p": _field_to_power(),
-        "_dml_va": cx.va("laser_dml"),
-        "_rate_va": cx.va("laser_rate"),
-        "_tw_va": cx.va("mzm_tw"),
-        "_ring_inj_va": cx.va("ring_mod_inj"),
-        "_seg_va": cx.va("mzm_seg"),
-        "_soa_va": cx.va("soa"),
-        "_edfa_va": cx.va("edfa"),
-        "_raman_va": cx.va("raman_amp"),
-        "_sbs_va": cx.va("sbs_fiber"),
-        "_mirror_va": cx.va("mirror"),
-        "_circ_va": cx.va("circulator"),
-        "_ringcomb_va": cx.va("ring_filter"),
-        "_ringnl_va": cx.va("ring_nl"),
-        "_ringkerr_va": cx.va("ring_kerr"),
-        "_ringselfheat_va": cx.va("ring_selfheat"),
-        "_wgnl_va": cx.va("waveguide_nl"),
-        "_twseg_va": cx.va("tw_seg"),
-        "_twgain_va": cx.va("tw_gain_seg"),
-        "_phasepad_va": cx.va("phase_pad"),
-        "vdc": VoltageSource,
-        "vpulse": PulseVoltageSource,
-        "vsin": VoltageSourceAC,
-        "idc": CurrentSource,
-        "resistor": Resistor,
-        "capacitor": Capacitor,
-        "inductor": Inductor,
-        "diode": Diode,
-        "nmos": NMOS,
-        "pmos": PMOS,
-        "opamp": IdealOpAmp,
-        "tia": _tia(),
-        "ctle": _ctle(),
-        "rx_ffe": _rx_eq_buffer(),
-        "rx_dfe": _rx_eq_buffer(),
-        "opt_f2p": _field_to_power(),
-        "opt_p2f": _power_to_field(),
-        "ase_src": _ase_src_plain(),
-    }
+    factories = _builtin_factories()
+    models: dict[str, Any] = {}
+    for name, make in factories.items():
+        if needed is not None and name not in needed:
+            continue
+        if getattr(make, "uncached", False):
+            models[name] = make()
+            continue
+        if name not in _BUILTIN_MODELS:
+            _BUILTIN_MODELS[name] = make()
+        models[name] = _BUILTIN_MODELS[name]
     for key, entry in CATALOG.items():
-        if entry.get("user_va"):
+        if entry.get("user_va") and (needed is None or key in needed):
             models[key] = cx.va(USER_VA_DIR / f"{entry['user_va']}.va")
     for key, (device, w_um, l_um, corner) in (sky130_geoms or {}).items():
         models[key] = cx.sky130_fet(device, w=w_um, l=l_um, corner=corner)

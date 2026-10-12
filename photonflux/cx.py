@@ -147,15 +147,18 @@ def cw_laser():
     tone in that frame,
 
         E(t) = sqrt(power) * exp(j*(2*pi*f_off*t + phase)),
-        f_off = c*(1/ref_wavelength - 1/wavelength),
+        f_off = c*(1/wavelength - 1/ref_wavelength),
 
     so lasers at different wavelengths appear as distinct tones that coexist
     and beat on the bus. ``ref_wavelength_nm = 0`` (default) keeps the legacy
-    single-carrier behaviour (constant field, no offset). The sign matches the
-    ring/waveguide detuning convention ``delta = 2*pi*c*(1/lambda_nm -
-    1/lambda_res)``: a wavelength-selective device set to ``lambda_nm =
+    single-carrier behaviour (constant field, no offset).
+
+    Sign convention: the engineering carrier ``e^{+j*w0*t}`` that circulax's
+    waveguides (``e^{-j*phi}``, delay ``e^{-j*w*tau}``) and the fibre models
+    use, so a laser blue of the reference (higher optical frequency) sits at
+    ``f_off > 0``. Every optical model follows it: a ring set to ``lambda_nm =
     ref_wavelength_nm`` with its resonance at ``wavelength`` sees this tone on
-    resonance, so each ring picks out its own carrier in a single solve.
+    resonance, and a fibre delays and disperses it with the right sign.
     """
     if "cw_laser" in _COMPONENT_CACHE:
         return _COMPONENT_CACHE["cw_laser"]
@@ -180,8 +183,8 @@ def cw_laser():
         # Python floats don't hit 1/0.
         ref_safe = jnp.where(ref_wavelength_nm > 0.0,
                              ref_wavelength_nm, wavelength_nm)
-        w_off = 2.0 * jnp.pi * c0 * (1.0 / (ref_safe * 1e-9)
-                                     - 1.0 / (wavelength_nm * 1e-9))
+        w_off = 2.0 * jnp.pi * c0 * (1.0 / (wavelength_nm * 1e-9)
+                                     - 1.0 / (ref_safe * 1e-9))
         field = jnp.sqrt(power) * jnp.exp(1j * (w_off * t + phase))
         constraint = (signals.p1 - signals.p2) - field
         return {"p1": s.i_src, "p2": -s.i_src, "i_src": constraint}, {}
@@ -249,6 +252,8 @@ def attenuator():
     with a = 10^(-atten_db/20): optical power drops by ``atten_db`` in either
     direction.
     """
+    if "attenuator" in _COMPONENT_CACHE:
+        return _COMPONENT_CACHE["attenuator"]
     import jax.numpy as jnp
     from circulax.components.base_component import Signals, States, component
     from circulax.s_transforms import s_to_y
@@ -262,6 +267,7 @@ def attenuator():
         iv = s_to_y(S) @ v
         return {"p1": iv[0], "p2": iv[1]}, {}
 
+    _COMPONENT_CACHE["attenuator"] = OptAtten
     return OptAtten
 
 
@@ -273,6 +279,8 @@ def terminator():
     Y = (1-r)/(1+r) (r = 0 is the matched absorber, i = E). Terminate every
     otherwise-open optical port -- an open port reflects like an open line.
     """
+    if "terminator" in _COMPONENT_CACHE:
+        return _COMPONENT_CACHE["terminator"]
     from circulax.components.base_component import Signals, States, component
     import jax.numpy as jnp
 
@@ -282,6 +290,7 @@ def terminator():
         r = 10.0 ** (-jnp.abs(return_loss_db) / 20.0)
         return {"p1": (1.0 - r) / (1.0 + r) * signals.p1}, {}
 
+    _COMPONENT_CACHE["terminator"] = OptTerm
     return OptTerm
 
 
@@ -344,13 +353,15 @@ def ri_to_field():
 # ``models/optical_field/ring_mod.va`` is a monolithic coupled-mode-theory (CMT)
 # ring: one block that solves
 #
-#     dA/dt = (-1/tau + j*delta(V)) A + j*kappa^2 s_in ,   s_out = s_in + j*A
+#     dA/dt = (-1/tau - j*delta(V)) A + j*kappa^2 s_in ,   s_out = s_in + j*A
 #
-# with ``1/tau = 1/tau_i + 1/tau_e``. The same physics factors into three
-# coherent-field building blocks that share one internal complex node — the
-# circulating cavity field ``A`` — whose Kirchhoff sum on that node reproduces
-# the ODE exactly (verified to machine precision against ring_mod.va in
-# ``tests/test_ring_decomposition.py`` and ``examples/eo_comb.py``):
+# with ``1/tau = 1/tau_i + 1/tau_e`` and ``delta = w_laser - w_res`` (the
+# engineering ``e^{+j*w*t}`` convention, see :func:`cw_laser`). The same
+# physics factors into three coherent-field building blocks that share one
+# internal complex node — the circulating cavity field ``A`` — whose
+# Kirchhoff sum on that node reproduces the ODE exactly (verified to machine
+# precision against ring_mod.va in ``tests/test_ring_decomposition.py`` and
+# ``examples/eo_comb.py``):
 #
 #   * :func:`directional_coupler` — the bus<->ring point coupler: couples the
 #     input into the cavity mode (external rate 1/tau_e) and taps the through
@@ -425,8 +436,9 @@ def ring_phase_shifter():
 
         delta(V) = 2*pi*c*(1/lambda_nm - 1/lambda_res(V))
 
-    and contributes ``-j*delta(V)*a`` to the shared cavity node ``a`` — the
-    same electro-optic map as ring_mod.va. Ports: ``a`` (shared cavity field),
+    and contributes ``+j*delta(V)*a`` to the shared cavity node ``a`` (so
+    ``da/dt`` gains ``-j*delta*a``) — the same electro-optic map as
+    ring_mod.va. Ports: ``a`` (shared cavity field),
     ``vp``/``vn`` (differential electrode). The electrode presents junction
     capacitance ``cj`` plus leakage ``rleak`` — the load a real driver sees.
 
@@ -457,7 +469,7 @@ def ring_phase_shifter():
         # f) — matches ring_mod.va's electrical port. Harmless under an ideal
         # drive (the source fixes V), so it never perturbs the optical output.
         gleak = (signals.vp - signals.vn) / rleak
-        f = {"a": -1j * delta * signals.a, "vp": gleak, "vn": -gleak}
+        f = {"a": 1j * delta * signals.a, "vp": gleak, "vn": -gleak}
         q_el = cj * (signals.vp - signals.vn)
         return f, {"vp": q_el, "vn": -q_el}
 
@@ -1112,6 +1124,8 @@ def _lower_cached(
         CACHE_DIR.mkdir(parents=True, exist_ok=True)
         cache.write_text(src)
 
+    if cache in _LOADED:
+        return _LOADED[cache]
     ns: dict[str, Any] = {}
     # applied at load time (not baked into the cache) so cached models pick
     # it up without being re-lowered
@@ -1119,7 +1133,15 @@ def _lower_cached(
     exec(code, ns)  # noqa: S102 — our own generated, cached source
     if class_name not in ns:
         raise RuntimeError(f"emitted module {cache} does not define {class_name}")
+    _LOADED[cache] = ns
     return ns
+
+
+# Exec'd model modules by cache file: the file name carries the content hash
+# of every lowering input, so a repeat cx.va() / sky130_fet(backend="jax")
+# returns the same class instead of re-parsing, rewriting and re-exec'ing
+# the emitted source (~50 ms per model, and a new class each time).
+_LOADED: dict[Path, dict[str, Any]] = {}
 
 
 # ---------------------------------------------------------------------------

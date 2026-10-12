@@ -43,7 +43,7 @@ import numpy as np
 
 __all__ = ["Measurement", "reference_receiver", "tdecq_reference",
            "resolve_reference", "measure",
-           "measure_pam4", "oma_tdec_dbm",
+           "measure_pam4", "oma_tdec_dbm", "TDEC_REF_BW_FACTOR",
            "oma_tdec_floor_dbm", "q_inv", "MIN_SEGMENT_COUNT", "FLOOR_TOL_DB"]
 
 # How close to the analytic floor counts as saturated. The histogram-derived
@@ -60,6 +60,13 @@ MIN_SEGMENT_COUNT = 8
 # Measured: ~150 UI of this link fails inside stateye's histogram reductions;
 # ~200 UI is fine. 192 leaves margin without demanding a long transient.
 MIN_RECORD_UI = 192
+
+# NRZ TDEC reference receiver: IEEE 802.3 Clause 95.8.5 scores TDEC through a
+# 4th-order Bessel-Thomson of 12.6 GHz at 25.78125 GBd (0.49 x baud), the
+# TDECQ receivers of the later clauses sit at exactly baud/2, and 0.75 x baud
+# is the eye-mask receiver. A wider receiver filters less ISI, so it
+# understates TDEC.
+TDEC_REF_BW_FACTOR = 0.5
 
 # Lane rates at or above this are 200G/lane PAM-4 (106.25 / 113.4375 GBd) and
 # take P802.3dj's TDECQ; below it, 100G/lane (53.125 GBd) and 802.3cd/cu/df.
@@ -167,7 +174,7 @@ def reference_receiver(
     dt_sec: float,
     baud: float,
     *,
-    bw_factor: float | None = 0.75,
+    bw_factor: float | None = TDEC_REF_BW_FACTOR,
     order: int = 4,
     bw_hz: float | None = None,
 ):
@@ -176,9 +183,10 @@ def reference_receiver(
     TDEC is defined *through* a reference receiver; without one the metric
     rewards ringing and overshoot that a compliant receiver would filter away.
 
-    bw_factor : -3 dB bandwidth as a multiple of the baud rate. 0.75 is the
-        clause-95-family convention (39.84 GHz at 53.125 GBd). None bypasses
-        the filter entirely.
+    bw_factor : -3 dB bandwidth as a multiple of the baud rate. 0.5 (the
+        default, TDEC_REF_BW_FACTOR) follows the 802.3 TDEC/TDECQ receivers
+        (Clause 95: 12.6 GHz at 25.78 GBd); 0.75 is the eye-mask receiver.
+        None bypasses the filter entirely.
     order : Bessel order; 4 in the standards.
     bw_hz : absolute -3 dB bandwidth [Hz]; overrides `bw_factor` when given.
 
@@ -319,7 +327,7 @@ def measure(
     ber: float = 1e-12,
     m1: float = 0.0,
     m2: float = 0.0,
-    ref_rx_bw_factor: float | None = 0.75,
+    ref_rx_bw_factor: float | None = TDEC_REF_BW_FACTOR,
     ref_rx_order: int = 4,
     ref_rx_bw_hz: float | None = None,
     settle_ui: int = 8,

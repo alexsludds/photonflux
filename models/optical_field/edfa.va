@@ -31,17 +31,17 @@
 //
 // ---- wavelength-dependent gain: a detuned one-pole output filter -----------
 //
-//   tau_bw*dE_out/dt = -(1 - j*tau_bw*w_pk)*E_out + sqrt(G)*e^{-j*alpha_h*h/2}*E_in
+//   tau_bw*dE_out/dt = -(1 - j*tau_bw*w_pk)*E_out + sqrt(G)*e^{+j*alpha_h*h/2}*E_in
 //
 //   The pole sits at s = -1/tau_bw + j*w_pk, so the power gain seen by a tone
 //   at baseband frequency w is a Lorentzian centred on the gain peak,
 //
 //     |H(w)|^2 = G / (1 + (tau_bw*(w - w_pk))^2),
 //
-//   with w_pk = 2*pi*c*(1/lambda_ref - 1/lambda_peak) the baseband offset of
+//   with w_pk = 2*pi*c*(1/lambda_peak - 1/lambda_ref) the baseband offset of
 //   the gain peak and tau_bw = 1/(pi*df_fwhm) fixing the -3 dB gain bandwidth
 //   (df_fwhm from gain_bw_nm). A carrier at lambda sits at w = 2*pi*c*(1/
-//   lambda_ref - 1/lambda) in the shared DWDM frame (lambda_ref, matching the
+//   lambda - 1/lambda_ref) in the shared DWDM frame (lambda_ref, matching the
 //   cw_laser WDM reference), so it peaks exactly at lambda = lambda_peak and
 //   rolls off away from it — a real per-channel gain tilt, not a scalar.
 //   Set gain_bw_nm wide (e.g. 40 nm) for an essentially flat amplifier.
@@ -98,16 +98,18 @@ module edfa(fi_re, fi_im, fo_re, fo_im, gnd);
         // ---- spectral shape: detuned one-pole output filter ------------
         f_ref   = `P_C0 / (lambda_ref_nm  * 1e-9);
         f_peak  = `P_C0 / (lambda_peak_nm * 1e-9);
-        w_pk    = 2.0 * `M_PI * (f_ref - f_peak);           // baseband gain-peak offset
+        // baseband gain-peak offset, engineering convention e^{+j*w*t}: a tone
+        // at optical f_peak sits at +2*pi*(f_peak - f_ref) in the envelope
+        w_pk    = 2.0 * `M_PI * (f_peak - f_ref);
         // full -3 dB gain bandwidth in Hz, then tau_bw = 1/(pi*df_fwhm)
         df_fwhm = `P_C0 / (lambda_peak_nm * 1e-9) / (lambda_peak_nm * 1e-9)
                   * (gain_bw_nm * 1e-9);
         tau_bw  = 1.0 / (`M_PI * df_fwhm);
         beta    = tau_bw * w_pk;
 
-        // ---- field transfer: sqrt(G)*e^{-j*alpha_h*h/2}, detuned pole
+        // ---- field transfer: sqrt(G)*e^{+j*alpha_h*h/2}, detuned pole
         sg  = sqrt(g);
-        phi = -0.5 * alpha_h * hc;
+        phi = 0.5 * alpha_h * hc;
         gr  = sg * cos(phi);
         gi  = sg * sin(phi);
         eseed = sqrt(p_ase);

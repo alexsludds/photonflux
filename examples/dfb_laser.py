@@ -183,7 +183,7 @@ def main() -> int:
     m = t > T_STOP - 2.5e-9        # settled window
     f, s = spectrum(e[m], DT_SAVE)
     k = np.argmax(s)
-    nu_off = -f[k] / 1e9           # optical offset from Bragg [GHz]
+    nu_off = f[k] / 1e9            # optical offset from Bragg [GHz] (e^{+j*w*t})
     guard = np.abs(f - f[k]) > 20e9
     smsr = 10 * np.log10(s[k] / s[guard].max())
     p_settle = p[m].mean()
@@ -209,7 +209,7 @@ def main() -> int:
     ax.legend(fontsize=8); ax.grid(alpha=0.3)
 
     ax = axes[1]
-    ax.plot(-f / 1e9, 10 * np.log10(s / s.max() + 1e-18), c="tab:blue", lw=0.9)
+    ax.plot(f / 1e9, 10 * np.log10(s / s.max() + 1e-18), c="tab:blue", lw=0.9)
     ax.axvline(0.0, c="gray", lw=0.8, ls="--", label="Bragg")
     ax.axhline(-smsr, c="tab:red", lw=0.8, ls=":",
                label=f"SMSR = {smsr:.0f} dB")

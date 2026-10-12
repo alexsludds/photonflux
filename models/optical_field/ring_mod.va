@@ -23,7 +23,9 @@
 // coupled-mode-theory ODE (Little/Manolatou) of the old monolithic model
 // exactly (machine precision, tests/test_ring_decomposition.py):
 //
-//     da/dt = (j*delta - 1/tau) a + j*kappa*s_in ,   s_out = s_in + j*kappa*a
+//     da/dt = (-j*delta - 1/tau) a + j*kappa*s_in ,   s_out = s_in + j*kappa*a
+//
+// (engineering convention e^{+j*w*t}, delta = w_laser - w_res)
 //
 // with the decay rates derived from the device below. This mirrors the
 // Python-level decomposition (cx.ring_modulator, ALE-52); the sub-components

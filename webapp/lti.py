@@ -218,11 +218,12 @@ def build(kind: str, settings: dict, log: list) -> tuple[str, dict]:
         f_carrier = _C0 / carrier
         # |df/dlam| = c/lam^2 -> bandwidth (FWHM) in Hz, and the passband's
         # offset from the carrier in baseband. Coherent envelopes use the
-        # physics e^{-i w t} convention, so an optical tone at f_center sits at
-        # baseband +(f_carrier - f_center); centering the passband there makes
-        # center_nm select the true wavelength (matches the WDM laser offset).
+        # engineering e^{+j w t} convention, so an optical tone at f_center
+        # sits at baseband +(f_center - f_carrier); centering the passband
+        # there makes center_nm select the true wavelength (matches the WDM
+        # laser offset).
         df_fwhm = _C0 / center ** 2 * (bw_nm * 1e-9)
-        w_off = 2.0 * np.pi * (f_carrier - f_center)
+        w_off = 2.0 * np.pi * (f_center - f_carrier)
         wc = 2.0 * np.pi * (df_fwhm / 2.0)             # -3 dB half-width
         # Butterworth low-pass prototype poles (radius wc, order n)
         k = np.arange(order)

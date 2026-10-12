@@ -8,7 +8,8 @@ Pinned here:
     operating point; the design for Apply resolves ``*`` to instances;
   * Optimize: Nelder-Mead over a flow variable re-running an inner step, the
     optimum carrying into later steps; ``only`` re-runs one step from prior
-    variables;
+    variables; Bayesian optimization (BoTorch) splitting a ``min(...)``
+    objective into modelled terms, within budget, past undefined outcomes;
   * stateye figures of merit on a synthetic PAM4 eye, and example 48's
     106.25 GBd design point (the flow's optimum) meeting its spec.
 """
@@ -95,6 +96,59 @@ def test_check_and_penalty():
         flow.penalty(["a == 1"], {"a": 1.0})
 
 
+def test_objective_terms_and_slacks():
+    margins = "min((rlm - 0.95)/0.05, (1.5 - tdecq_db)/1.5)"
+    assert flow.objective_terms(margins) == (
+        ["(rlm - 0.95) / 0.05", "(1.5 - tdecq_db) / 1.5"], "min")
+    assert flow.objective_terms("max(a, b, c)") == (["a", "b", "c"], "max")
+    # anything else is one term: a bare output, a nested or 1-argument min
+    for whole in ("rel_oma_db", "min(a, b) + 1", "min(a)", "2*max(a, b)"):
+        assert flow.objective_terms(whole) == ([whole], None)
+    # relative margins, >= 0 when met; NaN when undefined
+    s = flow.slacks(["a >= 1", "b <= 2"], {"a": 0.5, "b": 1.0})
+    assert s == pytest.approx([-0.5, 0.5])
+    assert math.isnan(flow.slacks(["a >= 1"], {"a": None})[0])
+
+
+def test_bayes_opt_min_of_terms():
+    """Composite BO on a worst-of-three margin in 4-D: exact budget, the start
+    design evaluated first, near the balanced optimum where Nelder-Mead with
+    the same budget is not -- and an undefined region (NaN outcomes, like a
+    collapsed eye) is survived, not fatal."""
+    pytest.importorskip("botorch", reason="optional 'bo' extra")
+    import bayesopt
+    from optimize import nelder_mead
+
+    rng = np.random.default_rng(3)
+    c = rng.uniform(0.25, 0.75, (3, 4))
+    w = rng.uniform(0.5, 3.0, (3, 4))
+
+    def terms(x):
+        if x[0] > 0.9:                       # an undefined corner
+            return np.full(3, np.nan)
+        return 1 - np.sum(w * (x - c) ** 2, axis=1)
+
+    x0, lo, hi = np.full(4, 0.5), np.zeros(4), np.ones(4)
+    X, Y = bayesopt.bayes_opt(terms, x0, lo, hi, 24, n_terms=3,
+                              combine="min", maximize=True)
+    assert len(X) == 24 and np.array_equal(X[0], x0)
+    assert np.all((X >= lo) & (X <= hi))
+    bo = np.nanmax(Y.min(axis=1))
+    nm = -min(nelder_mead(lambda x: -np.min(terms(x)), x0, lo, hi, 24)[1])
+    from scipy.optimize import minimize
+    ref = max(-minimize(lambda x: -np.min(terms(np.clip(x, 0, 0.9))),
+                        rng.uniform(0.2, 0.8, 4), method="Nelder-Mead",
+                        options={"maxfev": 4000}).fun for _ in range(8))
+    assert bo > np.min(terms(x0)) + 0.02
+    assert bo > ref - 0.02 and bo > nm
+    # undefined outcomes land one observed range past the worst; an undefined
+    # slack (last column) is infeasible even when every seen slack is met
+    nan = np.nan
+    Y = np.array([[1.0, 0.5, 2.0], [3.0, nan, 3.0], [nan, 1.5, nan]])
+    out = bayesopt._impute(Y, np.array([1.0, -1.0, 1.0]), n_terms=2)
+    assert out[2, 0] == -1.0 and out[1, 1] == 2.5 and out[2, 2] == -1.0
+
+
 # --- a DC flow on example 15's MZI --------------------------------------------
 
 def _mzi_flow():
@@ -168,6 +222,37 @@ def test_flow_optimize_carries_forward_and_only():
                  prior={"vars": fr["vars"], "overrides": fr["overrides"]})
     assert [s["status"] for s in again["steps"]] == ["skipped", "skipped", "ok"]
     assert again["vars"]["p_after"] == pytest.approx(fr["vars"]["p_after"])
+
+
+def test_flow_optimize_bayes():
+    """The same 0.3 mW target as above by Bayesian optimization: a min()
+    objective split into terms plus a constraint slack, within budget."""
+    pytest.importorskip("botorch", reason="optional 'bo' extra")
+    sch = _example("15_imbalanced_mzi_sweep")["schematic"]
+    fl = _mzi_flow()
+    fl["vars"]["dl_um"] = 214.45
+    fl["steps"] = [
+        {"id": "op", "kind": "analysis", "title": "Output at 1310 nm",
+         "analysis": {"mode": "dc"}, "outputs": {"p": "pout"}},
+        {"id": "opt", "kind": "optimize", "title": "Hit 0.3 mW",
+         "method": "bayes", "inner": ["op"],
+         "params": [{"var": "dl_um", "min": 214.3, "max": 214.55}],
+         "objective": "min(1 - abs(p - 0.3)/0.05, 1)", "maximize": True,
+         "constraints": ["p >= 0.25"], "iters": 10},
+        {"id": "after", "kind": "analysis", "title": "Re-read",
+         "analysis": {"mode": "dc"}, "outputs": {"p_after": "pout"},
+         "checks": ["p_after > 0.29", "p_after < 0.31"]},
+    ]
+    fr = _run(sch, fl)
+    assert fr["passed"], [s.get("checks") for s in fr["steps"]]
+    opt = fr["steps"][1]
+    assert opt["method"] == "bayes" and len(opt["history"]) == 10
+    assert opt["history"][0]["x"] == [214.45]        # the start design first
+    # an unknown method is a step error, not a silent fallback
+    fl["steps"][1]["method"] = "annealing"
+    bad = _run(sch, fl)
+    assert bad["steps"][1]["status"] == "failed"
+    assert "annealing" in bad["steps"][1]["error"]
 
 
 def test_flow_live_status():

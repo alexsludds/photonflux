@@ -89,6 +89,11 @@ WORKDIR /app
 # openvaf-py binding). stateye goes in --no-deps: its requirements.txt lists
 # black/pre-commit/pytest as runtime deps, so its real runtime needs (h5py,
 # Pint, tqdm, colorama, scipy) are named here instead.
+# BoTorch runs the flow Optimize step's Bayesian method. torch comes first
+# from PyTorch's CPU index: the PyPI Linux wheel drags in ~2.5 GB of CUDA.
+# Its own layer, ahead of the wheel COPYs, so a bosdi/stateye rebuild keeps it.
+RUN pip install --no-cache-dir --index-url https://download.pytorch.org/whl/cpu torch \
+    && pip install --no-cache-dir "botorch>=0.14"
 COPY --from=bosdi-wheel /wheels /tmp/wheels
 COPY --from=stateye-wheel /wheels /tmp/wheels
 RUN pip install --no-cache-dir /tmp/wheels/bosdi-*.whl \

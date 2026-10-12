@@ -180,7 +180,7 @@ CATALOG: dict[str, dict] = {
         # one symbol -> f2ri adapter + VA phase shifter + ri2f adapter
         "expand": {
             "instances": {
-                "tap": {"component": "_f2ri"},
+                "tap": {"component": "_f2ri_m"},
                 "ps": {"component": "_phaseshift_va", "settings": "ALL"},
                 "join": {"component": "_ri2f"},
             },
@@ -421,7 +421,7 @@ CATALOG: dict[str, dict] = {
         ],
         "expand": {
             "instances": {
-                "tap": {"component": "_f2ri"},
+                "tap": {"component": "_f2ri_m"},
                 "ring": {"component": "_ring_inj_va", "settings": "ALL"},
                 "join": {"component": "_ri2f"},
             },
@@ -506,7 +506,7 @@ CATALOG: dict[str, dict] = {
         # one symbol -> f2ri adapter + VA ring + ri2f adapter
         "expand": {
             "instances": {
-                "tap": {"component": "_f2ri"},
+                "tap": {"component": "_f2ri_m"},
                 "ring": {"component": "_ring_va", "settings": "ALL"},
                 "join": {"component": "_ri2f"},
             },
@@ -557,8 +557,8 @@ CATALOG: dict[str, dict] = {
         ],
         "expand": {
             "instances": {
-                "fi": {"component": "_f2ri"},
-                "bi": {"component": "_f2ri"},
+                "fi": {"component": "_f2ri_m"},
+                "bi": {"component": "_f2ri_m"},
                 "amp": {"component": "_soa_va", "settings": "ALL"},
                 "fo": {"component": "_ri2f"},
                 "bo": {"component": "_ri2f"},
@@ -611,8 +611,8 @@ CATALOG: dict[str, dict] = {
         ],
         "expand": {
             "instances": {
-                "fli": {"component": "_f2ri"},
-                "bri": {"component": "_f2ri"},
+                "fli": {"component": "_f2ri_m"},
+                "bri": {"component": "_f2ri_m"},
                 "amp": {"component": "_twgain_va", "settings": "ALL"},
                 "fro": {"component": "_ri2f"},
                 "blo": {"component": "_ri2f"},
@@ -656,8 +656,8 @@ CATALOG: dict[str, dict] = {
         ],
         "expand": {
             "instances": {
-                "fli": {"component": "_f2ri"},
-                "bri": {"component": "_f2ri"},
+                "fli": {"component": "_f2ri_m"},
+                "bri": {"component": "_f2ri_m"},
                 "seg": {"component": "_twseg_va", "settings": "ALL"},
                 "fro": {"component": "_ri2f"},
                 "blo": {"component": "_ri2f"},
@@ -692,8 +692,8 @@ CATALOG: dict[str, dict] = {
         ],
         "expand": {
             "instances": {
-                "fli": {"component": "_f2ri"},
-                "bri": {"component": "_f2ri"},
+                "fli": {"component": "_f2ri_m"},
+                "bri": {"component": "_f2ri_m"},
                 "pad": {"component": "_phasepad_va", "settings": "ALL"},
                 "fro": {"component": "_ri2f"},
                 "blo": {"component": "_ri2f"},
@@ -747,7 +747,7 @@ CATALOG: dict[str, dict] = {
         ],
         "expand": {
             "instances": {
-                "fi": {"component": "_f2ri"},
+                "fi": {"component": "_f2ri_m"},
                 "amp": {"component": "_edfa_va", "settings": "ALL"},
                 "fo": {"component": "_ri2f"},
             },
@@ -795,8 +795,8 @@ CATALOG: dict[str, dict] = {
         ],
         "expand": {
             "instances": {
-                "l_in": {"component": "_f2ri"},
-                "r_in": {"component": "_f2ri"},
+                "l_in": {"component": "_f2ri_m"},
+                "r_in": {"component": "_f2ri_m"},
                 "mir": {"component": "_mirror_va", "settings": "ALL"},
                 "l_out": {"component": "_ri2f"},
                 "r_out": {"component": "_ri2f"},
@@ -885,7 +885,7 @@ CATALOG: dict[str, dict] = {
         ],
         "expand": {
             "instances": {
-                "tap": {"component": "_f2ri"},
+                "tap": {"component": "_f2ri_m"},
                 "ring": {"component": "_ringcomb_va", "settings": "ALL"},
                 "jt": {"component": "_ri2f"},
                 "jd": {"component": "_ri2f"},
@@ -933,7 +933,7 @@ CATALOG: dict[str, dict] = {
         ],
         "expand": {
             "instances": {
-                "tap": {"component": "_f2ri"},
+                "tap": {"component": "_f2ri_m"},
                 "ring": {"component": "_ringkerr_va", "settings": "ALL"},
                 "jt": {"component": "_ri2f"},
                 "jd": {"component": "_ri2f"},
@@ -983,7 +983,7 @@ CATALOG: dict[str, dict] = {
         ],
         "expand": {
             "instances": {
-                "tap": {"component": "_f2ri"},
+                "tap": {"component": "_f2ri_m"},
                 "ring": {"component": "_ringnl_va", "settings": "ALL"},
                 "join": {"component": "_ri2f"},
             },
@@ -1031,7 +1031,7 @@ CATALOG: dict[str, dict] = {
         ],
         "expand": {
             "instances": {
-                "tap": {"component": "_f2ri"},
+                "tap": {"component": "_f2ri_m"},
                 "ring": {"component": "_ringselfheat_va", "settings": "ALL"},
                 "join": {"component": "_ri2f"},
             },
@@ -1070,7 +1070,7 @@ CATALOG: dict[str, dict] = {
         ],
         "expand": {
             "instances": {
-                "tap": {"component": "_f2ri"},
+                "tap": {"component": "_f2ri_m"},
                 "wg": {"component": "_wgnl_va", "settings": "ALL"},
                 "join": {"component": "_ri2f"},
             },
@@ -1309,9 +1309,9 @@ CATALOG: dict[str, dict] = {
         ],
         "expand": {
             "instances": {
-                "si": {"component": "_f2ri"},
-                "pc": {"component": "_f2ri"},
-                "px": {"component": "_f2ri"},
+                "si": {"component": "_f2ri_m"},
+                "pc": {"component": "_f2ri_m"},
+                "px": {"component": "_f2ri_m"},
                 "amp": {"component": "_raman_va", "settings": "ALL"},
                 "so": {"component": "_ri2f"},
                 "pco": {"component": "_ri2f"},
@@ -1358,8 +1358,8 @@ CATALOG: dict[str, dict] = {
         ],
         "expand": {
             "instances": {
-                "fi": {"component": "_f2ri"},
-                "bi": {"component": "_f2ri"},
+                "fi": {"component": "_f2ri_m"},
+                "bi": {"component": "_f2ri_m"},
                 "amp": {"component": "_sbs_va", "settings": "ALL"},
                 "fo": {"component": "_ri2f"},
                 "bo": {"component": "_ri2f"},

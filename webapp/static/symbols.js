@@ -1057,6 +1057,22 @@ function fmtSI(v) {
   return v.toExponential(1);
 }
 
+/* A value in a trace's unit, SI-prefixed against the base unit: optical
+   traces are in mW, so 0.0109 mW reads "10.9 uW", not "10.9m mW". */
+function fmtQty(v, unit) {
+  if (unit === "mW") return `${fmtSI(v * 1e-3)}W`;
+  if (unit === "V" || unit === "A" || unit === "W") return `${fmtSI(v)}${unit}`;
+  return unit ? `${fmtSI(v)} ${unit}` : fmtSI(v);
+}
+
+/* Plot y-axis title from a trace unit: a bare rotated "V" reads as a chevron,
+   so name the quantity too. */
+function axisQuantity(unit, label) {
+  const q = { mW: "power", V: "voltage", A: "current", dB: "magnitude",
+              "V/rtHz": "noise density" }[unit];
+  return q ? `${q} [${label}]` : label;
+}
+
 /* Like fmtSI but LOSSLESS: preserves significant figures so an editable
    parameter field round-trips through parseSI. fmtSI keeps ~3 sig figs, which
    collapses e.g. a laser wavelength 1308.285 nm to "1.31k" — visually the same

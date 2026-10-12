@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>photonflux — photonic circuit editor</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' rx='3' fill='%2316161e'/%3E%3Cpath d='M2 8h4l2-4 2 8 2-4h2' stroke='%23fbbf24' stroke-width='1.6' fill='none'/%3E%3C/svg%3E">
 <link rel="stylesheet" href="/vendor/uPlot.min.css">
 <link rel="stylesheet" href="/vendor/katex/katex.min.css">
 <link rel="stylesheet" href="/style.css">
@@ -24,7 +25,7 @@
   <span class="tb-spacer"></span>
   <label class="an-label"
     title="Global signaling baud rate for the schematic. The PRBS source's unit interval (UI = 1/baud) and the eye-diagram fold both pull from this.">Baud
-    <input id="glob-baud" type="text" value="10G" size="8"> Bd</label>
+    <input id="glob-baud" type="text" value="10G" size="8"><span class="glob-unit">Bd</span></label>
   <label class="an-label"
     title="SKY130 process corner for every SKY130 FET on the schematic. ss = slow NMOS + PMOS, ff = fast both; the skewed names read PMOS-first in SKY130: sf = fast NMOS / slow PMOS, fs = slow NMOS / fast PMOS. 'all' runs the analysis at all five corners and overlays them; Optimize then scores the worst corner (or the mean). Each new corner extracts its own model cards the first time.">Corner
     <select id="glob-corner">
@@ -57,7 +58,7 @@
 
 <div id="main">
   <aside id="palette">
-    <button id="btn-upva"
+    <button id="btn-upva" class="pal-btn"
       title="Upload a Verilog-A model: compiled via openvaf/bosdi to a JAX component and added to the palette (all ports electrical; bridge power-domain optical ports with the Field/Power adapters)">
       + Upload .va&hellip;</button>
     <input id="palette-search" type="text" placeholder="Search parts&hellip; (i)"
@@ -207,7 +208,7 @@
       <label>at <select id="an-nq-probe"></select></label>
     </span>
     <span class="an-group" data-mode="optimize" hidden
-          title="Nelder-Mead over up to 8 instance parameters (runtime or compile-time), objective from: expr:<name> (a scalar from the fx panel), eye:<probe> (inner eye opening, needs a PRBS source), ber:<probe> (Q-fit BER, minimized), fom (pulse/COM). The inner run is a transient with the fields here; finite-difference sensitivities are reported at the optimum.">
+          title="Nelder-Mead over up to 8 instance parameters (runtime or compile-time), objective from: expr:<name> (a scalar from the fx panel), eye:<probe> (inner eye opening, needs a PRBS source), ber:<probe> (Q-fit BER, minimized), fom (pulse/COM), tdec:<probe> (IEEE TDEC, minimize) or omatdec:<probe> (OMA - TDEC, maximize). The inner run is a transient with the fields here; finite-difference sensitivities are reported at the optimum.">
       <label>iters <input id="an-op-iters" type="text" value="30" size="3"></label>
       <label>t_stop <input id="an-op-tstop" type="text" value="25.6n" size="5"> s</label>
       <label>points <input id="an-op-points" type="text" value="4000" size="5"></label>
@@ -351,7 +352,7 @@
       </div>
       <div id="eye-tdecq">
         <span class="tq-title" title="Score the eye with stateye: PAM4 -> IEEE TDECQ (raw and through the reference FFE), NRZ -> TDEC and OMA - TDEC. Uses the trace, UI, skip and levels above.">stateye</span>
-        <label title="Reference receiver: 4th-order-style Bessel-Thomson -3 dB bandwidth as a multiple of the baud rate. auto = 0.5 (TDECQ) / 0.75 (TDEC); off = no filter.">ref Rx
+        <label title="Reference receiver: 4th-order-style Bessel-Thomson -3 dB bandwidth as a multiple of the baud rate. auto = 0.5, the 802.3 TDECQ and TDEC receiver (0.75 is the eye-mask receiver); off = no filter.">ref Rx
           <input id="tq-rxbw" value="auto" size="4"> &times;baud</label>
         <label title="Bessel-Thomson order">order <input id="tq-rxorder" value="4" size="2"></label>
         <label class="tq-pam" title="Reference equalizer length (T-spaced FFE, taps sum to 1). auto = the lane rate's standard: 15 for 802.3dj (200G/lane), 5 for 802.3cd (100G/lane). 0 = no equalizer.">FFE taps

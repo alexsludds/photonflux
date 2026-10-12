@@ -51,8 +51,9 @@ def _tdecq_report(t, values, pattern: dict, ui: float, cfg: dict,
     802.3cd: 5-tap FFE) designed on the known source pattern.
 
     TDECQ proper uses OMA_outer, which needs a run of 7 threes and 6 zeros
-    (a full PRBS-13Q). Shorter canvas records fall back to TDECQ on the
-    crossing-point OMA (``tdecq_xp``) and say so.
+    (a full PRBS-13Q, or the source's sequence=prbs+oma). Records without
+    them fall back to TDECQ on the crossing-point OMA (``tdecq_xp``) and
+    say so.
     """
     try:
         from photonflux import tdec
@@ -97,8 +98,9 @@ def _tdecq_report(t, values, pattern: dict, ui: float, cfg: dict,
                + (f" + DFE b {b[0]:.3f}" if b else "")
                + f", C_eq {eq['ceq']:.3f}), {v_raw:.3f} dB unequalized"
                + ("" if fam == "outer" else
-                  "; OMA_outer needs a full PRBS-13Q record, so this is "
-                  "TDECQ on the crossing-point OMA"))
+                  "; OMA_outer needs runs of 7 threes and 6 zeros (set the "
+                  "PRBS source's sequence to prbs+oma), so this is TDECQ on "
+                  "the crossing-point OMA"))
     return {"tdecq_db": v_eq, "tdecq_raw_db": v_raw, "family": fam,
             "s_noise_mw": s_noise, "ser": kw["ser"],
             "ceq": eq["ceq"], "ffe_taps": eq["ffe_taps"], "dfe_b": b,
@@ -303,6 +305,11 @@ def link_report(result: dict, meta: dict, cfg: dict, log: list) -> dict | None:
     pattern = patterns.get(pat_inst)
     if pattern is None:
         log.append(f"link report: no PRBS instance {pat_inst!r}")
+        return None
+    if pattern.get("sequence", "prbs") not in ("prbs", "prbs+oma"):
+        log.append(f"link report: skipped, {pattern['sequence']} is a level "
+                   "pattern, not data; set the PRBS source's sequence to prbs "
+                   "or prbs+oma for BER and TDECQ")
         return None
     probe = cfg.get("probe")
     # multi-seed noise runs produce a family "probe#k" sharing tr["probe"]

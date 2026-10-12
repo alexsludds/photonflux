@@ -1593,7 +1593,14 @@ CATALOG: dict[str, dict] = {
                "at random, so dj_ui is the peak-to-peak DJ(dd) that "
                "TJ = DJ + 2Q*RJ budgets use) and duty-cycle distortion "
                "(DCD). RJ, SJ and DJ default to 0.05 UI each; set them to 0 "
-               "for a clean pattern. mode=pulse emits one isolated, "
+               "for a clean pattern. sequence picks the pattern: prbs; "
+               "prbs+oma writes a run of the top level then the bottom "
+               "level (PAM4 >= 7 threes / 6 zeros, NRZ >= 8 ones / 8 "
+               "zeros) over the PRBS every 512 UI, so OMA_outer (TDECQ) "
+               "and OMA_8180 (TDEC) are measurable on short records; "
+               "square alternates top/bottom runs of run_ui symbols; "
+               "staircase steps PAM4 through 0,1,2,3,2,1 (RLM). "
+               "mode=pulse emits one isolated, "
                "jitter-free UI for pulse-response runs. For coherent QAM drive use the QAM Source. "
                "The unit interval is set globally by the top-bar baud rate "
                "(UI = 1/baud), not per source. "
@@ -1603,8 +1610,12 @@ CATALOG: dict[str, dict] = {
         "params": [
             _p("mode", "nrz", "", "Mode", rebuild=True, kind="enum",
                choices=["nrz", "pam4", "pulse"]),
+            _p("sequence", "prbs", "", "Sequence", rebuild=True, kind="enum",
+               choices=["prbs", "prbs+oma", "square", "staircase"]),
             _p("order", 7, "", "PRBS order", rebuild=True, kind="enum",
                choices=[7, 9, 11, 13, 15, 23, 31]),
+            _p("run_ui", 8, "UI", "Run length (square / staircase / OMA)",
+               rebuild=True),
             _p("v0", -0.5, "V", "Low level", rebuild=True),
             _p("v1", 0.5, "V", "High level", rebuild=True),
             _p("tr", 20e-12, "s", "Edge time (20-80%)", rebuild=True),

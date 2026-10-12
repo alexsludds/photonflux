@@ -184,7 +184,12 @@ scored near relOMA -3.6 dB / TDECQ 1.4 dB.
   to the main cursor, linear and signed), RLM predistortion
   for a quadrature-biased MZM (set `rlm_vpi`), edge jitter (RJ Gaussian
   rms, SJ sinusoidal peak at `sj_freq`, DJ dual-Dirac peak-to-peak, DCD),
-  and a single-pulse mode. Coherent QAM drive is a separate **QAM Source**
+  and a single-pulse mode. `sequence` picks the pattern: `prbs`;
+  `prbs+oma` writes a top-level then bottom-level run over the PRBS every
+  512 UI (PAM4 >= 7 threes / 6 zeros, NRZ >= 8 / 8), so TDECQ's OMA_outer
+  and TDEC's OMA_8180 are measurable on records far shorter than a PRBS
+  period; `square` (top/bottom runs of `run_ui`); `staircase` (PAM4
+  0,1,2,3,2,1 for RLM). Coherent QAM drive is a separate **QAM Source**
   (one per I/Q rail). The waveform is precomputed and baked at
   compile time (parameter edits recompile, seconds). A **PWL source** plays
   arbitrary `t v` breakpoints (paste or Load CSV) — the simplest way to

@@ -24,9 +24,9 @@
      "the simulated eye and stateye's equalized eye side by side. The Link",
      "tab reports TDECQ too.",
      "",
-     "TDECQ proper uses OMA_outer (runs of 7 threes / 6 zeros: a full",
-     "PRBS-13Q, 8191 UI). The canvas caps a transient at 20,000 points, so",
-     "this 800 UI record reports TDECQ on the crossing-point OMA and says so.",
+     "TDECQ proper uses OMA_outer (runs of 7 threes / 6 zeros). PRBS1 writes",
+     "them every 512 UI (sequence = prbs+oma), so this 800 UI record scores",
+     "on OMA_outer, within ~1 dB of a full PRBS-13Q (too long to run here).",
      "For the reportable number run  examples/mrm_pam4_tdecq.py  (full",
      "PRBS-13Q, ~40 s; --rlm pre-distorts the levels for the ring's",
      "Lorentzian and improves both RLM and TDECQ)."
@@ -68,6 +68,7 @@
     "rot": 0,
     "settings": {
      "mode": "pam4",
+     "sequence": "prbs+oma",
      "order": 13,
      "v0": 0.0,
      "v1": 1.8,

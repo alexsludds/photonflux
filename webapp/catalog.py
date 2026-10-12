@@ -1582,7 +1582,10 @@ CATALOG: dict[str, dict] = {
         "category": "Sources",
         "doc": "Serial-data pattern source: PRBS7/9/11/15/23/31 (LFSR), NRZ "
                "or Gray-coded PAM4 levels between v0/v1, raised-cosine edges. "
-               "Optional TX FFE pre/post-cursor de-emphasis (dB), RLM "
+               "Optional 3-tap TX FFE: pre/post-cursor taps relative to the "
+               "main cursor, linear and signed (-0.2 = a side tap at -20% of "
+               "the main; negative de-emphasizes, 0 = off; the taps are "
+               "scaled so the peak swing stays v0..v1), RLM "
                "predistortion for a quadrature-biased MZM (set rlm_vpi to "
                "its V-pi), and jitter on the edge times: random (RJ, "
                "Gaussian rms), sinusoidal (SJ, peak amplitude at sj_freq), "
@@ -1606,8 +1609,10 @@ CATALOG: dict[str, dict] = {
             _p("v1", 0.5, "V", "High level", rebuild=True),
             _p("tr", 20e-12, "s", "Edge time (20-80%)", rebuild=True),
             _p("seed", 1, "", "PRBS seed", rebuild=True),
-            _p("ffe_pre_db", 0.0, "dB", "TX FFE pre-cursor", rebuild=True),
-            _p("ffe_post_db", 0.0, "dB", "TX FFE post-cursor", rebuild=True),
+            _p("ffe_pre", 0.0, "", "TX FFE pre-cursor (c-1/c0)",
+               rebuild=True),
+            _p("ffe_post", 0.0, "", "TX FFE post-cursor (c+1/c0)",
+               rebuild=True),
             _p("rlm_vpi", 0.0, "V", "RLM V-pi (0 = off)", rebuild=True),
             _p("rj_ui", 0.05, "UI", "Random jitter (rms)", rebuild=True),
             _p("sj_ui", 0.05, "UI", "Sinusoidal jitter (peak)", rebuild=True),

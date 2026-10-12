@@ -178,7 +178,8 @@ TDECQ 1.4 dB.
 
 * **PRBS / pattern source**: PRBS7/9/11/15/23/31 (same LFSR taps as the
   companion time-domain serdes codebase), NRZ or Gray-coded PAM4, raised-
-  cosine edges, TX FFE pre/post-cursor de-emphasis (dB), RLM predistortion
+  cosine edges, 3-tap TX FFE (`ffe_pre`/`ffe_post`: side taps relative
+  to the main cursor, linear and signed), RLM predistortion
   for a quadrature-biased MZM (set `rlm_vpi`), edge jitter (RJ Gaussian
   rms, SJ sinusoidal peak at `sj_freq`, DJ dual-Dirac peak-to-peak, DCD),
   and a single-pulse mode. Coherent QAM drive is a separate **QAM Source**

@@ -71,7 +71,7 @@
           "dloss_dB_cm": 1.5,
           "cj0_ff_um": 0.3,
           "rs_ohm_mm": 10.0,
-          "z0_ohm": 60.0,
+          "z0_ohm": 30.0,
           "n_rf": 2.4,
           "rf_loss_dB_cm": 2.0,
           "neff": 2.4,
@@ -111,7 +111,7 @@
           "dloss_dB_cm": 1.5,
           "cj0_ff_um": 0.3,
           "rs_ohm_mm": 10.0,
-          "z0_ohm": 60.0,
+          "z0_ohm": 30.0,
           "n_rf": 2.4,
           "rf_loss_dB_cm": 2.0,
           "neff": 2.4,
@@ -227,7 +227,9 @@
           "seed": 1,
           "rj_ui": 0.02,
           "sj_ui": 0.02,
-          "dj_ui": 0.02
+          "dj_ui": 0.02,
+          "ffe_pre": 0.0,
+          "ffe_post": 0.0
         }
       },
       "RDA": {
@@ -236,7 +238,7 @@
         "y": 30,
         "rot": 0,
         "settings": {
-          "R": 50.0
+          "R": 30.0
         }
       },
       "RDB": {
@@ -245,7 +247,7 @@
         "y": 260,
         "rot": 0,
         "settings": {
-          "R": 50.0
+          "R": 30.0
         }
       },
       "RTA": {
@@ -431,16 +433,18 @@
       "ring_um": 10.0,
       "k1": 0.526,
       "k2": 0.5,
-      "z0_ohm": 65.6,
+      "z0_ohm": 30.0,
       "r_term_ohm": 40.0,
       "v_emf_pp": 4.0,
-      "r_drv_ohm": 50.0,
+      "r_drv_ohm": 30.0,
       "rs_ohm_mm": 10.0,
       "vpil_vcm": 2.0,
       "loss_db_cm": 12.0,
       "cj0_ff_um": 0.3,
       "n_rf": 2.4,
-      "rf_loss_db_cm": 2.0
+      "rf_loss_db_cm": 2.0,
+      "ffe_pre": 0.0,
+      "ffe_post": 0.0
     },
     "set": {
       "WG_A.length_m": "2.0120095e-05 + dL_nm*0.5e-9",
@@ -471,7 +475,9 @@
       "PN_B.rs_ohm_mm": "rs_ohm_mm",
       "PN_B.z0_ohm": "z0_ohm",
       "PN_B.n_rf": "n_rf",
-      "PN_B.rf_loss_dB_cm": "rf_loss_db_cm"
+      "PN_B.rf_loss_dB_cm": "rf_loss_db_cm",
+      "PRBS.ffe_pre": "ffe_pre",
+      "PRBS.ffe_post": "ffe_post"
     },
     "stateye": {
       "rx_bw": "auto",
@@ -536,7 +542,7 @@
       {
         "id": "opt",
         "kind": "optimize",
-        "title": "Maximize the worst spec margin (incl. couplers, Z0, termination)",
+        "title": "Maximize the worst spec margin (incl. TX FFE, DC1, termination)",
         "inner": [
           "res",
           "eye"
@@ -563,11 +569,6 @@
             "max": 1500.0
           },
           {
-            "var": "z0_ohm",
-            "min": 30.0,
-            "max": 80.0
-          },
-          {
             "var": "r_term_ohm",
             "min": 20.0,
             "max": 80.0
@@ -578,9 +579,14 @@
             "max": 0.85
           },
           {
-            "var": "k2",
-            "min": 0.15,
-            "max": 0.85
+            "var": "ffe_pre",
+            "min": -0.3,
+            "max": 0.3
+          },
+          {
+            "var": "ffe_post",
+            "min": -0.5,
+            "max": 0.5
           }
         ],
         "objective": "min((rlm - 0.95)/0.05, (1.5 - tdecq_db)/1.5, (rel_oma_db + 2)/2, (er_db - 3.5)/3.5)",

@@ -4023,6 +4023,14 @@ function migrateInstances(insts) {
     }
     if ("pj_ui" in st) { st.sj_ui = st.pj_ui; delete st.pj_ui; }
     if ("pj_freq" in st) { st.sj_freq = st.pj_freq; delete st.pj_freq; }
+    // TX FFE taps were dB knobs (tap = -10^(-dB/20), 0 dB = off); they are
+    // now linear, signed ratios to the main cursor
+    for (const k of ["ffe_pre", "ffe_post"]) {
+      if (!(k + "_db" in st)) continue;
+      const db = Number(st[k + "_db"]);
+      if (!st[k] && db > 0) st[k] = -(10 ** (-db / 20));
+      delete st[k + "_db"];
+    }
   }
   return insts;
 }

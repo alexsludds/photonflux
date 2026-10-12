@@ -10,8 +10,9 @@ PRBS conventions:
     seed != 0. Same sequences as photonflux.signals.prbs, started at a
     different phase.
   * PAM4 is Gray-coded: bit pairs 00,01,11,10 -> symbol levels 0,1,2,3.
-  * TX FFE is a symbol-spaced 3-tap FIR [pre, main, post]; pre/post are
-    given in dB as in TxFFE.from_emphasis (0 dB = tap off).
+  * TX FFE is a symbol-spaced 3-tap FIR [pre, main, post]; ``ffe_pre`` and
+    ``ffe_post`` are the side taps relative to the main cursor, linear and
+    signed (c(-1)/c(0), c(+1)/c(0); negative = de-emphasis, 0 = tap off).
   * Jitter offsets per UI boundary: RJ (Gaussian, sigma in UI), PJ
     (sinusoidal, amplitude in UI), DCD (alternating +-d/2).
 
@@ -89,14 +90,23 @@ def _levels(settings: dict, frac: np.ndarray) -> np.ndarray:
     return v0 + frac * (v1 - v0)
 
 
+def _ffe_tap(settings: dict, name: str) -> float:
+    """Side tap relative to the main cursor (linear, signed). The legacy
+    ``<name>_db`` knob (tap = -10^(-dB/20), 0 dB = off) still drives an
+    unset tap."""
+    tap = float(settings.get(name, 0.0))
+    db = float(settings.get(name + "_db", 0.0))
+    if tap == 0.0 and db > 0.0:
+        tap = -(10.0 ** (-db / 20.0))
+    return tap
+
+
 def _tx_ffe(settings: dict, levels: np.ndarray) -> np.ndarray:
-    """Symbol-spaced [pre, main, post] FIR, dB knobs like TxFFE."""
-    pre_db = float(settings.get("ffe_pre_db", 0.0))
-    post_db = float(settings.get("ffe_post_db", 0.0))
-    if pre_db <= 0.0 and post_db <= 0.0:
+    """Symbol-spaced [pre, main, post] FIR, taps relative to the main cursor."""
+    pre = _ffe_tap(settings, "ffe_pre")
+    post = _ffe_tap(settings, "ffe_post")
+    if pre == 0.0 and post == 0.0:
         return levels
-    pre = -(10.0 ** (-pre_db / 20.0)) if pre_db > 0 else 0.0
-    post = -(10.0 ** (-post_db / 20.0)) if post_db > 0 else 0.0
     # peak-constrained normalisation: transitions reach full swing, runs of
     # identical symbols sit de-emphasised — the standard TX FFE behaviour
     taps = np.array([pre, 1.0, post])

@@ -242,10 +242,11 @@ def test_example_48_junction_rc_costs_tdecq():
     assert out["rc"]["rlm"] < out["ideal"]["rlm"]
 
 
-def test_example_49_real_transit_and_coupler_knobs():
+def test_example_49_real_transit_and_optimizer_knobs():
     # example 49 closes its ring with delayed (real-transit) parts through a
-    # 10 um, 0.3 dB/cm delay line, and the optimizer owns both couplers: the
-    # k1/k2 variables must reach DC1/DC2 (the resonance notch moves with them)
+    # 10 um, 0.3 dB/cm delay line, drives 30 Ohm electrodes through 30 Ohm,
+    # and the optimizer owns DC1 and the TX FFE taps: the k1 variable must
+    # reach DC1 (the resonance notch moves with it)
     ex = _example("49_cmr_flow_106g_tw")
     inst, fl = ex["schematic"]["instances"], ex["flow"]
     for name in ("PN_A", "PN_B", "WG_A", "WG_B", "WG_R1", "WG_R2"):
@@ -253,9 +254,13 @@ def test_example_49_real_transit_and_coupler_knobs():
     for name in ("WG_R1", "WG_R2"):
         assert inst[name]["settings"]["loss_dB_cm"] == 0.3
     assert fl["vars"]["ring_um"] == 10.0
+    assert fl["vars"]["r_drv_ohm"] == fl["vars"]["z0_ohm"] == 30.0
+    assert fl["set"]["PRBS.ffe_pre"] == "ffe_pre"
+    assert fl["set"]["PRBS.ffe_post"] == "ffe_post"
     opt = next(s for s in fl["steps"] if s["id"] == "opt")
     knobs = {p["var"] for p in opt["params"]}
-    assert {"k1", "k2"} <= knobs and "ring_um" not in knobs
+    assert {"k1", "ffe_pre", "ffe_post"} <= knobs
+    assert not {"k2", "z0_ohm", "ring_um"} & knobs
     notch = {}
     for k1 in (0.5, 0.35):
         fr = _run(ex["schematic"], fl, only="res",

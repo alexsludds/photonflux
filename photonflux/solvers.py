@@ -352,12 +352,16 @@ def _make_bdf2_reuse():
                 stale, lambda: (y_pred, inf, no), lambda: chord(y_pred))
             y_next, err, done, inv = jax.lax.cond(
                 done1, lambda: (y1, err1, done1, inv0), lambda: newton(y1))
+            # the stored coefficient is the one the stored inverse was built
+            # at: re-labelling it on every chord step would let a slow step-
+            # size drift accumulate past coef_rtol without a rebuild
+            coef_kept = jnp.where(done1, coef0, coef)
             # Out of iterations: accept on circulax's own criterion (err < 1)
             # rather than fail a step plain Newton would have taken.
             result = jax.lax.cond(
                 done | (err < 1.0), lambda: diffrax.RESULTS.successful,
                 lambda: diffrax.RESULTS.nonlinear_divergence)
             return (y_next, y_next - y_pred, {"y0": y0, "y1": y_next},
-                    (*hist_state, inv, coef), result)
+                    (*hist_state, inv, coef_kept), result)
 
     return BDF2ReuseSolver

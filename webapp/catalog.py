@@ -3293,7 +3293,12 @@ def _builtin_factories() -> dict[str, Any]:
     from photonflux import cx
 
     def va(stem):
-        return lambda: cx.va(stem)
+        # not held in _BUILTIN_MODELS: cx.va memoises by the content hash of
+        # the model source (~2 ms a hit), so an edited .va is picked up on
+        # the next models-cache miss without restarting the server
+        make = lambda: cx.va(stem)  # noqa: E731
+        make.uncached = True
+        return make
 
     def const(model):
         return lambda: model
@@ -3382,6 +3387,9 @@ def build_models(sky130_geoms: dict[str, tuple[str, float, float, str]] | None =
     models: dict[str, Any] = {}
     for name, make in factories.items():
         if needed is not None and name not in needed:
+            continue
+        if getattr(make, "uncached", False):
+            models[name] = make()
             continue
         if name not in _BUILTIN_MODELS:
             _BUILTIN_MODELS[name] = make()

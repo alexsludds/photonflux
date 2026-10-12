@@ -2942,22 +2942,23 @@ def _photodiode_noisy(bank, dt_n):
         iph = R * power + Idk
         tau = jnp.where(f3db > 0.0,
                         0.6436 / (2.0 * jnp.pi * jnp.maximum(f3db, 1.0)), 0.0)
-        f_x1 = s.x1 - iph
+        # shot noise on the instantaneous photocurrent: S_i = 2 q I  ->
+        # scale sqrt(2 q I/(2 dt_n)) = sqrt(q I/dt_n). It is a fluctuation of
+        # that current, so it goes in ahead of the transit-time poles, which
+        # filter it like the signal. The amplitude is held out of the
+        # Jacobian (stop_gradient): d(sqrt I)/dI diverges at I -> 0 and
+        # knocks Newton over, while physically the noise amplitude is
+        # quasi-static within a step.
+        i_qs = jax.lax.stop_gradient(jnp.maximum(iph.real, 0.0))
+        i_shot = jnp.sqrt(q_e * i_qs / dt_n) * nval(t, seed_idx)
+        f_x1 = s.x1 - (iph + i_shot)
         f_x2 = s.x2 - s.x1
         i_bw = s.x2.real
-        # shot noise on the instantaneous current: S_i = 2 q I  ->  scale
-        # sqrt(2 q I/(2 dt_n)) = sqrt(q I/dt_n). The amplitude is held out
-        # of the Jacobian (stop_gradient): d(sqrt I)/dI diverges at I -> 0
-        # and knocks Newton over, while physically the noise amplitude is
-        # quasi-static within a step.
-        i_qs = jax.lax.stop_gradient(jnp.maximum(i_bw, 0.0))
-        i_shot = jnp.sqrt(q_e * i_qs / dt_n) * nval(t, seed_idx)
-        i_tot = i_bw + i_shot
         i_out = jnp.where(
             isat > 0.0,
             jnp.maximum(isat, 1e-30) * jnp.tanh(
-                i_tot / jnp.maximum(isat, 1e-30)),
-            i_tot)
+                i_bw / jnp.maximum(isat, 1e-30)),
+            i_bw)
         f = {"po_p": i_opt, "po_n": -i_opt, "cat": i_out, "an": -i_out,
              "x1": f_x1, "x2": f_x2}
         vj = signals.cat - signals.an
@@ -3000,26 +3001,26 @@ def _apd_noisy(bank, dt_n):
         i_prim = R * power + Idk_bulk
         i_mult = Mc * i_prim + Idk_surf
         tau = _apd_tau(f3db, gbp, Mc)
-        f_x1 = s.x1 - i_mult
-        f_x2 = s.x2 - s.x1
-        i_bw = s.x2.real
         # McIntyre excess noise: multiplication amplifies the shot noise
         # super-linearly. The multiplied primary shot-noise PSD is
         # S_i = 2 q I_prim M^2 F(M), F(M) = k M + (2 - 1/M)(1 - k); the surface
         # dark current is not multiplied and adds plain 2 q Idk_surf. Scale to
         # sqrt(S_i/(2 dt_n)) per unit-variance sample -> sqrt(q S/(2q) / dt_n).
-        # The amplitude is held out of the Jacobian (stop_gradient) exactly as
-        # the PIN photodiode: d(sqrt I)/dI diverges at I -> 0 and stalls Newton.
+        # Like the PIN photodiode it enters ahead of the bandwidth poles (the
+        # avalanche build-up filters the noise it multiplies), with the
+        # amplitude held out of the Jacobian: d(sqrt I)/dI diverges at I -> 0.
         F = k_ion * Mc + (2.0 - 1.0 / Mc) * (1.0 - k_ion)
         i_prim_qs = jax.lax.stop_gradient(jnp.maximum(i_prim, 0.0))
         s_over_2q = i_prim_qs * Mc * Mc * F + jnp.maximum(Idk_surf, 0.0)
         i_shot = jnp.sqrt(q_e * s_over_2q / dt_n) * nval(t, seed_idx)
-        i_tot = i_bw + i_shot
+        f_x1 = s.x1 - (i_mult + i_shot)
+        f_x2 = s.x2 - s.x1
+        i_bw = s.x2.real
         i_out = jnp.where(
             isat > 0.0,
             jnp.maximum(isat, 1e-30) * jnp.tanh(
-                i_tot / jnp.maximum(isat, 1e-30)),
-            i_tot)
+                i_bw / jnp.maximum(isat, 1e-30)),
+            i_bw)
         f = {"po_p": i_opt, "po_n": -i_opt, "cat": i_out, "an": -i_out,
              "x1": f_x1, "x2": f_x2}
         vj = signals.cat - signals.an

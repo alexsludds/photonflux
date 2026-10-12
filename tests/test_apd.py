@@ -139,6 +139,39 @@ def test_apd_shot_noise_psd(sim):
     assert in_band > 3.0 * 2.0 * Q_E * i_prim * M * M
 
 
+@pytest.mark.parametrize("kind", ["apd", "photodiode"])
+def test_shot_noise_is_band_limited_by_the_detector(sim, kind):
+    """Shot noise is a fluctuation of the photocurrent, so the detector's own
+    transit-time response (f3db) filters it like the signal. It used to be
+    added after those poles: white out to the noise-bank bandwidth whatever
+    f3db said."""
+    R, P, r_load, bw, f3db = 0.8, 1e-3, 1000.0, 50e9, 5e9
+    sch = _receiver_sch(R=R, M=1.0, k_ion=0.0, power=P, r_load=r_load)
+    det = sch["instances"]["APD1"]
+    det["settings"]["f3db"] = f3db
+    if kind == "photodiode":
+        det["type"] = "photodiode"
+        det["settings"] = {"R": R, "Idk": 0.0, "Cj": 0.0, "f3db": f3db}
+    res = sim.run({"schematic": sch, "analysis": {
+        "mode": "transient", "t_stop": 4e-9, "points": 1200,
+        "noise": {"seeds": 8, "bw": bw, "seed": 2}}})
+    assert res["ok"], res.get("error")
+    V = np.array([t["values"] for t in res["traces"]
+                  if t.get("probe") == "vout"])
+    dt = float(np.diff(res["x"]).mean())
+    i_n = (V[:, 200:] - V[:, 200:].mean(axis=1, keepdims=True)) / r_load
+    psd = (2.0 * dt / i_n.shape[1]
+           * np.abs(np.fft.rfft(i_n, axis=1)) ** 2).mean(axis=0)
+    f = np.fft.rfftfreq(i_n.shape[1], dt)
+    low = psd[(f > 0) & (f <= 1.5e9)].mean()
+    high = psd[(f >= 15e9) & (f <= 25e9)].mean()
+    # the DC level is unchanged (2 q I) ...
+    assert low == pytest.approx(2.0 * Q_E * R * P, rel=0.3)
+    # ... and two poles at f3db = 5 GHz take ~18 dB off by 20 GHz (it was
+    # ~1 dB, the bank's own interpolation roll-off)
+    assert high < 0.1 * low
+
+
 # ---------------------------------------------------------------------------
 # sensitivity vs M: the thermal -> excess-noise crossover gives an optimum M*
 # ---------------------------------------------------------------------------

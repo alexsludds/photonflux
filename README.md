@@ -76,6 +76,7 @@ SETUPTOOLS_SCM_PRETEND_VERSION_FOR_BOSDI=0.1.9.dev0+g0327afb0855715a670165cdbc87
 # step that asks for tdecq() fails (e.g. examples 48/49). The DerekK44 fork
 # needs this repo's NumPy-2 patch (docs/patches/README.md).
 git clone https://github.com/DerekK44/stateye /tmp/stateye
+git -C /tmp/stateye checkout be599f15d92badc3277c3d6db5c66445c6a23622   # the image's pin
 git -C /tmp/stateye apply "$PWD/docs/patches/stateye-modern-toolchain.patch"
 .venv-circulax/bin/pip install --no-deps /tmp/stateye
 .venv-circulax/bin/pip install h5py Pint tqdm colorama

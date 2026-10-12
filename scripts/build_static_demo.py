@@ -78,7 +78,8 @@ def dump_api(server: str, data: Path, only: set[str] | None) -> list[str]:
     return [e for e in ids if only is None or e in only]
 
 
-def capture_runs(server: str, data: Path, ids: list[str], timeout_s: float) -> dict:
+def capture_runs(server: str, data: Path, ids: list[str], timeout_s: float,
+                 flow_timeout_s: float) -> dict:
     from playwright.sync_api import sync_playwright
 
     runs = data / "runs"
@@ -94,18 +95,28 @@ def capture_runs(server: str, data: Path, ids: list[str], timeout_s: float) -> d
         # (label, example to select or None = the first-visit auto-load)
         jobs = [(BOOT_EXAMPLE + " (first visit)", None)] if BOOT_EXAMPLE in ids else []
         jobs += [(ex, ex) for ex in ids]
+        boot_title = json.loads(
+            (data / "examples" / f"{BOOT_EXAMPLE}.json").read_text()).get("title")
+        loaded = "t => typeof tabs !== 'undefined' && tabs[activeTab]?.title === t"
         for label, ex in jobs:
             t0 = time.time()
+            # pressing Run on an example with a testbench flow runs the whole flow
+            doc = json.loads((data / "examples" / f"{ex or BOOT_EXAMPLE}.json").read_text())
+            limit_s = flow_timeout_s if doc.get("flow") else timeout_s
             ctx = browser.new_context(viewport={"width": 1600, "height": 1000})
             page = ctx.new_page()
             try:
                 page.goto(server + "/", wait_until="load")
                 page.wait_for_function(
                     "document.querySelectorAll('#sel-example option').length > 1")
+                # a first visit auto-loads BOOT_EXAMPLE; it must land before
+                # another example is picked, or it can replace that one
+                page.wait_for_function(loaded, arg=boot_title)
                 if ex is not None:
                     page.select_option("#sel-example", ex)
+                    page.wait_for_function(loaded, arg=doc.get("title"))
                     page.wait_for_timeout(1500)   # example fetch + loadDocument
-                with page.expect_response(is_run, timeout=timeout_s * 1000) as info:
+                with page.expect_response(is_run, timeout=limit_s * 1000) as info:
                     page.evaluate("document.getElementById('btn-run').click()")
                 resp = info.value
                 body = resp.request.post_data or ""
@@ -122,6 +133,13 @@ def capture_runs(server: str, data: Path, ids: list[str], timeout_s: float) -> d
                       flush=True)
             except Exception as exc:  # keep going; one slow example shouldn't sink the site
                 failed.append(label)
+                # the server runs on after the browser gives up: stop it so
+                # the next example doesn't queue behind it
+                try:
+                    urllib.request.urlopen(urllib.request.Request(
+                        server + "/api/cancel", data=b"{}", method="POST"), timeout=30)
+                except OSError:
+                    pass
                 print(f"  FAIL {label}  {time.time() - t0:5.1f}s  {str(exc)[:200]}", flush=True)
             finally:
                 ctx.close()
@@ -137,6 +155,8 @@ def main() -> None:
     ap.add_argument("--out", type=Path, default=REPO / "site")
     ap.add_argument("--only", help="comma-separated example ids (default: all)")
     ap.add_argument("--timeout", type=float, default=660, help="per-run timeout, s")
+    ap.add_argument("--flow-timeout", type=float, default=4800,
+                    help="per-run timeout for examples with a testbench flow, s")
     ap.add_argument("--max-failures", type=int, default=3,
                     help="fail the build if more example runs than this fail")
     args = ap.parse_args()
@@ -147,7 +167,7 @@ def main() -> None:
     data = args.out / "data"
     ids = dump_api(server, data, only)
     print(f"capturing {len(ids)} example runs from {server}", flush=True)
-    index = capture_runs(server, data, ids, args.timeout)
+    index = capture_runs(server, data, ids, args.timeout, args.flow_timeout)
     ok = len(index["examples"])
     print(f"done: {ok}/{len(ids)} examples captured"
           + (f"; failed: {', '.join(index['failed'])}" if index["failed"] else ""))

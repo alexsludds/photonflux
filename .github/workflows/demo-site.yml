@@ -43,9 +43,11 @@ jobs:
           python-version: "3.12"
       - run: pip install playwright && playwright install --with-deps chromium
       # Examples with a testbench flow record the whole flow; example 49's
-      # 60-evaluation optimize runs for most of an hour, hence the limits.
+      # 60-evaluation optimize runs for most of an hour (--flow-timeout).
       - name: Capture every example
-        run: python scripts/build_static_demo.py --server http://localhost:7860 --out site --timeout 4860
+        run: >-
+          python scripts/build_static_demo.py --server http://localhost:7860 --out site
+          --timeout 960 --flow-timeout 4860
       - if: failure()
         run: docker logs pf 2>&1 | tail -100
       - uses: actions/upload-pages-artifact@v3

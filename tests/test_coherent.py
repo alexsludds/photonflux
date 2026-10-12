@@ -184,6 +184,27 @@ def test_frequency_offset_estimation():
 # adaptive equalization (CMA) opens an ISI channel
 # ===========================================================================
 
+@pytest.mark.parametrize("delay", [0, 1])
+@pytest.mark.parametrize("mode,M,eq,cpr", [("qpsk", 4, "cma", "vv"),
+                                           ("qpsk", 4, "dd-lms", "vv"),
+                                           ("qam16", 16, "dd-lms", "bps")])
+def test_fractionally_spaced_eq_starts_on_a_symbol_sample(mode, M, eq, cpr,
+                                                          delay):
+    """At sps = 2 the equalizers' centre spike has to pick symbol samples.
+    With the default 15 taps it sat between symbols on an even sampling
+    phase (and 13 taps on an odd one): CMA / DD-LMS then locked onto the
+    transitions and the EVM came out near 0 dB."""
+    tx = w.qam_symbols({"qam": mode, "order": 15, "seed": 1}, 12_000)
+    sig = np.roll(co.upsample_shape(tx, 2, 0.1), delay)
+    sig = co.awgn(sig, 22.0, sps=2, rng=np.random.default_rng(3))
+    cfg = {"sps": 2, "rrc_beta": 0.1, "symbol_rate": 32e9, "eq": eq,
+           "eq_taps": 15, "eq_mu": 1e-3, "cpr": cpr}
+    dsp = co.receive(sig, w.qam_constellation(M), M, cfg)
+    rx, ref, _lag, _rot = co.sync(dsp["syms"][3000:], tx[3000:])
+    scale = np.sqrt(np.mean(np.abs(ref) ** 2) / np.mean(np.abs(rx) ** 2))
+    assert 20 * np.log10(co.evm(rx * scale, ref)) < -18.0
+
+
 def test_cma_opens_isi_channel():
     rng = np.random.default_rng(9)
     tx = w.qam_symbols({"qam": "qpsk", "order": 15, "seed": 1}, 40_000)
@@ -238,7 +259,7 @@ def test_coherent_report_16qam_per_cluster_evm():
     assert len(rep["const_re"]) == 16 and len(rep["rx_re"]) > 100
 
 
-@pytest.mark.parametrize("eq", ["none", "cma"])
+@pytest.mark.parametrize("eq", ["none", "cma", "dd-lms"])
 def test_coherent_report_is_scale_free(eq):
     # balanced-receiver photocurrents arrive in amps (~1e-3), not at the
     # constellation's unit power; blind phase search and CMA must not care

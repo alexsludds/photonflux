@@ -3855,7 +3855,9 @@ function renderAmi(holder, ami) {
       <tr><th>statistical BER</th><td>${fmtE(ami.stat.ber)}
         <span class="link-hint">(Init on the channel estimated from the probe;
         noise ${fmtSI(ami.noise_at_slicer)}V incl. ${fmtSI(ami.distortion_at_slicer)}V
-        of nonlinear distortion at the slicer. As pure LTI: ${fmtE(ami.stat.ber_lti)})</span></td></tr>
+        of nonlinear distortion at the slicer${(ami.level_offsets || []).length
+          ? `, level shifts ${ami.level_offsets.map((x) => fmtSI(x) + "V").join(" / ")}` : ""}.
+        As pure LTI: ${fmtE(ami.stat.ber_lti)})</span></td></tr>
       <tr><th>eye</th><td>${eyes}</td></tr>
       <tr><th>CDR samples at</th><td>${ami.td.sampling_phase_ui >= 0 ? "+" : ""}${ami.td.sampling_phase_ui.toFixed(3)}
         UI from the pulse peak</td></tr>

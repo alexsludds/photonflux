@@ -43,6 +43,7 @@ __all__ = [
     "Channel", "backplane", "symbols", "stimulus", "stat_eye", "StatEye",
     "statistical_link", "StatLink", "time_domain_link", "receive",
     "estimate_channel", "TimeDomainLink", "rx_linear_response",
+    "analyze_waveform", "WaveformAnalysis",
     "q_to_ber", "ber_to_q",
 ]
 
@@ -445,7 +446,8 @@ class StatEye:
 def stat_eye(pulse: np.ndarray, ts: float, ui: float, *, levels: int = 2,
              noise_rms: float = 0.0, rj_ui: float = 0.0, dj_ui: float = 0.0,
              nv: int = 601, span_ui: float = 1.0,
-             crosstalk: Sequence[np.ndarray] = ()) -> StatEye:
+             crosstalk: Sequence[np.ndarray] = (),
+             level_offsets: Sequence[float] | None = None) -> StatEye:
     """Statistical eye of a pulse response (V per 1 V, 1 UI pulse).
 
     For each sampling phase within +/- ``span_ui`` of the pulse peak, the
@@ -457,6 +459,9 @@ def stat_eye(pulse: np.ndarray, ts: float, ui: float, *, levels: int = 2,
     (aggressor responses at the victim's slicer, e.g. the aggressor rows of
     an Rx ``AMI_Init`` output) add every cursor of independent aggressor
     data, sampled at the victim's phase (synchronous crosstalk).
+    ``level_offsets`` (V, lowest level first) shift each symbol's level --
+    static nonlinear distortion such as modulator compression; thresholds
+    are still searched freely, as adapted slicers would.
     """
     from scipy.special import ndtr
 
@@ -464,6 +469,7 @@ def stat_eye(pulse: np.ndarray, ts: float, ui: float, *, levels: int = 2,
     nspui = max(1, int(round(ui / ts)))
     npk = int(np.argmax(p))
     lv = _levels(levels)
+    off = np.zeros(levels) if level_offsets is None else np.asarray(level_offsets, float)
     halfw = int(round(span_ui * nspui))
     jit = int(np.ceil((4 * rj_ui + dj_ui / 2) * nspui)) + 1 if (rj_ui or dj_ui) else 0
     ph = np.arange(npk - halfw - jit, npk + halfw + jit + 1)
@@ -475,7 +481,7 @@ def stat_eye(pulse: np.ndarray, ts: float, ui: float, *, levels: int = 2,
         c = p[n % nspui:: nspui]
         pdmax = max(pdmax, np.abs(c).sum()
                     + sum(np.abs(x[n % nspui:: nspui]).sum() for x in xt))
-    vmax = 1.15 * pdmax + 5 * noise_rms
+    vmax = 1.15 * pdmax + 5 * noise_rms + float(np.max(np.abs(off)))
     v = np.linspace(-vmax, vmax, nv)
     dv = v[1] - v[0]
     var_a = float(np.mean(lv ** 2))
@@ -516,8 +522,8 @@ def stat_eye(pulse: np.ndarray, ts: float, ui: float, *, levels: int = 2,
         wb, vb = pdf[nz], v[nz]
         below, above = [], []        # P(y < v), P(y > v) for each level
         for li, a in enumerate(lv):
-            level_v[li, j] = a * c0
-            z = (v[:, None] - a * c0 - vb[None, :]) / sigma
+            level_v[li, j] = a * c0 + off[li]
+            z = (v[:, None] - level_v[li, j] - vb[None, :]) / sigma
             below.append(ndtr(z) @ wb)
             above.append(ndtr(-z) @ wb)
         for e in range(n_eyes):
@@ -612,7 +618,8 @@ def statistical_link(tx, channel: Channel, rx, ui: float, *,
                      modulation: str = "NRZ", noise_rms: float | None = None,
                      noise_density: float = 0.0, rj_ui: float | None = None,
                      dj_ui: float | None = None, tx_params: dict | None = None,
-                     rx_params: dict | None = None, nv: int = 601) -> StatLink:
+                     rx_params: dict | None = None, nv: int = 601,
+                     level_offsets: Sequence[float] | None = None) -> StatLink:
     """IBIS statistical flow: Tx ``AMI_Init`` then Rx ``AMI_Init`` on the
     channel impulse, then :func:`stat_eye` on the equalized pulse.
 
@@ -671,7 +678,7 @@ def statistical_link(tx, channel: Channel, rx, ui: float, *,
     rx_aggs = list(r.impulse[1:]) if rx is not None else list(aggs)
     xt = [pulse(x) for x in rx_aggs]
     eye = stat_eye(p, ts, ui, levels=L, noise_rms=sig_n, rj_ui=rj_ui,
-                   dj_ui=dj_ui, nv=nv, crosstalk=xt)
+                   dj_ui=dj_ui, nv=nv, crosstalk=xt, level_offsets=level_offsets)
     return StatLink(channel, h_tx, h_rx, pulse(h), p, eye, tx_po, rx_po,
                     tx_msg, rx_msg, sig_n, g_rx, rx_aggs)
 
@@ -810,8 +817,9 @@ def time_domain_link(tx, channel: Channel | None, rx, ui: float, *,
         ts = channel.ts
     if ts is None:
         raise ValueError("give a channel or ts")
+    from scipy.signal import fftconvolve
+
     nspui = max(1, int(round(ui / ts)))
-    L = _nlevels(modulation)
     a = symbols(nsym, modulation, order=order, seed=seed)
     x = stimulus(a, nspui, rj_ui=rj_ui, dj_ui=dj_ui, seed=seed + 100)
     h_init = init_impulse if init_impulse is not None else (
@@ -838,14 +846,10 @@ def time_domain_link(tx, channel: Channel | None, rx, ui: float, *,
     if channel_fn is not None:
         rx_in = np.asarray(channel_fn(tx_out), float)
     elif channel is not None:
-        from scipy.signal import fftconvolve
-
         rx_in = fftconvolve(tx_out, channel.impulse)[: len(tx_out)] * ts
     else:
         rx_in = tx_out.copy()
     for j, hx in enumerate(aggs):           # crosstalk: independent data
-        from scipy.signal import fftconvolve
-
         xa = stimulus(symbols(nsym, modulation, order=order, seed=seed + 31 * (j + 1)),
                       nspui)
         rx_in = rx_in + fftconvolve(xa, hx)[: len(rx_in)] * ts
@@ -893,9 +897,10 @@ def receive(rx, rx_in: np.ndarray, a: np.ndarray, ui: float, ts: float,
         rx_out = rx_in
         clk = np.zeros(0)
     if len(clk) < 16:
-        # no recovered clock: sample at the pulse peak phase of the Init view
-        p = np.convolve(init_impulse, np.ones(nspui))[: len(init_impulse)]
-        ph = int(np.argmax(p)) % nspui
+        # no recovered clock (an Init-only or CDR-less Rx): an ideal clock at
+        # the output eye's center, found data-aided -- the phase whose
+        # samples track the known symbols best (correlation over lags)
+        ph = _best_phase(rx_out, a, nspui, skip or 0, max_lag)
         clk = (np.arange(ph, len(rx_out) - nspui, nspui) - nspui / 2) * ts
     skip = int(skip or 0)
     tgrid = np.arange(len(rx_out)) * ts
@@ -945,6 +950,26 @@ def receive(rx, rx_in: np.ndarray, a: np.ndarray, ui: float, ts: float,
                           rx_tr, rx_init)
 
 
+def _best_phase(w: np.ndarray, a: np.ndarray, nspui: int, skip: int,
+                max_lag: int) -> int:
+    """Sample phase of ``w`` whose symbol-rate samples correlate best with
+    the known symbols ``a`` (searching integer lags)."""
+    n = min(len(w) // nspui, len(a))
+    start = min(skip, max(0, n - 600))
+    m = min(3000, n - start - max_lag - 1)
+    if m < 64:
+        return nspui // 2
+    best = (-np.inf, nspui // 2)
+    for ph in range(nspui):
+        s = w[ph::nspui][:n]
+        s = s - s.mean()
+        for lag in range(0, max_lag):
+            c = float(np.dot(s[start + lag:start + lag + m], a[start:start + m]))
+            if c > best[0]:
+                best = (c, ph)
+    return best[1]
+
+
 def estimate_channel(wave: np.ndarray, ts: float, ui: float, a: np.ndarray, *,
                      span_ui: int = 48, pre_ui: int = 2, skip: int = 16,
                      name: str = "estimated", residual: bool = False):
@@ -989,6 +1014,103 @@ def estimate_channel(wave: np.ndarray, ts: float, ui: float, a: np.ndarray, *,
     ch = Channel.from_pulse(p[pre_ui * nspui:], ts, ui, name=name)
     rms = float(np.sqrt(res2 / max(cnt, 1)))
     return (ch, rms, res_w) if residual else (ch, rms)
+
+
+# ---------------------------------------------------------------------------
+# a received waveform, end to end
+# ---------------------------------------------------------------------------
+
+@dataclass
+class WaveformAnalysis:
+    """IBIS-AMI analysis of one received waveform (:func:`analyze_waveform`)."""
+
+    channel: Channel                # data-aided linear estimate (Init's view)
+    residual_rms: float             # what the linear fit misses, V at Rx input
+    residual_rel: float             # ... relative to the waveform's rms
+    distortion_at_slicer: float     # its random part through the Rx front end
+    level_offsets: np.ndarray       # its static part: shift of each level, V
+    stat: StatLink                  # Init flow, distortion counted as noise
+    stat_lti: StatLink              # Init flow, the link taken as LTI
+    td: TimeDomainLink              # GetWave flow on the waveform itself
+
+
+def _split_distortion(d: np.ndarray, live: np.ndarray, a: np.ndarray,
+                      skip: int, max_lag: int = 96) -> tuple[float, np.ndarray]:
+    """Split distortion samples ``d`` (one per UI, at the slicer's phase)
+    into a static level shift -- the mean per current symbol, e.g. a
+    modulator compressing the outer PAM4 levels -- and the rest. Returns
+    (rms of the rest, offset per level, lowest level first). The symbol each
+    sample belongs to is the lag that explains the most variance."""
+    lv = np.unique(a)
+    zero = np.zeros(len(lv))
+    n = min(len(d), len(a))
+    idx = np.arange(skip, n)
+    idx = idx[live[skip:n]]
+    if len(idx) < 64:
+        return 0.0, zero
+    x = d[idx]
+    best = (0.0, None)
+    for lag in range(0, max_lag):
+        k = idx - lag
+        ok = k >= 0
+        if ok.sum() < 64:
+            break
+        means = np.array([x[ok][np.isclose(a[k[ok]], v)].mean() for v in lv])
+        fit = means[np.searchsorted(lv, a[k[ok]])]
+        explained = float(np.var(fit))
+        if explained > best[0]:
+            best = (explained, (ok, fit, means))
+    if best[1] is None:
+        return float(np.std(x)), zero
+    ok, fit, means = best[1]
+    return float(np.std(x[ok] - fit)), means
+
+
+def analyze_waveform(rx, wave: np.ndarray, a: np.ndarray, ui: float, ts: float, *,
+                     modulation: str = "NRZ", noise_rms: float = 0.0,
+                     skip: int | None = None, span_ui: int = 64, seed: int = 7,
+                     nv: int = 301) -> WaveformAnalysis:
+    """Run an IBIS-AMI Rx on a received waveform whose symbols are known --
+    e.g. a photonflux circuit transient of a nonlinear optical link.
+
+    1. :func:`estimate_channel` gives the LTI channel ``AMI_Init`` needs,
+       and the residual it cannot explain (square-law detection after
+       dispersion, modulator compression, ...).
+    2. Time domain: :func:`receive` on ``wave`` + white input noise.
+    3. Statistical: the Init flow on the estimate, once as pure LTI and
+       once with the residual -- filtered through the Rx's linear front
+       end (:func:`rx_linear_response`) and read at the recovered clock's
+       phase -- split into its per-symbol mean, which moves the eye's
+       levels (static distortion: modulator compression), and the rest,
+       added as Gaussian noise (a Bussgang-style split of a nonlinear link
+       into a linear part plus uncorrelated distortion).
+    """
+    y = np.asarray(wave, float)
+    y = y - np.mean(y)
+    nspui = max(1, int(round(ui / ts)))
+    nsym = min(len(a), len(y) // nspui)
+    ch, resid, res_w = estimate_channel(y, ts, ui, a[:nsym],
+                                        span_ui=min(span_ui, nsym // 8),
+                                        residual=True)
+    if skip is None and rx is not None:
+        skip = min(rx.ignore_bits, nsym // 3)
+    rx_in = y + (noise_rms * np.random.default_rng(seed).standard_normal(len(y))
+                 if noise_rms > 0 else 0.0)
+    td = receive(rx, rx_in, a[:nsym], ui, ts, ch.impulse, modulation=modulation,
+                 skip=skip)
+    g = rx_linear_response(rx, ch.impulse, ts, ui) if rx is not None else np.array([1.0])
+    dist = np.convolve(res_w, g)[: len(res_w)]
+    ph = int(round(td.sampling_phase_ui * nspui)) % nspui
+    sig_dist, offsets = _split_distortion(dist[ph::nspui], res_w[ph::nspui] != 0,
+                                          a[:nsym], td.skip)
+    dens = noise_rms * np.sqrt(2 * ts)
+    lti = statistical_link(None, ch, rx, ui, modulation=modulation,
+                           noise_density=dens, nv=nv)
+    st = statistical_link(None, ch, rx, ui, modulation=modulation,
+                          noise_rms=sig_dist, noise_density=dens, nv=nv,
+                          level_offsets=offsets)
+    return WaveformAnalysis(ch, resid, resid / max(float(np.std(y)), 1e-30),
+                            sig_dist, offsets, st, lti, td)
 
 
 # ---------------------------------------------------------------------------

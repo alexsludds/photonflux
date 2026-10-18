@@ -6,8 +6,9 @@ into ``models/ibis_ami/build`` (gitignored):
   ``<os-arch>/``          the photonflux models (pf_tx, pf_rx) + ``ami_host``
   ``public/ibisami-<os-arch>/``
                           capn-freako/ibisami's example Tx/Rx (BSD-3), from
-                          the sources vendored in examples/ibis_ami/public;
-                          needs a C++ compiler and Boost headers (Spirit)
+                          the sources vendored in examples/ibis_ami/public
+                          (one-line fix: the Rx CTLE state is cleared after
+                          Init); needs a C++ compiler and Boost headers
   ``public/sisoft-<os-arch>/``
                           SiSoft's 2007 IBIS-AMI Eval Toolkit Tx, built from
                           the kit's own C source (header fix: see below)
@@ -207,7 +208,7 @@ def build_ibisami(force: bool = False) -> Step:
     ex = IBISAMI_SRC / "example"
     inputs = lib_srcs + sorted((IBISAMI_SRC / "include").glob("*.h")) + \
         sorted(ex.glob("example_*"))
-    digest = _digest(inputs, cxx + str(boost))
+    digest = _digest(inputs, cxx + str(boost) + "patch:ctle-clear")
     # file names the kit's own .ibs gives its 64-bit Linux executables
     libs = tuple(out / f"{m}_x86_amd64{lib_suffix(plat)}" for m in
                  ("example_tx", "example_rx"))
@@ -219,8 +220,12 @@ def build_ibisami(force: bool = False) -> Step:
         objs = []
         for s in lib_srcs:
             o = Path(td) / (s.stem + ".o")
+            src = s
+            if s.name == "ami_rx.cpp":
+                src = Path(td) / s.name
+                src.write_text(_patch_ibisami_rx(s.read_text()))
             _run([cxx, "-std=gnu++11", "-O2", "-fPIC", "-w", "-c",
-                  f"-I{IBISAMI_SRC}", f"-I{boost}", "-o", str(o), str(s)])
+                  f"-I{IBISAMI_SRC}", f"-I{boost}", "-o", str(o), str(src)])
             objs.append(str(o))
         for m, lib in zip(("example_tx", "example_rx"), libs):
             _run([cxx, "-std=gnu++11", "-O2", "-fPIC", "-w", *flags,
@@ -233,6 +238,19 @@ def build_ibisami(force: bool = False) -> Step:
     _stamp(out, digest)
     return Step("ibisami examples", True, f"built example_tx, example_rx -> {out}",
                 libs)
+
+
+def _patch_ibisami_rx(text: str) -> str:
+    """ibisami's AmiRx runs its CTLE (one DigitalFilter) over the impulse
+    response in AMI_Init and keeps the filter for AMI_GetWave without
+    clearing it, so GetWave starts with the impulse's tail (~1e10 V/s) in
+    the filter state and its output rings to ~1e5 V. Clear it after Init."""
+    old = "        ctle_->apply(impulse_matrix_, number_of_rows_);\n"
+    if old not in text or "ctle_->clear();  // photonflux" in text:
+        return text
+    return text.replace(old, old + "    if (ctle_)\n"
+                        "        ctle_->clear();  // photonflux: Init state "
+                        "must not leak into GetWave\n", 1)
 
 
 # SiSoft's toolkit ships an IBIS_AMI_Tx.h older than IBIS_AMI_Tx.c: the

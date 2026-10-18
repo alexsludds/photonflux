@@ -149,30 +149,13 @@ def ami_report(result: dict, meta: dict, cfg: dict, log: list) -> dict | None:
 def _rx_report(rx, blk, bname, probe, mod, ui, ts, y, a, nsym, log) -> dict:
     from photonflux import serdes
 
-    ch, resid, res_w = serdes.estimate_channel(
-        y, ts, ui, a, span_ui=min(64, nsym // 8), residual=True)
-    sig_rms = float(np.std(y))
     noise = float(blk.get("noise_rms", 0.0))
-    dens = noise * np.sqrt(2 * ts)
-    # what the linear fit misses (square-law detection after dispersion,
-    # modulator compression, ...) enters the statistical flow as noise,
-    # shaped by the Rx's own linear front end (a Bussgang-style split)
-    skip = min(rx.ignore_bits, nsym // 3)
-    rx_in = y + (noise * np.random.default_rng(7).standard_normal(len(y))
-                 if noise > 0 else 0.0)
-    td = serdes.receive(rx, rx_in, a, ui, ts, ch.impulse, modulation=mod,
-                        skip=skip)
-    # ... measured where it matters: at the recovered clock's sampling phase
-    g = serdes.rx_linear_response(rx, ch.impulse, ts, ui)
-    dist = np.convolve(res_w, g)[: len(res_w)]
-    ph = int(round(td.sampling_phase_ui * NSPUI)) % NSPUI
-    at = dist[ph::NSPUI][skip:]
-    at = at[np.abs(res_w[ph::NSPUI][skip:]) > 0]
-    sig_dist = float(np.std(at)) if len(at) > 64 else 0.0
-    lti = serdes.statistical_link(None, ch, rx, ui, modulation=mod,
-                                  noise_density=dens, nv=301)
-    st = serdes.statistical_link(None, ch, rx, ui, modulation=mod,
-                                 noise_rms=sig_dist, noise_density=dens, nv=301)
+    wa = serdes.analyze_waveform(rx, y, a, ui, ts, modulation=mod,
+                                 noise_rms=noise,
+                                 skip=min(rx.ignore_bits, nsym // 3))
+    st, lti, td = wa.stat, wa.stat_lti, wa.td
+    resid, sig_dist = wa.residual_rms, wa.distortion_at_slicer
+    sig_rms = resid / max(wa.residual_rel, 1e-30)
     eye = st.eye
     summ = eye.summary(targets=(1e-6, 1e-12))
     # adaptation trace: every numeric scalar / vector the model reports
@@ -211,6 +194,7 @@ def _rx_report(rx, blk, bname, probe, mod, ui, ts, y, a, nsym, log) -> dict:
         "final_params": (td.rx_trace.trace[-1] if td.rx_trace else {}),
         "linear_residual": resid / max(sig_rms, 1e-30),
         "distortion_at_slicer": sig_dist,
+        "level_offsets": _finite(wa.level_offsets),
         "noise_rms": noise, "noise_at_slicer": st.noise_rms,
         "stat": {"ber": eye.bit_error_rate(), "ser": eye.ser(),
                  "ber_lti": lti.eye.bit_error_rate(),

@@ -39,6 +39,7 @@ third-party kits under ``examples/ibis_ami/public`` and anything dropped into
 from __future__ import annotations
 
 import ctypes
+import importlib
 import os
 import platform
 import re
@@ -72,7 +73,7 @@ class AmiError(RuntimeError):
 
 def _pyami():
     try:
-        import pyibisami  # noqa: F401
+        importlib.import_module("pyibisami")
     except ImportError as exc:  # pragma: no cover - dependency is declared
         raise ImportError(
             "IBIS-AMI support needs PyAMI: pip install "

@@ -579,8 +579,10 @@ PF_AMI_EXPORT long AMI_Init(double *impulse_matrix, long row_size,
     free(hc); free(pulse); free(cur); free(g);
     pf_str_printf(&m->msg, "pf_rx: %s, CTLE %.3g dB%s, FFE %ld taps, DFE "
                            "%ld taps, FOM %.2f dB, sampling phase %.3f UI%s",
-                  m->levels == 4 ? "PAM4" : "NRZ", m->ctle_peak,
-                  m->ctle_mode == 2 ? " (adapted)" : "",
+                  m->levels == 4 ? "PAM4" : "NRZ",
+                  m->ctle_mode > 0 ? m->ctle_peak : 0.0,
+                  m->ctle_mode == 2 ? " (adapted)"
+                                    : (m->ctle_mode == 0 ? " (off)" : ""),
                   m->ffe_mode > 0 ? m->ffe_n : 0L, m->dfe_n, m->init_fom_db,
                   m->init_phase,
                   cold_n0 >= 0 ? ", GetWave adapts from a cold start" : "");

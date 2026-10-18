@@ -125,7 +125,7 @@ says 1e-300 at every length, while the split tracks the time domain:
 |---|---|---|---|
 | 16 km | 25 % | 6e-15 | Q-fit 3e-15 |
 | 20 km | 28.5 % | 8e-6 | Q-fit 1.3e-4 |
-| 22 km | 29.6 % | 4.6e-2 | counted 4.6e-2 |
+| 22 km | 29.6 % | 4.2e-2 | counted 4.6e-2 |
 
 ## The web app
 

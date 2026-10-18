@@ -96,7 +96,8 @@ git -C /tmp/stateye apply "$PWD/docs/patches/stateye-modern-toolchain.patch"
 scripts/build-openvaf.sh                             # needs Rust + LLVM 18
 
 # verify the toolchain is complete before running anything
-.venv-circulax/bin/python -m photonflux doctor       # openvaf-ir, PDK, libngspice
+.venv-circulax/bin/python -m photonflux doctor       # openvaf-ir, PDK, libngspice, IBIS-AMI
+.venv-circulax/bin/python -m photonflux ami build    # IBIS-AMI models (C compiler; Boost optional)
 
 # run a standalone example, or the tests
 .venv-circulax/bin/python examples/link_sky130.py    # -> out/link_sky130.png
@@ -136,11 +137,46 @@ volts).
 - **Optical spectra (OSA):** flag an optical probe and get a full
   Blackman–Harris FFT of its field beside the time-domain trace, on a shared
   wavelength axis; results export to CSV (time-domain **and** spectra).
-- **41 example circuits**, grouped: photonic links, lasers/modulators (SOA
+- **IBIS-AMI Tx / Rx blocks:** drop vendor-style SerDes models (or
+  photonflux's open-source `pf_tx` / `pf_rx`) around any channel,
+  electrical or optical; the Link tab reports counted BER from the model's
+  own recovered clock, the statistical eye, bathtubs and the adaptation
+  trace (examples 50–52, [IBIS-AMI](#ibis-ami-serdes-models--examplesibis_ami)).
+- **44 example circuits**, grouped: photonic links, lasers/modulators (SOA
   Fabry-Perot laser, Vernier tunable ring laser, TPA/FCA-limited high-Q ring,
   χ(3) four-wave mixing in a waveguide and resonantly enhanced inside a Kerr
   ring — all from the nonlinear VA models), SKY130 device studies, channels +
   equalization, passive photonics, WDM crosstalk, and analog/digital CMOS.
+
+## IBIS-AMI SerDes models — `examples/ibis_ami/`
+
+Photonflux runs **IBIS-AMI** transmitter and receiver models (the shared
+libraries SerDes vendors ship), parsed by
+[PyAMI](https://github.com/capn-freako/PyAMI), on its channels, including
+circulax-simulated optics. Both IBIS flows are supported: statistical
+(`AMI_Init`: BER contours, bathtubs, eye height/width at a target BER,
+crosstalk, jitter) and time-domain (`AMI_GetWave`: the model's own CDR,
+counted BER, every adapted tap vs time). For nonlinear optical links, a
+data-aided linear fit plus a distortion term keeps the statistical flow
+honest.
+
+```python
+from photonflux import ibisami, serdes
+
+tx, rx = ibisami.load("pf_tx"), ibisami.load("pf_rx")   # or any vendor model
+ch = serdes.backplane(0.7, ts=1/32e9/32, ui=1/32e9)
+stat = serdes.statistical_link(tx, ch, rx, 1/32e9)      # stat.eye: contours, bathtubs
+td = serdes.time_domain_link(tx, ch, rx, 1/32e9)        # td.counted, td.adaptation(...)
+```
+
+`python -m photonflux ami build | list | info` builds and lists the models:
+photonflux's own BSD-3 `pf_tx` / `pf_rx` (FFE; CTLE, AGC, FFE, DFE,
+bang-bang / Mueller-Muller CDR, NRZ / PAM4), the public ibisami and SiSoft
+reference models, and any vendor kit dropped into `examples/ibis_ami/vendor/`.
+Linux-only (even 32-bit) vendor binaries run in a Docker container. The
+[examples README](examples/ibis_ami/README.md) catalogs the freely available
+models and the five example studies; [docs/ibis-ami.md](docs/ibis-ami.md) has
+the design notes.
 
 ## Deploy it as a public web app ([docs/README-DEPLOY.md](docs/README-DEPLOY.md))
 
@@ -228,16 +264,21 @@ photonflux/       Python package — the circulax bridge (the only simulator)
   toolchain.py    openvaf-ir / VA-include / SKY130-PDK discovery + `doctor`
   _ngspice.py     ctypes binding to libngspice — SKY130 card extraction only
   signals.py      PRBS bit patterns (engine-agnostic stimulus)
-  cli.py          `python -m photonflux doctor` / `flow <testbench.json>`
+  ibisami.py      IBIS-AMI models: PyAMI parsing, in-process / container execution
+  ami_build.py    builds the IBIS-AMI models for this machine
+  serdes.py       link engine: statistical eye, BER, bathtubs, GetWave flow
+  cli.py          `python -m photonflux doctor` / `flow <testbench.json>` / `ami ...`
 webapp/           browser schematic editor + stdlib simulation server
   server.py       serves the static UI and POST /api/run (single origin)
   static/         index.html + app.js + symbols.js + style.css (uPlot plotting)
-  examples/       41 example circuits (JSON)
+  examples/       44 example circuits (JSON)
   catalog.py, simulate.py, warmup.py, ...
 models/           Verilog-A model library (single source of truth)
   __jax__/        content-hash cache of lowered JAX + OSDI artifacts (regenerated)
+  ibis_ami/       photonflux's IBIS-AMI models (pf_tx, pf_rx, C99) + ami_host
 vendor/BSIM4/     cogenda BSIM4.8 Verilog-A (SKY130 device physics)
 examples/         standalone circulax benches (see table above) + shared helpers
+  ibis_ami/       IBIS-AMI studies + the public third-party kits (public/)
 tests/            circulax model-physics pins (steady state); transient studies
                   live in examples/
 include/          Verilog-A headers (discipline.h, constants.h)

@@ -104,6 +104,7 @@ class Check:
     name: str
     ok: bool
     detail: str
+    optional: bool = False      # a failure does not fail `doctor`
 
 
 def doctor() -> list[Check]:
@@ -144,9 +145,49 @@ def doctor() -> list[Check]:
     try:
         checks.append(Check("SKY130 PDK", True, str(sky130_lib())))
     except FileNotFoundError as e:
-        checks.append(Check("SKY130 PDK", False, str(e).splitlines()[0] + " (optional)"))
+        checks.append(Check("SKY130 PDK", False, str(e).splitlines()[0] + " (optional)",
+                            optional=True))
 
+    checks += ibis_ami_checks()
     return checks
+
+
+def ibis_ami_checks() -> list[Check]:
+    """IBIS-AMI: PyAMI, the photonflux models' build, and the optional
+    pieces (Boost for the ibisami examples, Docker for foreign binaries)."""
+    from importlib import metadata
+
+    out: list[Check] = []
+    try:
+        out.append(Check("PyAMI (IBIS-AMI)", True,
+                         f"pyibis-ami {metadata.version('pyibis-ami')}"))
+    except metadata.PackageNotFoundError:
+        out.append(Check("PyAMI (IBIS-AMI)", False,
+                         "not installed: pip install -e . (pyproject pins PyAMI)"))
+        return out
+    from . import ami_build
+    from .ibisami import BUILD_ROOT, host_platform
+
+    here = host_platform()
+    built = [p for p in (BUILD_ROOT / here.tag).glob("pf_*") if p.suffix in (".so", ".dll")]
+    cc = ami_build.c_compiler()
+    if len(built) >= 2:
+        out.append(Check("IBIS-AMI models", True, f"pf_tx, pf_rx built for {here.tag}"))
+    else:
+        out.append(Check("IBIS-AMI models", cc is not None,
+                         f"not built yet; `python -m photonflux ami build` ({cc or 'needs a C compiler'})"))
+    boost = ami_build.boost_include()
+    out.append(Check("Boost (ibisami)", boost is not None,
+                     str(boost) if boost else "headers not found; only the ibisami "
+                     "example models need them (optional)", optional=True))
+    from .ibisami import docker_available
+
+    dock = docker_available()
+    out.append(Check("Docker (AMI host)", dock,
+                     "daemon up: Linux-only vendor models run in containers" if dock
+                     else "no daemon; Linux-only (e.g. 32-bit) vendor models cannot run "
+                     "here (optional)", optional=True))
+    return out
 
 
 def doctor_report() -> str:

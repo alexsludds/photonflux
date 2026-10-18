@@ -99,7 +99,7 @@ def parallel_map(fn, items, *, warm_first: bool = True) -> list:
             _PARALLEL_ACTIVE -= 1
 
 
-_PATTERN_SOURCES = ("prbs", "qam_source")
+_PATTERN_SOURCES = ("prbs", "qam_source", "ami_tx")
 
 
 def _instance_groups(sch: dict) -> list[dict]:
@@ -258,6 +258,7 @@ def schematic_to_netlist(sch: dict, wave_span: float = DEFAULT_WAVE_SPAN,
     passive_reqs: list[tuple[str, str, str, float, float]] = []  # PDK R/C extractions
     patterns: dict[str, dict] = {}      # PRBS instances (for eye/BER post-proc)
     rx_eq: dict[str, dict] = {}         # Rx FFE/DFE blocks (for the link report)
+    ami_rx: dict[str, dict] = {}        # IBIS-AMI Rx blocks (amilink report)
     ltis: dict[str, dict] = {}          # model key -> state-space payload
     lti_log: list[str] = []
     noisy: dict[str, tuple] = {}        # model key -> (kind, bank, dt_n)
@@ -321,6 +322,11 @@ def schematic_to_netlist(sch: dict, wave_span: float = DEFAULT_WAVE_SPAN,
             rx_eq[name] = {"kind": entry["eq"],
                            "n_taps": int(float(settings.get("n_taps", 0))),
                            "adapt_rate": float(settings.get("adapt_rate", 0.0))}
+        if entry.get("ami") == "rx":
+            # electrically a unity buffer; the model runs in the link report
+            ami_rx[name] = {"model": settings.pop("model", "pf_rx"),
+                            "params": settings.pop("ami_params", ""),
+                            "noise_rms": float(settings.pop("noise_rms", 0.0))}
         expand = entry.get("expand")
         if expand:
             for sub, spec in expand["instances"].items():
@@ -359,6 +365,10 @@ def schematic_to_netlist(sch: dict, wave_span: float = DEFAULT_WAVE_SPAN,
                             wt, wv = wavesrc.prbs_waveform(shape, wave_span)
                         if levels and levels[1] == 0.0:
                             wt, wv = wavesrc.flat_shape()
+                        elif entry.get("ami") == "tx":
+                            import amilink
+
+                            wt, wv = amilink.tx_waveform(shape, wt, wv, lti_log)
                     else:
                         wt, wv = wavesrc.pwl_waveform(settings)
                 except ValueError as e:
@@ -600,6 +610,7 @@ def schematic_to_netlist(sch: dict, wave_span: float = DEFAULT_WAVE_SPAN,
             "extracted": extracted, "is_complex": any_optical,
             "hard_dc": hard_dc, "stiff": stiff, "src_delay": src_delay,
             "waveforms": waveforms, "patterns": patterns, "rx_eq": rx_eq,
+            "ami_rx": ami_rx,
             "noisy": noisy, "noise_insts": noise_insts,
             "noise_cfg": noise_cfg, "ltis": ltis, "lti_log": lti_log}
     return net, meta
@@ -948,6 +959,14 @@ def _run_transient(circuit, meta, analysis, log) -> dict:
     # run (a full PRBS-13Q period at >= 16 samples/UI) raises the cap
     cap = min(int(analysis.get("max_points", 20000)), MAX_FLOW_POINTS)
     points = max(16, min(int(analysis.get("points", 800)), cap))
+    if meta.get("ami_rx") and meta.get("patterns"):
+        # an IBIS-AMI Rx recovers its clock from the record: ~32 samples/UI
+        ui_p = min(float(p.get("ui", 100e-12))
+                   for p in meta["patterns"].values())
+        want = min(int(32 * t_stop / ui_p) + 1, MAX_FLOW_POINTS)
+        if want > points:
+            log.append(f"IBIS-AMI Rx: saving {want} points (32 per UI)")
+            points = want
     # BDF2 by default for OSDI devices (required), stiff devices (lasers,
     # injection rings), and pattern-driven circuits (SERDES runs want
     # uniform steps; the PID controller reject-storms on some optical link
@@ -2152,7 +2171,7 @@ def _run_inner(payload: dict) -> dict:
             sch = copy.deepcopy(sch)
             pat_inst = analysis.get("pattern") or next(
                 (n for n, i in (sch.get("instances") or {}).items()
-                 if i.get("type") == "prbs"), None)
+                 if i.get("type") in ("prbs", "ami_tx")), None)
             if not pat_inst:
                 raise NetlistError(
                     "pulse/COM analysis needs a PRBS source on the canvas")
@@ -2172,6 +2191,14 @@ def _run_inner(payload: dict) -> dict:
 
                 cfg = _link_cfg_with_eq(analysis["link"], meta, log)
                 result["link"] = linkpost.link_report(result, meta, cfg, log)
+                if meta.get("ami_rx"):
+                    import amilink
+
+                    try:
+                        result["ami"] = amilink.ami_report(result, meta, cfg, log)
+                    except Exception as exc:  # noqa: BLE001 - keep the run
+                        log.append(f"IBIS-AMI report failed: "
+                                   f"{type(exc).__name__}: {exc}")
             if analysis.get("coherent"):
                 import coherent
 

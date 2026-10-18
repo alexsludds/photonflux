@@ -297,9 +297,9 @@ def _pattern(sch: dict) -> dict | None:
     import simulate
 
     for inst in (sch.get("instances") or {}).values():
-        if inst.get("type") == "prbs":
+        if inst.get("type") in ("prbs", "ami_tx"):
             defs = {p["name"]: p["default"]
-                    for p in simulate.CATALOG["prbs"]["params"]}
+                    for p in simulate.CATALOG[inst["type"]]["params"]}
             return {**defs, **(inst.get("settings") or {})}
     return None
 

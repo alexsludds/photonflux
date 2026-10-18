@@ -48,6 +48,13 @@ with a strong `vsin` tone; its through-port spectrum probe shows the EO comb.
 # ...each script prints its own output path
 ```
 
+## IBIS-AMI
+
+[`ibis_ami/`](ibis_ami/) holds the IBIS-AMI studies: electrical NRZ and PAM4
+links, IBIS-AMI models wrapped around circulax optics, the freely available
+third-party models, and a model tester. Its
+[README](ibis_ami/README.md) catalogs where public IBIS-AMI models come from.
+
 ## Analysis notebooks
 
 [`notebooks/`](notebooks/) holds Jupyter companions to the web-app

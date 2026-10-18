@@ -1,0 +1,85 @@
+|************************************************************************
+| photonflux open-source IBIS-AMI SerDes models (pf_tx, pf_rx)
+|************************************************************************
+[IBIS Ver]   7.1
+[File Name]  pf_serdes.ibs
+[File Rev]   1.0
+[Date]       2026-10-18
+[Source]     photonflux (https://github.com/alexsludds/photonflux), models/ibis_ami
+[Notes]      Behavioral 50 Ohm buffers wrapped around the pf_tx / pf_rx
+             algorithmic models. The executables are built from source for
+             the host by `python -m photonflux ami build`; the same file
+             name is used on every platform (a Mach-O dylib on macOS).
+[Disclaimer] Provided "as is", without warranty of any kind (BSD-3-Clause).
+[Copyright]  Copyright (c) 2026 the photonflux authors
+|
+[Component]     pf_serdes
+[Manufacturer]  photonflux
+[Package]
+R_pkg     0.05     0.02     0.10
+L_pkg     0.50n    0.20n    1.00n
+C_pkg     0.20p    0.10p    0.30p
+|
+[Pin]  signal_name  model_name  R_pin  L_pin  C_pin
+1      TXP          pf_tx
+2      TXN          pf_tx
+3      RXP          pf_rx
+4      RXN          pf_rx
+|
+[Diff Pin]  inv_pin  vdiff  tdelay_typ  tdelay_min  tdelay_max
+1           2        0.05V  NA          NA          NA
+3           4        0.05V  NA          NA          NA
+|
+|************************************************************************
+[Model]     pf_tx
+Model_type  Output
+C_comp      0.30p   0.20p   0.40p
+Vmeas = 0.5
+|
+[Algorithmic Model]
+Executable Linux_gcc_64             pf_tx.so    pf_tx.ami
+Executable Windows_VisualStudio_64  pf_tx.dll   pf_tx.ami
+[End Algorithmic Model]
+|
+[Voltage Range]  1.0  0.95  1.05
+[Pulldown]
+| voltage   I(typ)      I(min)      I(max)
+-1.0       -20.0m      -19.0m      -21.0m
+ 0.0        0.0         0.0         0.0
+ 1.0        20.0m       19.0m       21.0m
+ 2.0        40.0m       38.0m       42.0m
+[Pullup]
+| voltage   I(typ)      I(min)      I(max)
+-1.0        20.0m       19.0m       21.0m
+ 0.0        0.0         0.0         0.0
+ 1.0       -20.0m      -19.0m      -21.0m
+ 2.0       -40.0m      -38.0m      -42.0m
+[Ramp]
+dV/dt_r  0.6/10p  0.6/12p  0.6/8p
+dV/dt_f  0.6/10p  0.6/12p  0.6/8p
+|
+|************************************************************************
+[Model]     pf_rx
+Model_type  Input
+C_comp      0.30p   0.20p   0.40p
+Vinl = 0.45
+Vinh = 0.55
+|
+[Algorithmic Model]
+Executable Linux_gcc_64             pf_rx.so    pf_rx.ami
+Executable Windows_VisualStudio_64  pf_rx.dll   pf_rx.ami
+[End Algorithmic Model]
+|
+[Voltage Range]  1.0  0.95  1.05
+[GND Clamp]
+| voltage   I(typ)      I(min)      I(max)
+-1.0       -20.0m      -19.0m      -21.0m
+ 0.0        0.0         0.0         0.0
+ 1.0        20.0m       19.0m       21.0m
+[Power Clamp]
+| voltage   I(typ)      I(min)      I(max)
+-1.0        20.0m       19.0m       21.0m
+ 0.0        0.0         0.0         0.0
+ 1.0       -20.0m      -19.0m      -21.0m
+|
+[End]

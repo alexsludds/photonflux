@@ -63,6 +63,23 @@ RUN SETUPTOOLS_SCM_PRETEND_VERSION_FOR_BOSDI="0.1.9.dev0+g${BOSDI_REF}" \
       "bosdi @ git+https://github.com/alexsludds/bosdi@${BOSDI_REF}"
 
 # ===========================================================================
+# IBIS-AMI models for Linux: photonflux's pf_tx / pf_rx (C99), capn-freako's
+# ibisami examples (C++ + Boost.Spirit) and SiSoft's 2007 Tx from source
+# (photonflux.ami_build), so the runtime needs no compiler.
+# ===========================================================================
+FROM python:${PY_VER}-slim AS ami-models
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        build-essential libboost-dev git ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+COPY pyproject.toml /src/pyproject.toml
+COPY photonflux /src/photonflux
+COPY models/ibis_ami /src/models/ibis_ami
+COPY examples/ibis_ami/public /src/examples/ibis_ami/public
+RUN pip install --no-cache-dir numpy \
+      "$(python -c "import tomllib; print(next(d for d in tomllib.load(open('/src/pyproject.toml','rb'))['project']['dependencies'] if d.startswith('pyibis-ami')))")" \
+    && cd /src && python -c "from photonflux import ami_build; s = ami_build.build_all(); raise SystemExit(0 if s[0].ok else 1)"
+
+# ===========================================================================
 # Runtime: python + circulax/JAX + libngspice + PDK + warmed caches
 # ===========================================================================
 FROM python:${PY_VER}-slim AS runtime
@@ -103,6 +120,7 @@ RUN pip install --no-cache-dir /tmp/wheels/bosdi-*.whl \
 
 # --- app source + Linux openvaf-ir (overwrites the vendored Mac binary) -----
 COPY . /app
+COPY --from=ami-models /src/models/ibis_ami/build /app/models/ibis_ami/build
 RUN mkdir -p /app/bin && python -c "import sys, urllib.request; urllib.request.urlretrieve(sys.argv[1], '/app/bin/openvaf-ir')" "${OPENVAF_IR_URL}" \
     && chmod +x /app/bin/openvaf-ir \
     && pip install --no-cache-dir -e /app \

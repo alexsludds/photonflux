@@ -1,0 +1,11 @@
+VERSION {
+    DEFAULT {
+        global:
+            AMI_Init;
+            AMI_Close;
+            AMI_GetWave;
+        local:
+            *;
+    };
+}
+

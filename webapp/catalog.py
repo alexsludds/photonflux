@@ -1545,6 +1545,33 @@ CATALOG: dict[str, dict] = {
         ],
         "eq": "dfe",
     },
+    "ami_rx": {
+        "label": "IBIS-AMI Rx",
+        "category": "Amplifiers & EQ",
+        "doc": "An IBIS-AMI receiver model (photonflux.ibisami, parsed by "
+               "PyAMI) on the receive path. During the transient it is an "
+               "ideal unity buffer, like the Rx FFE / DFE blocks; with the "
+               "\u201cBER vs\u201d probe at its input, the link report runs "
+               "the model: AMI_Init on the channel estimated from the probe "
+               "and the known data (statistical eye, BER, bathtubs), then "
+               "AMI_GetWave on the waveform itself (recovered clock, counted "
+               "BER, and the adaptation trace of everything the model "
+               "reports, e.g. CTLE, DFE / FFE taps and CDR phase). "
+               "Parameters overrides the model's .ami defaults as name=value "
+               "pairs, e.g. `ctle_fp1=12.5e9 dfe_ntaps=8 cdr_mode=2`. "
+               "noise_rms adds white Gaussian noise (V rms per sample at 32 "
+               "samples/UI) at the Rx input for both flows. pf_rx is "
+               "photonflux's open-source model (CTLE, AGC, FFE, DFE, CDR); "
+               "`python -m photonflux ami list` shows the others.",
+        "ports": _ports("inp:e out:e"),
+        "params": [
+            _p("model", "pf_rx", "", "AMI model", kind="enum",
+               choices=["pf_rx"]),
+            _p("ami_params", "", "", "Parameters", kind="line"),
+            _p("noise_rms", 0.0, "V", "Input noise (rms)"),
+        ],
+        "ami": "rx",
+    },
     # --- electrical sources -------------------------------------------------
     "vdc": {
         "label": "DC Voltage",
@@ -1912,6 +1939,46 @@ CATALOG.update({
         ],
     },
 })
+
+# The IBIS-AMI Tx is a pattern source whose baked waveform runs through the
+# Tx model's AMI_GetWave (webapp/amilink.py); it shares the PRBS source's
+# pattern / level / jitter parameters (the model replaces its TX FFE).
+CATALOG["ami_tx"] = {
+    "label": "IBIS-AMI Tx",
+    "category": "Sources",
+    "doc": "Serial-data source through an IBIS-AMI transmitter model "
+           "(photonflux.ibisami, parsed by PyAMI): the PRBS / PAM4 pattern "
+           "(jitter included) is the IBIS +/-0.5 V stimulus, the model's "
+           "AMI_GetWave shapes it (e.g. pf_tx's FFE presets and driver "
+           "bandwidth) and v0 / v1 scale the result. Parameters overrides "
+           "the model's .ami defaults as name=value pairs, e.g. "
+           "`tx_preset=7` or `tx_tap_m1=-0.1 tx_tap_p1=-0.2 tx_bw=30e9`. "
+           "The waveform is baked at compile time: edits recompile it.",
+    "ports": _ports("p1:e p2:e"),
+    "params": [
+        _p("model", "pf_tx", "", "AMI model", rebuild=True, kind="enum",
+           choices=["pf_tx"]),
+        _p("ami_params", "", "", "Parameters", rebuild=True, kind="line"),
+    ] + [dict(p) for p in CATALOG["prbs"]["params"]
+         if p["name"] not in ("ffe_pre", "ffe_post", "rlm_vpi")],
+    "wave": "prbs",
+    "ami": "tx",
+}
+
+
+def _ami_model_choices() -> None:
+    """Fill the IBIS-AMI blocks' model menus from the models already built
+    (``python -m photonflux ami build``); the default model builds on first
+    use either way."""
+    try:
+        import amilink
+    except ImportError:
+        return
+    for key, kind in (("ami_tx", "tx"), ("ami_rx", "rx")):
+        CATALOG[key]["params"][0]["choices"] = amilink.model_names(kind)
+
+
+_ami_model_choices()
 
 
 # ---------------------------------------------------------------------------
@@ -3364,6 +3431,7 @@ def _builtin_factories() -> dict[str, Any]:
         "ctle": _ctle,
         "rx_ffe": _rx_eq_buffer,
         "rx_dfe": _rx_eq_buffer,
+        "ami_rx": _rx_eq_buffer,
         "opt_f2p": _field_to_power,
         "opt_p2f": _power_to_field,
         "ase_src": _ase_src_plain,

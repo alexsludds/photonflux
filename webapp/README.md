@@ -192,6 +192,16 @@ scored near relOMA -3.6 dB / TDECQ 1.4 dB.
 
 ## Serial-link (SERDES) workflow
 
+* **IBIS-AMI Tx / Rx** (examples 50–52): the **IBIS-AMI Tx** source runs
+  its pattern through a Tx model's `AMI_GetWave` when the circuit compiles;
+  the **IBIS-AMI Rx** block is a unity buffer whose Link-tab report runs the
+  Rx model on the "BER vs" probe: `AMI_Init` on the channel estimated from
+  the probe (statistical eye, BER, bathtubs; a nonlinear residual such as
+  square-law detection after dispersion is counted as distortion) and
+  `AMI_GetWave` on the waveform (its own CDR, counted BER, adaptation
+  trace). `Parameters` overrides the `.ami` defaults (`name=value`). See
+  [docs/ibis-ami.md](../docs/ibis-ami.md).
+
 * **PRBS / pattern source**: PRBS7/9/11/15/23/31 (same LFSR taps as the
   companion time-domain serdes codebase), NRZ or Gray-coded PAM4, raised-
   cosine edges, 3-tap TX FFE (`ffe_pre`/`ffe_post`: side taps relative

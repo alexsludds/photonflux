@@ -174,7 +174,9 @@ def _rx_report(rx, blk, bname, probe, mod, ui, ts, y, a, nsym, log) -> dict:
                 series[k] = _finite(td.adaptation(k)[1])
     comb = np.log10(np.clip(eye.combined(), 1e-30, 0.5))
     ip = np.linspace(0, comb.shape[1] - 1, min(96, comb.shape[1])).astype(int)
-    iv = np.linspace(0, comb.shape[0] - 1, min(80, comb.shape[0])).astype(int)
+    vlim = 1.6 * float(np.max(np.abs(eye.level_v)))      # crop to the signal
+    vin = np.flatnonzero(np.abs(eye.v) <= vlim)
+    iv = vin[np.linspace(0, len(vin) - 1, min(80, len(vin))).astype(int)]
     cdr_at = eye.relative_phase(td.sampling_phase_ui) if td.rx_trace else 0.0
     tubs = []
     for e in range(eye.n_eyes):

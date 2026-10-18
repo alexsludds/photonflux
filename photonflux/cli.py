@@ -5,6 +5,9 @@
   flow        run a testbench's flow (doc["flow"]) headless and report its
               checks; exits 1 when a check fails or a step errors, so saved
               testbenches double as regression tests
+  ami         IBIS-AMI models: `build` the photonflux / public models for
+              this machine, `list` every model and where it can run, `info`
+              one model's parameters, `host-image` a Linux container host
 """
 from __future__ import annotations
 
@@ -16,7 +19,7 @@ def cmd_doctor(_args) -> int:
     from .toolchain import doctor, doctor_report
 
     print(doctor_report())
-    return 0 if all(c.ok for c in doctor() if "PDK" not in c.name) else 1
+    return 0 if all(c.ok for c in doctor() if not c.optional) else 1
 
 
 def _finite(obj):
@@ -85,6 +88,47 @@ def cmd_flow(args) -> int:
     return 0 if fr["passed"] else 1
 
 
+def cmd_ami(args) -> int:
+    from . import ami_build, ibisami
+
+    if args.ami_cmd == "build":
+        steps = ami_build.build_all(force=args.force)
+        return 0 if steps[0].ok else 1
+    if args.ami_cmd == "list":
+        docker = ibisami.docker_available()
+        lib = ibisami.library()
+        if not lib:
+            print("no IBIS-AMI models built yet: python -m photonflux ami build")
+            return 1
+        w = max(len(e.name) for e in lib)
+        for e in lib:
+            how = ("in-process" if e.runs_here else
+                   "container" + ("" if docker else " (no Docker daemon)")
+                   if e.runs_in_container else "not on this machine")
+            plats = ", ".join(map(str, e.platforms)) or "?"
+            print(f"  {e.name:<{w}}  {e.kind}  {e.source:<10}  {plats:<24}  {how}")
+        return 0
+    if args.ami_cmd == "info":
+        m = ibisami.load(args.name)
+        print(m)
+        print(f"  {m.params.description}")
+        print(f"  GetWave_Exists {m.getwave_exists}, Init_Returns_Impulse "
+              f"{m.init_returns_impulse}, Ignore_Bits {m.ignore_bits}")
+        for r in m.params.rows():
+            lim = r.get("list") or (f"[{r['min']}, {r['max']}]" if "min" in r else "")
+            print(f"    {r['name']:<28} {r['value']!s:<14} {r['type']:<8} {lim!s:<22} "
+                  f"{r['description'][:60]}")
+        print(f"  AMI_parameters_in: {m.params.sexpr()}")
+        return 0
+    if args.ami_cmd == "host-image":
+        plat = {"linux/amd64": ibisami.Platform("linux", "x86_64"),
+                "linux/386": ibisami.Platform("linux", "x86"),
+                "linux/arm64": ibisami.Platform("linux", "arm64")}[args.platform]
+        print(ami_build.ensure_host_image(plat, quiet=False))
+        return 0
+    return 2
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="photonflux")
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -97,8 +141,17 @@ def main(argv: list[str] | None = None) -> int:
     fp.add_argument("--json", metavar="OUT", help="write the full result here")
     fp.add_argument("-q", "--quiet", action="store_true",
                     help="no live log on stderr while the flow runs")
+    amp = sub.add_parser("ami", help="IBIS-AMI models (build / list / info)")
+    asub = amp.add_subparsers(dest="ami_cmd", required=True)
+    b = asub.add_parser("build", help="compile the IBIS-AMI models for this host")
+    b.add_argument("--force", action="store_true", help="rebuild everything")
+    asub.add_parser("list", help="every IBIS-AMI model found and where it runs")
+    i = asub.add_parser("info", help="one model's parameters")
+    i.add_argument("name", help="library name, e.g. pf_rx (see `ami list`)")
+    h = asub.add_parser("host-image", help="build the Docker host for Linux models")
+    h.add_argument("platform", choices=["linux/amd64", "linux/386", "linux/arm64"])
     args = ap.parse_args(argv)
-    return {"doctor": cmd_doctor, "flow": cmd_flow}[args.cmd](args)
+    return {"doctor": cmd_doctor, "flow": cmd_flow, "ami": cmd_ami}[args.cmd](args)
 
 
 if __name__ == "__main__":

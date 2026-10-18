@@ -70,10 +70,12 @@ typedef struct {
 
     long cdr_mode;
     double kp, ki, integ;
+    double cdr_off;     /* data sample - bang-bang lock point, in UI */
     double t, t_clk, t_edge, edge_val, y_prev, z_prev, yk_prev, dk_prev;
     int edge_done;
     long nsym;
 
+    long cdr_cal;
     double rx_noise_nv, init_fom_db, init_phase;
     pf_str params_out, msg;
 } pf_rx;
@@ -121,6 +123,8 @@ static void configure(pf_rx *m, const pf_params *p)
     m->kp = pf_param_double(p, "cdr_kp", 4e-3);
     m->ki = pf_param_double(p, "cdr_ki", 4e-6);
     m->init_phase = pf_param_double(p, "cdr_init_phase", 0.5);
+    m->cdr_off = pf_param_double(p, "cdr_offset_ui", 0.0);
+    m->cdr_cal = pf_param_long(p, "cdr_calibrate", 1);
     m->rx_noise_nv = pf_param_double(p, "rx_noise_nv", 5.0);
 }
 
@@ -332,7 +336,8 @@ static void report(pf_rx *m)
             pf_str_printf(b, " %.6g", m->dfe_b[j]);
         pf_str_printf(b, ")");
     }
-    pf_str_printf(b, " (init_fom_db %.4g))", m->init_fom_db);
+    pf_str_printf(b, " (cdr_offset_ui %.4g) (init_fom_db %.4g))", m->cdr_off,
+                  m->init_fom_db);
 }
 
 /* ---- AMI API ------------------------------------------------------------- */
@@ -440,6 +445,39 @@ PF_AMI_EXPORT long AMI_Init(double *impulse_matrix, long row_size,
             row[i] = g[i] * m->agc_gain;
     }
     long n_main = best.n0 + m->ffe_pre * m->nspui;
+    /* A bang-bang CDR locks its edge samples on the crossings: for a
+     * transition between bits k and k+1 the pre-DFE edge sample is
+     * p(m) - p(m - N) at m UI-relative samples into bit k, so the loop
+     * settles where p(m) = p(m - N) and samples data half a UI later. With
+     * a strong DFE the best data phase is elsewhere; Init knows both, so it
+     * calibrates the offset (cdr_calibrate) as real receivers do in
+     * training. */
+    if (m->cdr_cal && best.fom > 0.0 && m->cdr_mode == 1) {
+        long N = m->nspui, mb = -1;
+        double acc = 0.0;
+        for (long i = 0; i < n; i++) {     /* pulse of the pre-DFE path */
+            acc += h[i];
+            if (i >= N)
+                acc -= h[i - N];
+            pulse[i] = acc;
+        }
+        for (long k = n_main; k < n_main + N && k < n; k++) {
+            double d0 = pulse[k] - pulse[k - N];
+            double d1 = pulse[k + 1] - pulse[k + 1 - N];
+            if (k - N >= 0 && d0 >= 0.0 && d1 < 0.0) {
+                mb = k;
+                break;
+            }
+        }
+        if (mb > 0) {
+            double off = (double)(n_main - (mb - N / 2)) / (double)N;
+            off -= floor(off + 0.5);   /* wrap to [-0.5, 0.5) */
+            /* past a quarter UI the pulse is too distorted for the
+             * crossing model to be trusted: keep the plain lock point */
+            if (fabs(off) <= 0.25)
+                m->cdr_off += off;
+        }
+    }
     for (long k = 1; k <= m->dfe_n; k++) {
         long idx = n_main + k * m->nspui - m->nspui / 2;
         if (idx >= 0 && idx < n)
@@ -454,7 +492,7 @@ PF_AMI_EXPORT long AMI_Init(double *impulse_matrix, long row_size,
     m->t_clk = m->init_phase * m->ui;
     if (m->t_clk < 0.5 * m->ui) /* clock ticks (t_clk - UI/2) stay >= 0 */
         m->t_clk += m->ui;
-    m->t_edge = m->t_clk - 0.5 * m->ui;
+    m->t_edge = m->t_clk - (0.5 + m->cdr_off) * m->ui;
     m->edge_done = m->t_edge < 0.0;
     m->t_fb = 1e300;
 
@@ -579,7 +617,7 @@ PF_AMI_EXPORT long AMI_GetWave(double *wave, long wave_size,
             m->dk_prev = d;
             m->nsym++;
             m->t_clk += ui * (1.0 + stp);
-            m->t_edge = m->t_clk - 0.5 * ui;
+            m->t_edge = m->t_clk - (0.5 + m->cdr_off) * ui;
             m->edge_done = 0;
         }
         wave[i] = y;

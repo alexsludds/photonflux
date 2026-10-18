@@ -6,7 +6,7 @@
   "notes": [
    {
     "x": 40,
-    "y": -60,
+    "y": -140,
     "title": "IBIS-AMI 106G PAM4 optical link \u2014 what this testbench does",
     "lines": [
      "TX1 is an IBIS-AMI transmitter (pf_tx) sending 53.125 GBd PAM4",

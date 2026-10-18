@@ -1,64 +1,139 @@
 {
-  "title": "IBIS-AMI SerDes link",
-  "group": "Channels & equalization",
-  "description": "16 Gb/s NRZ through IBIS-AMI Tx and Rx models (pf_tx preset, pf_rx CTLE + DFE + CDR) over a 22 dB copper channel",
-  "schematic": {
-    "globals": {"baud": 16000000000.0},
-    "notes": [
-      {
-        "x": 100,
-        "y": -40,
-        "title": "IBIS-AMI SerDes link — what this testbench does",
-        "lines": [
-          "TX1 is an IBIS-AMI transmitter (pf_tx, photonflux's open-source",
-          "model, loaded through PyAMI): PRBS-15 at 16 Gb/s through its",
-          "AMI_GetWave with PCIe preset P7 (pre-shoot + de-emphasis).",
-          "CH1 is a 22 dB copper channel at the 8 GHz Nyquist frequency.",
-          "RX1 is an IBIS-AMI receiver (pf_rx): adaptive CTLE, AGC, 6-tap",
-          "DFE and a bang-bang CDR, with 4 mV rms of input noise.",
-          "",
-          "Run, then open the Link tab: the IBIS-AMI card shows the",
-          "statistical eye (Rx AMI_Init on the channel estimated from vrx),",
-          "the counted BER from AMI_GetWave's own recovered clock,",
-          "bathtubs, and the DFE / CDR / level adaptation trace.",
-          "Try TX1 Parameters = tx_preset=4 (no Tx EQ), or",
-          "RX1 Parameters = dfe_mode=0, and watch the eye close."
-        ]
-      }
-    ],
-    "instances": {
-      "TX1": {"type": "ami_tx", "x": 100, "y": 290, "rot": 0,
-              "settings": {"model": "pf_tx", "ami_params": "tx_preset=7",
-                           "mode": "nrz", "order": 15, "v0": -0.5, "v1": 0.5,
-                           "tr": 1.5e-11, "rj_ui": 0.01, "sj_ui": 0.0,
-                           "dj_ui": 0.02}},
-      "GNDP": {"type": "ground", "x": 100, "y": 394, "rot": 0, "settings": {}},
-      "CH1": {"type": "channel", "x": 240, "y": 180, "rot": 0,
-              "settings": {"loss_db": 22.0, "f_nyq": 8000000000.0, "n_poles": 12}},
-      "RX1": {"type": "ami_rx", "x": 420, "y": 175, "rot": 0,
-              "settings": {"model": "pf_rx",
-                           "ami_params": "ctle_fp1=8e9 dfe_ntaps=6",
-                           "noise_rms": 0.004}},
-      "RT1": {"type": "resistor", "x": 600, "y": 190, "rot": 0,
-              "settings": {"R": 1000000.0}},
-      "GNDE": {"type": "ground", "x": 640, "y": 244, "rot": 0, "settings": {}}
-    },
-    "wires": [
-      {"from": "TX1,p1", "to": "CH1,inp"},
-      {"from": "TX1,p2", "to": "GNDP,p1"},
-      {"from": "CH1,out", "to": "RX1,inp"},
-      {"from": "RX1,out", "to": "RT1,p1"},
-      {"from": "RT1,p2", "to": "GNDE,p1"}
-    ],
-    "probes": [
-      {"name": "vtx", "at": "TX1,p1", "color": "#e6862c"},
-      {"name": "vrx", "at": "CH1,out", "color": "#6ecbf5"}
-    ]
+ "title": "IBIS-AMI SerDes link",
+ "group": "Channels & equalization",
+ "description": "16 Gb/s NRZ through IBIS-AMI Tx and Rx models (pf_tx preset, pf_rx CTLE + DFE + CDR) over a 22 dB copper channel",
+ "schematic": {
+  "globals": {
+   "baud": 16000000000.0
   },
-  "analysis": {
-    "mode": "transient",
-    "t_stop": 3.75e-07,
-    "points": 20000,
-    "link": {"probe": "vrx"}
+  "notes": [
+   {
+    "x": 100,
+    "y": -120,
+    "title": "IBIS-AMI SerDes link \u2014 what this testbench does",
+    "lines": [
+     "TX1 is an IBIS-AMI transmitter (pf_tx, photonflux's open-source",
+     "model, loaded through PyAMI): PRBS-15 at 16 Gb/s through its",
+     "AMI_GetWave with PCIe preset P7 (pre-shoot + de-emphasis).",
+     "CH1 is a 22 dB copper channel at the 8 GHz Nyquist frequency.",
+     "RX1 is an IBIS-AMI receiver (pf_rx): adaptive CTLE, AGC, 6-tap",
+     "DFE and a bang-bang CDR, with 4 mV rms of input noise.",
+     "",
+     "Run, then open the Link tab: the IBIS-AMI card shows the",
+     "statistical eye (Rx AMI_Init on the channel estimated from vrx),",
+     "the counted BER from AMI_GetWave's own recovered clock,",
+     "bathtubs, and the DFE / CDR / level adaptation trace.",
+     "Try TX1 Parameters = tx_preset=4 (no Tx EQ), or",
+     "RX1 Parameters = dfe_mode=0, and watch the eye close."
+    ]
+   }
+  ],
+  "instances": {
+   "TX1": {
+    "type": "ami_tx",
+    "x": 100,
+    "y": 290,
+    "rot": 0,
+    "settings": {
+     "model": "pf_tx",
+     "ami_params": "tx_preset=7",
+     "mode": "nrz",
+     "order": 15,
+     "v0": -0.5,
+     "v1": 0.5,
+     "tr": 1.5e-11,
+     "rj_ui": 0.01,
+     "sj_ui": 0.0,
+     "dj_ui": 0.02
+    }
+   },
+   "GNDP": {
+    "type": "ground",
+    "x": 100,
+    "y": 394,
+    "rot": 0,
+    "settings": {}
+   },
+   "CH1": {
+    "type": "channel",
+    "x": 240,
+    "y": 180,
+    "rot": 0,
+    "settings": {
+     "loss_db": 22.0,
+     "f_nyq": 8000000000.0,
+     "n_poles": 12
+    }
+   },
+   "RX1": {
+    "type": "ami_rx",
+    "x": 420,
+    "y": 175,
+    "rot": 0,
+    "settings": {
+     "model": "pf_rx",
+     "ami_params": "ctle_fp1=8e9 dfe_ntaps=6",
+     "noise_rms": 0.004
+    }
+   },
+   "RT1": {
+    "type": "resistor",
+    "x": 600,
+    "y": 190,
+    "rot": 0,
+    "settings": {
+     "R": 1000000.0
+    }
+   },
+   "GNDE": {
+    "type": "ground",
+    "x": 640,
+    "y": 244,
+    "rot": 0,
+    "settings": {}
+   }
+  },
+  "wires": [
+   {
+    "from": "TX1,p1",
+    "to": "CH1,inp"
+   },
+   {
+    "from": "TX1,p2",
+    "to": "GNDP,p1"
+   },
+   {
+    "from": "CH1,out",
+    "to": "RX1,inp"
+   },
+   {
+    "from": "RX1,out",
+    "to": "RT1,p1"
+   },
+   {
+    "from": "RT1,p2",
+    "to": "GNDE,p1"
+   }
+  ],
+  "probes": [
+   {
+    "name": "vtx",
+    "at": "TX1,p1",
+    "color": "#e6862c"
+   },
+   {
+    "name": "vrx",
+    "at": "CH1,out",
+    "color": "#6ecbf5"
+   }
+  ]
+ },
+ "analysis": {
+  "mode": "transient",
+  "t_stop": 3.75e-07,
+  "points": 20000,
+  "link": {
+   "probe": "vrx"
   }
+ }
 }

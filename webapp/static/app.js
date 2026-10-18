@@ -3846,7 +3846,7 @@ function renderAmi(holder, ami) {
   const div = document.createElement("div");
   div.className = "link-grid";
   div.innerHTML = `
-    <table id="link-table">
+    <table id="link-table" style="max-width:560px">
       <tr><th>IBIS-AMI Rx</th><td><b>${ami.model}</b> (${ami.where}) on
         ${ami.probe}, ${ami.modulation}, UI ${fmtSI(ami.ui)}s</td></tr>
       <tr><th>counted BER</th><td><b>${berTxt}</b>
@@ -3867,11 +3867,12 @@ function renderAmi(holder, ami) {
       <tr><th>Init</th><td class="link-hint">${ami.init_message}</td></tr>
       <tr><th>adapted (end)</th><td class="link-hint">${fin}</td></tr>
     </table>
-    <div id="ami-plots" style="display:flex;gap:12px;flex-wrap:wrap"></div>`;
+    <div id="ami-plots" style="display:flex;gap:12px;flex-wrap:wrap;flex:1;min-width:340px"></div>`;
   holder.appendChild(div);
   const box = div.querySelector("#ami-plots");
+  const ph = Math.max(180, Math.min(260, $("results").clientHeight - 60));
   const canvas = document.createElement("canvas");
-  canvas.width = 320; canvas.height = 240;
+  canvas.width = 300; canvas.height = ph;
   box.appendChild(canvas);
   drawBerMap(canvas, ami.stat.map);
 
@@ -3891,7 +3892,7 @@ function renderAmi(holder, ami) {
   tubData.push(on(ami.td.bathtub.phase_ui, ami.td.bathtub.log10_ber));
   const tub = document.createElement("div");
   box.appendChild(tub);
-  plots.push(new uPlot({ width: 340, height: 240, scales: { x: { time: false },
+  plots.push(new uPlot({ width: 330, height: ph, scales: { x: { time: false },
     y: { range: [-16, 0] } }, axes: amiAxes("sampling phase [UI]", "log10 BER"),
     series: tubSeries }, tubData, tub));
 
@@ -3905,10 +3906,12 @@ function renderAmi(holder, ami) {
   if (t.length > 1 && keys.length) {
     const ad = document.createElement("div");
     box.appendChild(ad);
-    plots.push(new uPlot({ width: 420, height: 240, scales: { x: { time: false } },
+    // ppm and gain live on other scales: listed, toggled on from the legend
+    plots.push(new uPlot({ width: 420, height: ph, scales: { x: { time: false } },
       axes: amiAxes("time [UI]", "adaptation"),
       series: [{ label: "UI" }, ...keys.map((k, i) => ({
-        label: k, stroke: AMI_COLORS[i % AMI_COLORS.length], width: 1.2 }))] },
+        label: k, stroke: AMI_COLORS[i % AMI_COLORS.length], width: 1.2,
+        show: !/ppm|agc_gain|symbols/.test(k) }))] },
     [t, ...keys.map((k) => ami.td.series[k])], ad));
   }
 }

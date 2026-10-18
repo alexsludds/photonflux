@@ -27,3 +27,8 @@ webapp/models_user/
 .vscode/
 .idea/
 *.swp
+
+# IBIS-AMI: host builds are native binaries (the ami-models stage rebuilds
+# them for Linux); vendor kits stay under their own licenses on the host
+models/ibis_ami/build/
+examples/ibis_ami/vendor/

@@ -12,6 +12,11 @@ dependencies = [
     "numpy",
     "matplotlib",
     "scipy",
+    # IBIS-AMI (photonflux.ibisami): PyAMI parses .ibs / .ami files and AMI
+    # parameter strings. Pinned to a commit of its main branch, the first to
+    # split the IBIS/AMI parsers from the GUI stack (#95/#96): the PyPI
+    # release (9.3.1) still requires Chaco, TraitsUI, Jupyter and ReportLab.
+    "pyibis-ami @ git+https://github.com/capn-freako/PyAMI@e00a010a70fdb4df1ef2a2aa42cbded771179dfd",
 ]
 
 [project.optional-dependencies]

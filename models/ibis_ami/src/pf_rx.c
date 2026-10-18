@@ -72,6 +72,8 @@ typedef struct {
     double kp, ki, integ;
     double cdr_off;     /* data sample - bang-bang lock point, in UI */
     double t, t_clk, t_edge, edge_val, y_prev, z_prev, yk_prev, dk_prev;
+    double pend[8];     /* clock ticks deferred to the next GetWave call */
+    int npend;
     int edge_done;
     long nsym;
 
@@ -531,8 +533,18 @@ PF_AMI_EXPORT long AMI_GetWave(double *wave, long wave_size,
     pf_rx *m = (pf_rx *)AMI_memory;
     if (!m || !wave)
         return 0;
-    long nclk = 0, max_clk = wave_size / m->nspui + 1;
+    /* At most wave_size / samples-per-UI ticks, plus the -1 terminator, so
+     * the IBIS minimum clock_times size suffices; a block that holds one
+     * more tick (the phase drifting across a block edge) defers it to the
+     * next call, keeping the list complete and in order. */
+    long nclk = 0, max_clk = wave_size / m->nspui;
     double ui = m->ui, ts = m->ts;
+    while (clock_times && m->npend > 0 && nclk < max_clk) {
+        clock_times[nclk++] = m->pend[0];
+        for (int j = 1; j < m->npend; j++)
+            m->pend[j - 1] = m->pend[j];
+        m->npend--;
+    }
     for (long i = 0; i < wave_size; i++) {
         double x = wave[i];
         if (m->ctle_mode > 0)
@@ -562,8 +574,13 @@ PF_AMI_EXPORT long AMI_GetWave(double *wave, long wave_size,
             double d = slice(m, yk);
             double amp = m->amp > 1e-30 ? m->amp : 1e-30;
             double e = yk - d * amp;
-            if (clock_times && nclk < max_clk)
-                clock_times[nclk++] = m->t_clk - 0.5 * ui;
+            if (clock_times) {
+                double tick = m->t_clk - 0.5 * ui;
+                if (nclk < max_clk && m->npend == 0)
+                    clock_times[nclk++] = tick;
+                else if (m->npend < 8)
+                    m->pend[m->npend++] = tick;
+            }
 
             if (m->dfe_mode == 2)
                 for (int j = 0; j < m->dfe_n; j++)

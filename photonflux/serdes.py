@@ -493,16 +493,24 @@ def stat_eye(pulse: np.ndarray, ts: float, ui: float, *, levels: int = 2,
         var_small = var_a * float(np.sum(isi[small] ** 2))
         pdf = np.zeros(nv)
         pdf[center] = 1.0
+        var_split = 0.0
         for c in isi[~small]:
             acc = np.zeros(nv)
             for a in lv:
-                acc += _shift(pdf, a * c / dv)
+                sh = a * c / dv
+                acc += _shift(pdf, sh)
+                fr = sh - np.floor(sh)
+                var_split += fr * (1.0 - fr) * dv * dv / levels
             pdf = acc / levels
         pdf /= max(pdf.sum(), 1e-300)
         # Gaussian part (noise + negligible cursors) in closed form: each ISI
         # bin b contributes pdf[b] Phi(+-(v - mu - v_b) / sigma), evaluated
-        # with ndtr on the tail side so deep tails keep full precision
-        sigma = max(np.sqrt(noise_rms ** 2 + var_small), 0.3 * dv)
+        # with ndtr on the tail side so deep tails keep full precision.
+        # Splitting a fractional shift over two bins adds f(1-f) dv^2 of
+        # variance per cursor; that much is taken back out of the Gaussian
+        # (exact while the noise is the larger of the two).
+        var_g = noise_rms ** 2 + var_small - var_split
+        sigma = np.sqrt(max(var_g, (0.3 * dv) ** 2))
         nz = np.flatnonzero(pdf > 1e-300)
         wb, vb = pdf[nz], v[nz]
         below, above = [], []        # P(y < v), P(y > v) for each level
@@ -556,6 +564,7 @@ class StatLink:
     rx_message: str = ""
     noise_rms: float = 0.0
     rx_linear: np.ndarray | None = None   # Rx front end, per-sample impulse
+    rx_aggressors: list = field(default_factory=list)  # crosstalk at the slicer
 
 
 def rx_linear_response(rx, h_in: np.ndarray, ts: float, ui: float, *,
@@ -651,12 +660,12 @@ def statistical_link(tx, channel: Channel, rx, ui: float, *,
     if dj_ui is None:
         dj_ui = (info(tx, "Tx_Dj") + info(rx, "Rx_Dj")) / ui
     p = pulse(h_rx)
-    xt = [pulse(x) for x in r.impulse[1:]] if rx is not None else \
-        [pulse(x) for x in aggs]
+    rx_aggs = list(r.impulse[1:]) if rx is not None else list(aggs)
+    xt = [pulse(x) for x in rx_aggs]
     eye = stat_eye(p, ts, ui, levels=L, noise_rms=sig_n, rj_ui=rj_ui,
                    dj_ui=dj_ui, nv=nv, crosstalk=xt)
     return StatLink(channel, h_tx, h_rx, pulse(h), p, eye, tx_po, rx_po,
-                    tx_msg, rx_msg, sig_n, g_rx)
+                    tx_msg, rx_msg, sig_n, g_rx, rx_aggs)
 
 
 # ---------------------------------------------------------------------------
@@ -684,10 +693,13 @@ class TimeDomainLink:
     rx_trace: Any = None            # GetWaveResult of the Rx (adaptation)
     rx_init: Any = None             # Rx InitResult
 
-    def eye_density(self, nt: int = 128, nv: int = 128, span_ui: float = 2.0,
+    def eye_density(self, nt: int | None = None, nv: int = 160, span_ui: float = 2.0,
                     vlim: float | None = None) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
         """2-D histogram of the Rx output referenced to the recovered clock
-        (after ``skip``): (t_ui edges, v edges, counts[nv, nt])."""
+        (after ``skip``): (t_ui edges, v edges, counts[nv, nt]). The default
+        time bin is one sample, so the bins never alias against the grid."""
+        if nt is None:
+            nt = int(round(span_ui * self.ui / self.ts))
         t = np.arange(len(self.rx_out)) * self.ts
         centers = self.clock_times[self.skip:] + 0.5 * self.ui
         if len(centers) < 2:
@@ -798,11 +810,13 @@ def time_domain_link(tx, channel: Channel | None, rx, ui: float, *,
         channel.impulse if channel is not None else Channel.ideal(ts).impulse)
 
     tx_tr = None
+    aggs = list(channel.aggressors) if channel is not None and channel_fn is None else []
     if tx is not None:
         if "Modulation" in tx.params:
             tx.params["Modulation"] = modulation.upper()
-        r = tx.init(h_init, ts, ui, params=tx_params)
+        r = tx.init(h_init, ts, ui, aggressors=aggs, params=tx_params)
         h_rx_init = r.impulse[0]
+        aggs = list(r.impulse[1:])          # aggressor paths with the Tx FFE
         if tx.getwave_exists:
             tx_tr = tx.getwave(x, block_bits=block_bits)
             tx_out = tx_tr.wave
@@ -821,6 +835,12 @@ def time_domain_link(tx, channel: Channel | None, rx, ui: float, *,
         rx_in = fftconvolve(tx_out, channel.impulse)[: len(tx_out)] * ts
     else:
         rx_in = tx_out.copy()
+    for j, hx in enumerate(aggs):           # crosstalk: independent data
+        from scipy.signal import fftconvolve
+
+        xa = stimulus(symbols(nsym, modulation, order=order, seed=seed + 31 * (j + 1)),
+                      nspui)
+        rx_in = rx_in + fftconvolve(xa, hx)[: len(rx_in)] * ts
     if noise_rms > 0:
         rx_in = rx_in + noise_rms * np.random.default_rng(seed + 200).standard_normal(len(rx_in))
 

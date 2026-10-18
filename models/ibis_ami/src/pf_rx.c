@@ -536,8 +536,13 @@ PF_AMI_EXPORT long AMI_GetWave(double *wave, long wave_size,
                                        (1.0 - fr) + (double)j * m->nspui);
                     nrm += r[j] * r[j];
                 }
+                /* the main tap is fixed (the AGC owns gain); with a
+                 * Mueller-Muller CDR the first pre-cursor tap is held too:
+                 * the CDR's lock point is defined by h(-1), and letting
+                 * both adapt it walks phase and taps off together */
+                long hold = m->cdr_mode == 2 ? m->ffe_pre - 1 : -1;
                 for (int j = 0; j < m->ffe_n; j++)
-                    if (j != m->ffe_pre)
+                    if (j != m->ffe_pre && j != hold)
                         m->ffe_w[j] -= m->ffe_mu * e * r[j] / nrm;
             }
             m->amp += m->amp_mu * (yk / d - m->amp);

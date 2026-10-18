@@ -99,6 +99,36 @@ An adapting PAM4 receiver beats the statistical prediction under
 crosstalk: Init's MMSE design sees only the victim's pulse, while LMS also
 minimizes the crosstalk it actually receives.
 
+## Adapting from a cold start
+
+`pf_rx` with `adapt_start=1` starts `AMI_GetWave` from a pass-through FFE
+and zero DFE taps; decision-directed LMS learns the equalizer from the
+received waveform, as an optical DSP does at power-up. With the
+Mueller-Muller CDR on the FFE input (`cdr_mode=3`) timing never depends on
+the taps, so every FFE tap but the main one adapts. On a 0.3 m backplane
+the learned 5-tap FFE lands within 0.03 of `AMI_Init`'s MMSE design
+(`tests/test_ibisami.py`).
+
+`examples/ibis_ami/mrm_pam4_adaptive_rx.py` (web example 53) runs it on
+a 53.125 GBd PAM4 microring link (30 GHz driver, ring 120 pm red of the
+laser, 18 GHz TIA; pulse cursors 0.12 / 1 / 0.22, 5.5 % nonlinear
+residual), 6 mV rms Rx noise, 20000 UI:
+
+| Rx, adapted from cold | counted BER | Q-fit |
+|---|---|---|
+| no EQ | 3.9e-2 | 3.6e-2 |
+| DFE 1 tap | 1.6e-3 | 9.8e-3 |
+| FFE 3 / 5 / 7 | 0 / 0 / 0 | 2.8e-6 / 2.5e-7 / 5.7e-8 |
+| FFE 3 / 5 / 7 + DFE 1 | 0 / 0 / 0 | 1.1e-7 / 5.0e-8 / 5.1e-9 |
+
+Every tap converges within ~2000 UI. The FFE's c(+1) and the DFE tap both
+cancel the first post-cursor, so the error surface is nearly flat along
+their trade-off: the cold start settles at c(+1) = -0.05, b1 = 0.15, while
+`AMI_Init`'s design (and LMS seeded from it) uses c(+1) = +0.2, b1 = 0.4,
+at nearly the same MSE (Q-fit 5e-8 vs 1.4e-8). Without an FFE the 12 %
+pre-cursor stays, and the DFE's error propagation makes it worse than
+no EQ at higher noise.
+
 ## Nonlinear channels: the optical case
 
 IBIS-AMI's statistical flow assumes an LTI channel. A direct-detection

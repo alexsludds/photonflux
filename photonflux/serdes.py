@@ -110,6 +110,19 @@ class Channel:
         H = np.fft.rfft(self.impulse * self.ts, nfft)
         return np.fft.rfftfreq(nfft, self.ts), H
 
+    def with_fext(self, xt_db: float, f_ref: float, n: int = 1) -> "Channel":
+        """Add ``n`` far-end crosstalk aggressors. FEXT is the time
+        derivative of the through response (inductive/capacitive coupling
+        imbalance), scaled so |S41| at ``f_ref`` is ``xt_db`` dB; each
+        further aggressor is skewed by 3 samples and 10 % weaker."""
+        f, H = self.s21()
+        i = int(np.argmin(np.abs(f - f_ref)))
+        k = 10 ** (xt_db / 20) / (2 * np.pi * f[i] * max(abs(H[i]), 1e-30))
+        d = np.gradient(self.impulse, self.ts) * k
+        aggs = [np.roll(d, 3 * j) * (1 - 0.1 * j) for j in range(n)]
+        return Channel(self.impulse, self.ts, list(self.aggressors) + aggs,
+                       self.name + f" + {n} FEXT @ {xt_db:g} dB")
+
     @classmethod
     def from_s21(cls, f: np.ndarray, s21: np.ndarray, ts: float, *,
                  n: int | None = None, pre_ui: float = 2.0, ui: float | None = None,
@@ -313,6 +326,16 @@ class StatEye:
     def n_eyes(self) -> int:
         return self.levels - 1
 
+    @property
+    def peak_phase_ui(self) -> float:
+        """The pulse peak (phase 0 of this eye) on the absolute time axis, as
+        a fraction of the UI."""
+        return float(np.argmax(self.pulse) * self.ts / self.ui) % 1.0
+
+    def relative_phase(self, abs_phase_ui: float) -> float:
+        """An absolute sampling phase (e.g. a CDR's) on this eye's axis."""
+        return float((abs_phase_ui - self.peak_phase_ui + 0.5) % 1.0 - 0.5)
+
     def combined(self) -> np.ndarray:
         """One map for plotting: each threshold row takes the eye whose
         level band it falls in."""
@@ -420,7 +443,8 @@ class StatEye:
 
 def stat_eye(pulse: np.ndarray, ts: float, ui: float, *, levels: int = 2,
              noise_rms: float = 0.0, rj_ui: float = 0.0, dj_ui: float = 0.0,
-             nv: int = 601, span_ui: float = 1.0) -> StatEye:
+             nv: int = 601, span_ui: float = 1.0,
+             crosstalk: Sequence[np.ndarray] = ()) -> StatEye:
     """Statistical eye of a pulse response (V per 1 V, 1 UI pulse).
 
     For each sampling phase within +/- ``span_ui`` of the pulse peak, the
@@ -428,7 +452,10 @@ def stat_eye(pulse: np.ndarray, ts: float, ui: float, *, levels: int = 2,
     symbol distribution (cursors below a quarter bin go in as their
     Gaussian variance); ``noise_rms`` (V at the slicer) is Gaussian; random
     (``rj_ui`` rms) and dual-Dirac (``dj_ui`` pk-pk) sampling jitter are
-    convolved along the phase axis afterwards.
+    convolved along the phase axis afterwards. ``crosstalk`` pulses
+    (aggressor responses at the victim's slicer, e.g. the aggressor rows of
+    an Rx ``AMI_Init`` output) add every cursor of independent aggressor
+    data, sampled at the victim's phase (synchronous crosstalk).
     """
     from scipy.special import ndtr
 
@@ -442,9 +469,11 @@ def stat_eye(pulse: np.ndarray, ts: float, ui: float, *, levels: int = 2,
     ph = ph[(ph >= 0) & (ph < len(p))]
     # voltage span: worst-case peak distortion over the window
     pdmax = 0.0
+    xt = [0.5 * np.asarray(x, float)[: len(p)] for x in crosstalk]
     for n in ph:
         c = p[n % nspui:: nspui]
-        pdmax = max(pdmax, np.abs(c).sum())
+        pdmax = max(pdmax, np.abs(c).sum()
+                    + sum(np.abs(x[n % nspui:: nspui]).sum() for x in xt))
     vmax = 1.15 * pdmax + 5 * noise_rms
     v = np.linspace(-vmax, vmax, nv)
     dv = v[1] - v[0]
@@ -458,7 +487,8 @@ def stat_eye(pulse: np.ndarray, ts: float, ui: float, *, levels: int = 2,
         cur = p[idx]
         k0 = int(np.flatnonzero(idx == n)[0])
         c0 = cur[k0]
-        isi = np.delete(cur, k0)
+        isi = np.concatenate([np.delete(cur, k0)]
+                             + [x[n % nspui:: nspui] for x in xt])
         small = np.abs(isi) < dv / 4
         var_small = var_a * float(np.sum(isi[small] ** 2))
         pdf = np.zeros(nv)
@@ -525,24 +555,40 @@ class StatLink:
     tx_message: str = ""
     rx_message: str = ""
     noise_rms: float = 0.0
+    rx_linear: np.ndarray | None = None   # Rx front end, per-sample impulse
 
 
-def _rx_noise_gain(rx_in: np.ndarray, rx_out: np.ndarray, ts: float,
-                   density: float) -> float:
-    """RMS at the slicer of white input noise ``density`` (V/rtHz) through
-    the Rx's linear response, |H_rx| = |FFT(out)| / |FFT(in)| (the DFE
-    notches ride along; they are a small, sparse error)."""
-    if density <= 0:
-        return 0.0
-    n = 1 << int(np.ceil(np.log2(len(rx_in))))
-    Hi, Ho = np.fft.rfft(rx_in, n), np.fft.rfft(rx_out, n)
-    f = np.fft.rfftfreq(n, ts)
-    good = np.abs(Hi) > 1e-3 * np.abs(Hi).max()
-    H2 = np.where(good, np.abs(Ho) ** 2 / np.maximum(np.abs(Hi) ** 2, 1e-300), 0.0)
-    if not good.all():                   # hold |H| flat past the channel's band
-        last = np.flatnonzero(good)[-1]
-        H2[last + 1:] = H2[last]
-    return float(np.sqrt(density ** 2 * np.trapezoid(H2, f)))
+def rx_linear_response(rx, h_in: np.ndarray, ts: float, ui: float, *,
+                       aggressors: Sequence[np.ndarray] = (),
+                       params: dict | None = None) -> np.ndarray:
+    """The Rx's linear front end (everything but its decision feedback) as
+    a per-sample impulse response, measured through ``AMI_Init`` itself.
+
+    Two extra Inits add a +/-eps impulse to the channel in its quiet tail
+    (past the DFE's reach); the difference of the outputs is the Rx's
+    response to that impulse. Adaptation that keys on the main pulse (CTLE
+    choice, AGC, DFE taps) is unchanged by the tiny probe, so this works for
+    any dual or Init-only Rx. Call it *before* the Init whose state you keep.
+    """
+    h_in = np.asarray(h_in, float)
+    n = len(h_in)
+    nspui = max(1, int(round(ui / ts)))
+    e = np.cumsum(h_in ** 2)
+    end = int(np.searchsorted(e, 0.9999 * e[-1]))
+    pos = min(max(end + 24 * nspui, n // 2), int(0.6 * n))
+    eps = 1e-3 * float(np.max(np.abs(h_in)))
+    outs = []
+    for sgn in (1.0, -1.0):
+        h = h_in.copy()
+        h[pos] += sgn * eps
+        outs.append(rx.init(h, ts, ui, aggressors=aggressors, params=params).impulse[0])
+    return np.roll((outs[0] - outs[1]) / (2 * eps), -pos)[: n - pos]
+
+
+def _noise_at_slicer(g: np.ndarray, density: float, ts: float) -> float:
+    """RMS of white input noise (``density`` V/rtHz, one-sided, to 1/2ts)
+    through the per-sample impulse response g."""
+    return float(np.sqrt(density ** 2 / (2 * ts) * np.sum(g ** 2)))
 
 
 def statistical_link(tx, channel: Channel, rx, ui: float, *,
@@ -555,7 +601,7 @@ def statistical_link(tx, channel: Channel, rx, ui: float, *,
 
     Noise at the slicer is ``noise_rms`` (default: the Rx's ``Rx_Noise``)
     plus ``noise_density`` (V/rtHz at the Rx input) through the Rx's linear
-    response. Jitter defaults to the models' ``Tx_Rj``/``Rx_Rj`` (rms) and
+    front end (:func:`rx_linear_response`). Jitter defaults to the models' ``Tx_Rj``/``Rx_Rj`` (rms) and
     ``Tx_Dj``/``Rx_Dj`` (pk-pk) reserved parameters (seconds -> UI).
     """
     ts = channel.ts
@@ -574,9 +620,13 @@ def statistical_link(tx, channel: Channel, rx, ui: float, *,
         tx_po, tx_msg = r.params_out, r.message
     else:
         h_tx = h
+    g_rx = None
     if rx is not None:
         if "Modulation" in rx.params:
             rx.params["Modulation"] = modulation.upper()
+        if noise_density > 0:
+            g_rx = rx_linear_response(rx, h_tx, ts, ui, aggressors=aggs,
+                                      params=rx_params)
         r = rx.init(h_tx, ts, ui, aggressors=aggs, params=rx_params)
         h_rx = r.impulse[0]
         rx_po, rx_msg = r.params_out, r.message
@@ -592,16 +642,21 @@ def statistical_link(tx, channel: Channel, rx, ui: float, *,
 
     if noise_rms is None:
         noise_rms = info(rx, "Rx_Noise")
-    sig_n = float(np.hypot(noise_rms, _rx_noise_gain(h_tx, h_rx, ts, noise_density)))
+    if noise_density > 0 and g_rx is None:     # no Rx: noise straight through
+        g_rx = np.array([1.0])
+    sig_in = _noise_at_slicer(g_rx, noise_density, ts) if noise_density > 0 else 0.0
+    sig_n = float(np.hypot(noise_rms, sig_in))
     if rj_ui is None:
         rj_ui = float(np.hypot(info(tx, "Tx_Rj"), info(rx, "Rx_Rj"))) / ui
     if dj_ui is None:
         dj_ui = (info(tx, "Tx_Dj") + info(rx, "Rx_Dj")) / ui
     p = pulse(h_rx)
+    xt = [pulse(x) for x in r.impulse[1:]] if rx is not None else \
+        [pulse(x) for x in aggs]
     eye = stat_eye(p, ts, ui, levels=L, noise_rms=sig_n, rj_ui=rj_ui,
-                   dj_ui=dj_ui, nv=nv)
+                   dj_ui=dj_ui, nv=nv, crosstalk=xt)
     return StatLink(channel, h_tx, h_rx, pulse(h), p, eye, tx_po, rx_po,
-                    tx_msg, rx_msg, sig_n)
+                    tx_msg, rx_msg, sig_n, g_rx)
 
 
 # ---------------------------------------------------------------------------
@@ -637,23 +692,39 @@ class TimeDomainLink:
         centers = self.clock_times[self.skip:] + 0.5 * self.ui
         if len(centers) < 2:
             return np.zeros(nt + 1), np.zeros(nv + 1), np.zeros((nv, nt))
+        sel = (t >= centers[0]) & (t <= centers[-1])
+        t, val = t[sel], self.rx_out[sel]
         k = np.clip(np.searchsorted(centers, t), 1, len(centers) - 1)
         nearest = np.where(np.abs(t - centers[k - 1]) < np.abs(t - centers[k]),
                            centers[k - 1], centers[k])
-        rel = (t - nearest) / self.ui
-        sel = (t >= centers[0] - self.ui) & (t <= centers[-1] + self.ui)
-        rel, val = rel[sel], self.rx_out[sel]
-        # fold to a span_ui window (a 2-UI eye shows two decision points)
-        rel = ((rel + span_ui / 2) % span_ui) - span_ui / 2
+        rel = (t - nearest) / self.ui          # in [-0.5, 0.5)
+        # a span_ui-wide eye: each sample also shows one UI over
+        reps = [rel]
+        for sh in range(1, int(np.ceil(span_ui / 2 + 0.5))):
+            reps += [rel + sh, rel - sh]
+        rel = np.concatenate(reps)
+        val = np.tile(val, len(reps))
         vl = vlim or 1.2 * np.max(np.abs(val))
         H, te, ve = np.histogram2d(rel, val, bins=(nt, nv),
                                    range=((-span_ui / 2, span_ui / 2), (-vl, vl)))
         return te, ve, H.T
 
     def adaptation(self, key: str, index: int | None = None) -> tuple[np.ndarray, np.ndarray]:
-        """(time in UI, value) of one Rx adaptation variable."""
+        """(time in UI, value) of one Rx adaptation variable. Phases in UI
+        (keys ending in ``phase_ui``) are unwrapped."""
         tr = self.rx_trace
-        return tr.trace_t / self.ui, tr.series(key, index)
+        y = tr.series(key, index)
+        if key.endswith("phase_ui") and np.isfinite(y).all():
+            y = np.unwrap(2 * np.pi * y) / (2 * np.pi)
+        return tr.trace_t / self.ui, y
+
+    @property
+    def sampling_phase_ui(self) -> float:
+        """Where the recovered clock samples, as a fraction of the UI on the
+        absolute time axis (circular mean after ``skip``) -- the same axis
+        as :attr:`StatEye.peak_phase_ui`."""
+        ph = 2 * np.pi * ((self.clock_times[self.skip:] + 0.5 * self.ui) / self.ui)
+        return float(np.angle(np.mean(np.exp(1j * ph))) / (2 * np.pi)) % 1.0
 
 
 def _kmeans_levels(x: np.ndarray, L: int) -> np.ndarray:
@@ -832,6 +903,8 @@ def plot_stat_eye(ax, eye: StatEye, *, contours: Sequence[float] = (1e-3, 1e-6, 
     cs = ax.contour(eye.phase_ui, eye.v * 1e3, z, levels=np.log10(sorted(contours)),
                     colors="w", linewidths=0.8)
     ax.clabel(cs, fmt=lambda x: f"1e{x:.0f}", fontsize=7)
+    lim = 1.6 * float(np.max(np.abs(eye.level_v))) * 1e3
+    ax.set_ylim(-lim, lim)
     ax.set_xlabel("sampling phase [UI]")
     ax.set_ylabel("threshold [mV]")
     if title:
@@ -846,6 +919,8 @@ def plot_bathtubs(ax_t, ax_v, eye: StatEye, *, label: str = "") -> None:
         ax_t.semilogy(x, b, label=tag or None)
         x, b = eye.bathtub_v(e)
         ax_v.semilogy(x * 1e3, b, label=tag or None)
+    lim = 1.4 * float(np.max(np.abs(eye.level_v))) * 1e3
+    ax_v.set_xlim(-lim, lim)
     for ax in (ax_t, ax_v):
         ax.set_ylim(1e-16, 1)
         ax.grid(True, which="both", alpha=0.3)

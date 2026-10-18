@@ -39,7 +39,10 @@ third-party kits under ``examples/ibis_ami/public`` and anything dropped into
 from __future__ import annotations
 
 import ctypes
+import os
 import platform
+import re
+import select
 import shutil
 import struct
 import subprocess
@@ -203,6 +206,9 @@ class AmiParams:
 
         self.cfg = AMIParamConfigurator(ami_text)
         self.root = self.cfg.root_name
+        # PyAMI renames integer node names (tap positions): "-1" -> "pre1",
+        # "0"/"+1" -> "post0"/"post1". Models expect the file's own names.
+        self._numeric = set(re.findall(r"\(\s*([-+]?\d+)\s", ami_text))
         self.description = getattr(self.cfg, "_description", "") or ""
         self.reserved: dict[str, Any] = dict(self.cfg.info_ami_params)
         self.specific: dict[str, Any] = dict(self.cfg.model_specific_dict)
@@ -228,7 +234,10 @@ class AmiParams:
 
     # -- lookup ------------------------------------------------------------
     def _path(self, key: str) -> tuple[str, ...]:
-        parts = tuple(key.split("."))
+        from pyibisami.ami.parser import int2tap
+
+        parts = tuple(int2tap(k) if re.fullmatch(r"[-+]?\d+", k) else k
+                      for k in key.split("."))
         if parts in self.values:
             return parts
         hits = [p for p in self.values if p[-len(parts):] == parts]
@@ -309,11 +318,24 @@ class AmiParams:
             node[path[-1]] = v
 
         def emit(name: str, node: Any) -> str:
+            name = self.file_name(name)
             if isinstance(node, dict):
                 return f"({name} " + " ".join(emit(k, x) for k, x in node.items()) + ")"
             return f"({name} {atom(node)})"
 
         return f"({self.root} " + " ".join(emit(k, x) for k, x in tree.items()) + ")"
+
+    def file_name(self, name: str) -> str:
+        """A node's name as written in the .ami file (undoes PyAMI's
+        pre<N>/post<N> renaming of integer tap names)."""
+        m = re.fullmatch(r"(pre|post)(\d+)", name)
+        if not m:
+            return name
+        num = ("-" if m.group(1) == "pre" else "") + m.group(2)
+        for cand in (num, "+" + num if m.group(1) == "post" else num):
+            if cand in self._numeric:
+                return cand
+        return name
 
     def rows(self) -> list[dict]:
         """Table of every settable parameter (for printing / UIs)."""
@@ -452,11 +474,15 @@ class _HostedExecutor:
 
     MAGIC = b"AMIH"
 
-    def __init__(self, argv: list[str], where: str):
+    def __init__(self, argv: list[str], where: str, timeout: float | None = None):
         self.where = where
+        # a vendor model can hang (e.g. a parser looping on an unexpected
+        # parameter string); bound every reply instead of blocking forever
+        self.timeout = timeout if timeout is not None else float(
+            os.environ.get("PHOTONFLUX_AMI_TIMEOUT", "600"))
         self.proc = subprocess.Popen(argv, stdin=subprocess.PIPE,
                                      stdout=subprocess.PIPE,
-                                     stderr=subprocess.PIPE)
+                                     stderr=subprocess.PIPE, bufsize=0)
         head = self._read(4)
         if head != self.MAGIC:
             err = self.proc.stderr.read().decode("utf-8", "replace") if head == b"" else ""
@@ -467,9 +493,15 @@ class _HostedExecutor:
         self.has_getwave = bool(gw)
 
     def _read(self, n: int) -> bytes:
+        fd = self.proc.stdout.fileno()
         out = b""
         while len(out) < n:
-            chunk = self.proc.stdout.read(n - len(out))
+            ready, _, _ = select.select([fd], [], [], self.timeout)
+            if not ready:
+                self.proc.kill()
+                raise AmiError(f"ami_host ({self.where}): no reply in "
+                               f"{self.timeout:g} s (model hung?)")
+            chunk = os.read(fd, n - len(out))
             if not chunk:
                 return out
             out += chunk

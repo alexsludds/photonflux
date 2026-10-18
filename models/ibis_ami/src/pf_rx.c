@@ -667,8 +667,10 @@ PF_AMI_EXPORT long AMI_GetWave(double *wave, long wave_size,
                     m->dfe_b[j] = PF_CLAMP(m->dfe_b[j] + m->dfe_mu * (e / amp) *
                                                              m->dhist[j],
                                            -m->dfe_max, m->dfe_max);
-            if (m->ffe_mode == 2 && m->ffe_n > 1) {
-                double r[MAXFFE], nrm = 1e-30;
+            if (m->ffe_mode == 2 && m->ffe_n > 1 && m->nsym >= m->ffe_n) {
+                /* normalized LMS, regularized so a run of near-zero
+                 * samples cannot blow a step up */
+                double r[MAXFFE], nrm = 0.01 * m->ffe_n * amp * amp;
                 for (int j = 0; j < m->ffe_n; j++) {
                     r[j] = pf_delay_at(&m->ffe_in,
                                        (1.0 - fr) + (double)j * m->nspui);

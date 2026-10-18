@@ -41,7 +41,8 @@ from .signals import pam4_gray, prbs
 
 __all__ = [
     "Channel", "backplane", "symbols", "stimulus", "stat_eye", "StatEye",
-    "statistical_link", "StatLink", "time_domain_link", "TimeDomainLink",
+    "statistical_link", "StatLink", "time_domain_link", "receive",
+    "estimate_channel", "TimeDomainLink", "rx_linear_response",
     "q_to_ber", "ber_to_q",
 ]
 
@@ -580,18 +581,25 @@ def rx_linear_response(rx, h_in: np.ndarray, ts: float, ui: float, *,
     any dual or Init-only Rx. Call it *before* the Init whose state you keep.
     """
     h_in = np.asarray(h_in, float)
-    n = len(h_in)
     nspui = max(1, int(round(ui / ts)))
     e = np.cumsum(h_in ** 2)
     end = int(np.searchsorted(e, 0.9999 * e[-1]))
-    pos = min(max(end + 24 * nspui, n // 2), int(0.6 * n))
+    # the probe needs silence: past the channel's response (else it perturbs
+    # an MMSE / zero-forcing design at first order) with room after it for
+    # the Rx's own response; zero-pad a short channel to make that room
+    pos = end + 24 * nspui
+    n = max(len(h_in), pos + 128 * nspui)
+    base = np.zeros(n)
+    base[: len(h_in)] = h_in
+    aggs = [np.pad(np.asarray(x, float), (0, max(0, n - len(x))))[:n]
+            for x in aggressors]
     eps = 1e-3 * float(np.max(np.abs(h_in)))
     outs = []
     for sgn in (1.0, -1.0):
-        h = h_in.copy()
+        h = base.copy()
         h[pos] += sgn * eps
-        outs.append(rx.init(h, ts, ui, aggressors=aggressors, params=params).impulse[0])
-    return np.roll((outs[0] - outs[1]) / (2 * eps), -pos)[: n - pos]
+        outs.append(rx.init(h, ts, ui, aggressors=aggs, params=params).impulse[0])
+    return ((outs[0] - outs[1]) / (2 * eps))[pos:]
 
 
 def _noise_at_slicer(g: np.ndarray, density: float, ts: float) -> float:
@@ -844,11 +852,38 @@ def time_domain_link(tx, channel: Channel | None, rx, ui: float, *,
     if noise_rms > 0:
         rx_in = rx_in + noise_rms * np.random.default_rng(seed + 200).standard_normal(len(rx_in))
 
+    out = receive(rx, rx_in, a, ui, ts, h_rx_init, modulation=modulation,
+                  block_bits=block_bits, skip=skip, max_lag=max_lag,
+                  rx_params=rx_params)
+    out.tx_wave = tx_out
+    out.tx_trace = tx_tr
+    return out
+
+
+def receive(rx, rx_in: np.ndarray, a: np.ndarray, ui: float, ts: float,
+            init_impulse: np.ndarray | None = None, *, modulation: str = "NRZ",
+            block_bits: int = 256, skip: int | None = None, max_lag: int = 400,
+            rx_params: dict | None = None) -> TimeDomainLink:
+    """The Rx half of the time-domain flow, on any received waveform.
+
+    ``rx_in`` is the Rx input on a uniform ``ts`` grid starting with symbol
+    0 of ``a`` (e.g. a photonflux circuit transient, resampled); the Rx's
+    ``AMI_Init`` sees ``init_impulse`` (e.g. :func:`estimate_channel` of the
+    same waveform) and then ``AMI_GetWave`` recovers its clock, equalizes
+    and adapts. Decisions are aligned to ``a`` and counted after ``skip``
+    (default: the Rx's ``Ignore_Bits``).
+    """
+    L = _nlevels(modulation)
+    a = np.asarray(a, float)
+    rx_in = np.asarray(rx_in, float)
+    nspui = max(1, int(round(ui / ts)))
+    if init_impulse is None:
+        init_impulse = Channel.ideal(ts, n=64 * nspui).impulse
     rx_tr = rx_init = None
     if rx is not None:
         if "Modulation" in rx.params:
             rx.params["Modulation"] = modulation.upper()
-        rx_init = rx.init(h_rx_init, ts, ui, params=rx_params)
+        rx_init = rx.init(init_impulse, ts, ui, params=rx_params)
         rx_tr = rx.getwave(rx_in, block_bits=block_bits)
         rx_out = rx_tr.wave
         clk = rx_tr.clock_times
@@ -859,7 +894,7 @@ def time_domain_link(tx, channel: Channel | None, rx, ui: float, *,
         clk = np.zeros(0)
     if len(clk) < 16:
         # no recovered clock: sample at the pulse peak phase of the Init view
-        p = np.convolve(h_rx_init, np.ones(nspui))[: len(h_rx_init)]
+        p = np.convolve(init_impulse, np.ones(nspui))[: len(init_impulse)]
         ph = int(np.argmax(p)) % nspui
         clk = (np.arange(ph, len(rx_out) - nspui, nspui) - nspui / 2) * ts
     skip = int(skip or 0)
@@ -887,7 +922,8 @@ def time_domain_link(tx, channel: Channel | None, rx, ui: float, *,
     k = np.arange(skip, len(dec))
     idx = k - lag
     ok = (idx >= 0) & (idx < len(a))
-    d_ok, a_ok, s_ok = dec[k[ok]], a[idx[ok]], samples[k[ok]]
+    d_ok, a_ok = dec[k[ok]], a[idx[ok]]
+    s_ok = samples[k[ok]]
     sym_err = int(np.sum(~np.isclose(d_ok, a_ok)))
     bit_err = int(np.sum(_gray_bits(d_ok, L) != _gray_bits(a_ok, L)))
     nbits = len(d_ok) * (1 if L == 2 else 2)
@@ -900,13 +936,59 @@ def time_domain_link(tx, channel: Channel | None, rx, ui: float, *,
     offs = np.linspace(-0.5, 0.5, 33)
     tub_ber = []
     for o in offs:
-        s = np.interp(clk + ui / 2 + o * ui, tgrid, rx_out)[k[ok]]
-        q = _qfit(s, a_ok, L)
+        sm = np.interp(clk + ui / 2 + o * ui, tgrid, rx_out)[k[ok]]
+        q = _qfit(sm, a_ok, L)
         tub_ber.append(q["ber_est"] if q["ok"] else 0.5)
     bathtub = {"offset_ui": offs, "ber": np.clip(np.asarray(tub_ber), 1e-300, 0.5)}
-    return TimeDomainLink(ui, ts, L, a, tx_out, rx_in, rx_out, clk, samples,
-                          lag, skip, thr, counted, qfit, bathtub, tx_tr, rx_tr,
-                          rx_init)
+    return TimeDomainLink(ui, ts, L, a, rx_in.copy(), rx_in, rx_out, clk,
+                          samples, lag, skip, thr, counted, qfit, bathtub, None,
+                          rx_tr, rx_init)
+
+
+def estimate_channel(wave: np.ndarray, ts: float, ui: float, a: np.ndarray, *,
+                     span_ui: int = 48, pre_ui: int = 2, skip: int = 16,
+                     name: str = "estimated", residual: bool = False):
+    """Data-aided channel estimate from a waveform and the symbols that
+    made it: per sample phase, least squares for
+    ``y[k nspui + ph] = 0.5 * sum_j a[k - j] p[ph + j nspui] + c``.
+
+    Returns (Channel, rms residual), plus the residual waveform (zero
+    outside the fitted span) with ``residual=True``. The pulse response p is
+    in the IBIS
+    stimulus convention (response to a 1 V, 1 UI pulse driving symbols of
+    +/-0.5 V), so the impulse feeds ``AMI_Init`` directly. For a nonlinear
+    channel (a square-law photodiode after dispersion, a compressing
+    modulator) it is the best linear fit, and the residual says how far off
+    linear the link is -- the error IBIS-AMI's LTI statistical flow makes.
+    The first ``pre_ui`` UI of the window allow a little anticausal latency
+    (pattern-source edge placement) and are dropped from the result.
+    """
+    y = np.asarray(wave, float)
+    a = np.asarray(a, float)
+    nspui = max(1, int(round(ui / ts)))
+    nsym = min(len(a), len(y) // nspui)
+    J = span_ui + pre_ui
+    rows = np.arange(skip + J, nsym - pre_ui)
+    A = np.empty((len(rows), J + 1))
+    for j in range(J):
+        A[:, j] = 0.5 * a[rows - j + pre_ui]
+    A[:, J] = 1.0
+    p = np.zeros(J * nspui)
+    res_w = np.zeros(len(y))
+    res2, cnt = 0.0, 0
+    for ph in range(nspui):
+        yy = y[rows * nspui + ph]
+        coef, *_ = np.linalg.lstsq(A, yy, rcond=None)
+        p[ph::nspui] = coef[:J]
+        r = yy - A @ coef
+        res_w[rows * nspui + ph] = r
+        res2 += float(r @ r)
+        cnt += len(r)
+    # sample n of p is t = n ts - pre_ui UI: keep t >= 0 (the anticausal
+    # window only soaks up edge-placement latency)
+    ch = Channel.from_pulse(p[pre_ui * nspui:], ts, ui, name=name)
+    rms = float(np.sqrt(res2 / max(cnt, 1)))
+    return (ch, rms, res_w) if residual else (ch, rms)
 
 
 # ---------------------------------------------------------------------------

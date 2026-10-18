@@ -70,7 +70,7 @@ typedef struct {
 
     long cdr_mode;
     double kp, ki, integ;
-    double t, t_clk, t_edge, edge_val, y_prev, yk_prev, dk_prev;
+    double t, t_clk, t_edge, edge_val, y_prev, z_prev, yk_prev, dk_prev;
     int edge_done;
     long nsym;
 
@@ -511,8 +511,11 @@ PF_AMI_EXPORT long AMI_GetWave(double *wave, long wave_size,
         double y = z - m->fb_now;
 
         if (!m->edge_done && m->t >= m->t_edge) {
+            /* edge samplers sit before the DFE summer: the feedback steps
+             * right at the data edge, so a crossing seen through it is
+             * whatever the step happens to be */
             double fr = (m->t_edge - (m->t - ts)) / ts;
-            m->edge_val = m->y_prev + PF_CLAMP(fr, 0.0, 1.0) * (y - m->y_prev);
+            m->edge_val = m->z_prev + PF_CLAMP(fr, 0.0, 1.0) * (z - m->z_prev);
             m->edge_done = 1;
         }
         if (m->t >= m->t_clk) {
@@ -536,11 +539,12 @@ PF_AMI_EXPORT long AMI_GetWave(double *wave, long wave_size,
                                        (1.0 - fr) + (double)j * m->nspui);
                     nrm += r[j] * r[j];
                 }
-                /* the main tap is fixed (the AGC owns gain); with a
-                 * Mueller-Muller CDR the first pre-cursor tap is held too:
-                 * the CDR's lock point is defined by h(-1), and letting
-                 * both adapt it walks phase and taps off together */
-                long hold = m->cdr_mode == 2 ? m->ffe_pre - 1 : -1;
+                /* the main tap is fixed (the AGC owns gain); under an
+                 * adaptive CDR the first pre-cursor tap is held too: an FFE
+                 * can move the pulse in time as well as the CDR can, and
+                 * with both free they walk phase and taps off together
+                 * (a Mueller-Muller CDR locks on h(-1) itself) */
+                long hold = m->cdr_mode != 0 ? m->ffe_pre - 1 : -1;
                 for (int j = 0; j < m->ffe_n; j++)
                     if (j != m->ffe_pre && j != hold)
                         m->ffe_w[j] -= m->ffe_mu * e * r[j] / nrm;
@@ -580,6 +584,7 @@ PF_AMI_EXPORT long AMI_GetWave(double *wave, long wave_size,
         }
         wave[i] = y;
         m->y_prev = y;
+        m->z_prev = z;
         m->t += ts;
     }
     if (clock_times)

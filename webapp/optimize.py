@@ -247,7 +247,7 @@ def _pattern_hint(sch: dict) -> tuple[float | None, int]:
     sch = simulate.with_global_ui(sch)
     for group in simulate._instance_groups(sch):
         for inst in group.values():
-            if inst.get("type") in ("prbs", "qam_source"):
+            if inst.get("type") in ("prbs", "qam_source", "ami_tx"):
                 st = inst.get("settings") or {}
                 return (float(st.get("ui", 100e-12)),
                         4 if str(st.get("mode")) == "pam4" else 2)

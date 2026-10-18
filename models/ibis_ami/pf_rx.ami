@@ -57,7 +57,7 @@
             (ffe_pre (Usage In) (Type Integer) (Range 1 0 15)
                 (Description "Pre-cursor taps (main tap index)."))
             (ffe_mu (Usage In) (Type Float) (Range 2e-3 0.0 0.1)
-                (Description "Normalized-LMS step for the FFE."))
+                (Description "Normalized-LMS step for the FFE. The main tap is fixed (the AGC owns gain) and, under an adaptive CDR, so is the first pre-cursor tap (the CDR owns timing)."))
         )
         (dfe
             (dfe_mode (Usage In) (Type Integer) (List 0 1 2) (Default 2)

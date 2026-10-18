@@ -97,7 +97,8 @@ function flowNewDoc(single) {
 }
 
 function flowPam4() {
-  const p = Object.values(state.instances).find((i) => i.type === "prbs");
+  const p = Object.values(state.instances).find(
+    (i) => i.type === "prbs" || i.type === "ami_tx");
   return (p?.settings?.mode || "nrz") === "pam4";
 }
 

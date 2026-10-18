@@ -762,6 +762,14 @@ S.prbs = {
     <text x="12" y="46" style="font-size:7px">PRBS</text>`),
 };
 
+S.ami_tx = {
+  w: 40, h: 60, pins: { p1: [20, 0], p2: [20, 60] }, label: [44, 26],
+  draw: () => srcGlyph(`
+    <path class="${EL}" d="M8 34 h3 v-10 h3 v10 h1 l2 -3 h5 v-10 h3 v10 h3"
+      stroke-width="1.1" fill="none"/>
+    <text x="12" y="46" style="font-size:7px">AMI</text>`),
+};
+
 S.qam_source = {
   w: 40, h: 60, pins: { p1: [20, 0], p2: [20, 60] }, label: [44, 26],
   draw: () => srcGlyph(`
@@ -997,6 +1005,20 @@ S.rx_dfe = {
     <text x="22" y="16" style="font-size:8px">DFE</text>`,
 };
 
+S.ami_rx = {
+  w: 80, h: 50,
+  pins: { inp: [0, 25], out: [80, 25] },
+  label: [20, -6], pinLabels: true,
+  draw: () => `
+    <rect class="${EL} body-fill" x="12" y="4" width="56" height="42" rx="5"/>
+    <line class="${EL}" x1="0" y1="25" x2="12" y2="25"/>
+    <line class="${EL}" x1="68" y1="25" x2="80" y2="25"/>
+    <path class="${EL}" d="M18 31 q8 -11 16 0 q8 11 16 0 M18 31 q8 11 16 0 q8 -11 16 0"
+      fill="none" stroke-width="1.1"/>
+    <path class="${EL}" d="M53 38 h3 v-5 h3 v5 h3" fill="none" stroke-width="1"/>
+    <text x="17" y="16" style="font-size:8px">IBIS-AMI</text>`,
+};
+
 S.opamp = {
   w: 80, h: 60,
   pins: { in_m: [0, 20], in_p: [0, 40], out_p: [80, 30], out_m: [40, 60] },
@@ -1028,7 +1050,7 @@ const HEADLINE_PARAM = {
   photodiode: "R", apd: "M", vdc: "V", vpulse: "v2", vsin: "V", idc: "I",
   resistor: "R", capacitor: "C", inductor: "L", diode: "Is",
   nmos: "W", pmos: "W", opamp: "A", tia: "gain_ohm", ctle: "peaking_db",
-  rx_ffe: "n_taps", rx_dfe: "n_taps",
+  rx_ffe: "n_taps", rx_dfe: "n_taps", ami_rx: "model",
   channel: "loss_db", s2p_channel: "z0", fiber_cd: "length_km",
   fiber_nl: "gamma_per_W_km",
   sky130_nfet: "w_um", sky130_nfet_lvt: "w_um", sky130_nfet_5v: "w_um",

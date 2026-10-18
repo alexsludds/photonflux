@@ -941,7 +941,9 @@ function render() {
         const spec = cat.params.find((p) => p.name === hp);
         const v = (inst.settings && inst.settings[hp] !== undefined)
           ? inst.settings[hp] : spec?.default;
-        if (v !== undefined) valTxt = `${fmtSI(+v)}${spec?.unit || ""}`;
+        if (v !== undefined) {
+          valTxt = typeof v === "string" ? v : `${fmtSI(+v)}${spec?.unit || ""}`;
+        }
       }
       const [wx, wy] = localToWorld(inst, sym, lx, ly);
       ltext += `<text class="refdes" x="${wx}" y="${wy - 11}">${id}</text>
@@ -1674,6 +1676,10 @@ function renderInspector() {
           <button data-upload="${p.name}">Upload&hellip;</button></div>
           <div class="insp-type" data-upname="${p.name}"
             style="word-break:break-all">${cur ? cur.replace(/^[0-9a-f]+_/, "") : "no file"}</div>`;
+      } else if (p.kind === "line") {
+        html += `<div class="insp-row"><label title="${p.name}">${p.label}</label>
+          <input data-lparam="${p.name}" value="${esc(v).replace(/"/g, "&quot;")}"
+            spellcheck="false" style="flex:1;font:11px ui-monospace,monospace"></div>`;
       } else if (p.kind === "text") {
         html += `<div class="insp-row"><label title="${p.name}">${p.label}</label>
           <button data-loadcsv="${p.name}" style="margin-left:auto">Load CSV&hellip;</button></div>
@@ -1719,6 +1725,15 @@ function renderInspector() {
           inst.settings[p.name] = numeric ? parseFloat(sel.value) : sel.value;
         });
       });
+    });
+    body.querySelectorAll("input[data-lparam]").forEach((inp) => {
+      inp.addEventListener("change", () => {
+        commit(() => {
+          inst.settings = inst.settings || {};
+          inst.settings[inp.dataset.lparam] = inp.value.trim();
+        });
+      });
+      inp.addEventListener("keydown", (e) => { if (e.key === "Enter") inp.blur(); });
     });
     body.querySelectorAll("textarea[data-tparam]").forEach((ta) => {
       ta.addEventListener("change", () => {
@@ -3028,7 +3043,7 @@ function eyeDefaults() {
   // source on the canvas, if any
   let mod = 2;
   for (const inst of Object.values(state.instances)) {
-    if (inst.type === "prbs") {
+    if (inst.type === "prbs" || inst.type === "ami_tx") {
       mod = (inst.settings || {}).mode === "pam4" ? 4 : 2;
       break;
     }
@@ -3058,9 +3073,10 @@ function eyeSkipSeconds(t) {
 // the PRBS source's full settings (catalog defaults filled in) + the UI, so
 // the server can regenerate the transmitted symbols for training
 function patternForEye() {
-  const inst = Object.values(state.instances).find((i) => i.type === "prbs");
+  const inst = Object.values(state.instances).find(
+    (i) => i.type === "prbs" || i.type === "ami_tx");
   if (!inst) return null;
-  const defs = Object.fromEntries((catEntry("prbs")?.params || [])
+  const defs = Object.fromEntries((catEntry(inst.type)?.params || [])
     .map((p) => [p.name, p.default]));
   return { ...defs, ...(inst.settings || {}), ui: globalUI() };
 }
@@ -3612,8 +3628,9 @@ function renderLink() {
   }
   const coh = lastResult?.coherent;
   if (coh) { renderCoherent(holder, coh); return; }
+  if (lastResult?.ami) renderAmi(holder, lastResult.ami);
   const rep = lastResult?.link, pul = lastResult?.pulse;
-  if (opt && !rep && !pul) return;
+  if ((opt || lastResult?.ami) && !rep && !pul) return;
   if (!rep && !pul) {
     holder.innerHTML = `<div class="insp-empty" style="padding:16px">
       No link report. Transient: pick a received probe in the
@@ -3764,6 +3781,134 @@ function eyeDecisionPhase(records, n, osr, nlv) {
     else run = 0;
   }
   return Math.round(bestEnd - (bestLen - 1) / 2) % osr;
+}
+
+// IBIS-AMI Rx report (webapp/amilink.py): statistical + time-domain flows
+// ---------------------------------------------------------------------------
+const AMI_COLORS = ["#6ecbf5", "#f0b46e", "#8fd18f", "#f08fb0", "#c39bf0",
+  "#e6e67a", "#7ae6d2", "#f07a7a", "#a0a0ff", "#ffa0d0", "#d0ffa0", "#a0d0ff"];
+
+function amiAxes(xlabel, ylabel) {
+  const ax = (label, size) => ({
+    stroke: "#8a8aa3", grid: { stroke: "#33334a", width: 1 },
+    ticks: { stroke: "#33334a" }, label, labelSize: 18, size,
+    labelFont: "11px sans-serif", font: "11px sans-serif" });
+  return [ax(xlabel), ax(ylabel, 46)];
+}
+
+function drawBerMap(canvas, map) {
+  // log10(BER) heat map: phase (x) x threshold (y), magma-ish ramp, with
+  // the 1e-6 / 1e-12 contour bands picked out
+  const W = canvas.width, H = canvas.height, m = 34;
+  const ctx = canvas.getContext("2d");
+  ctx.fillStyle = "#121218"; ctx.fillRect(0, 0, W, H);
+  const z = map.log10_ber, nv = z.length, np = z[0].length;
+  const cw = (W - 2 * m) / np, ch = (H - 2 * m) / nv;
+  const ramp = (t) => {        // t: 0 (BER 1e-16 or less) .. 1 (BER 0.5)
+    const r = Math.round(255 * Math.min(1, 0.05 + 1.2 * t));
+    const g = Math.round(255 * Math.max(0, Math.min(1, 1.3 * t - 0.35)));
+    const b = Math.round(255 * Math.max(0, Math.min(1, 0.45 - 0.4 * t + 0.6 * t * t)));
+    return `rgb(${r},${g},${b})`;
+  };
+  for (let i = 0; i < nv; i++) {
+    for (let j = 0; j < np; j++) {
+      const v = z[i][j] ?? -30;
+      ctx.fillStyle = (Math.abs(v + 12) < 0.35 || Math.abs(v + 6) < 0.25)
+        ? "#ffffff" : ramp(Math.max(0, (v + 16) / (16 + Math.log10(0.5))));
+      ctx.fillRect(m + j * cw, H - m - (i + 1) * ch, cw + 0.6, ch + 0.6);
+    }
+  }
+  ctx.fillStyle = "#8a8aa3"; ctx.font = "11px sans-serif";
+  const ph = map.phase_ui, vv = map.v;
+  ctx.fillText(`${ph[0].toFixed(2)}`, m, H - m + 14);
+  ctx.fillText(`${ph[ph.length - 1].toFixed(2)} UI`, W - m - 34, H - m + 14);
+  ctx.fillText(`${(vv[vv.length - 1] * 1e3).toFixed(0)} mV`, 2, m + 4);
+  ctx.fillText(`${(vv[0] * 1e3).toFixed(0)}`, 2, H - m);
+  ctx.fillText("statistical eye (white: 1e-6 / 1e-12)", m, 14);
+}
+
+function renderAmi(holder, ami) {
+  const fmtE = (x) => (x === null || x === undefined) ? "\u2014"
+    : (x === 0 ? "0" : Number(x).toExponential(2));
+  const c = ami.td.counted;
+  const berTxt = c.bit_errors === 0
+    ? `0 / ${c.bits} bits (&lt; ${(1 / Math.max(c.bits, 1)).toExponential(1)})`
+    : `${c.bit_errors} / ${c.bits} bits = ${fmtE(c.ber)}`;
+  const eyes = ami.stat.eyes.map((e, i) =>
+    `${ami.stat.eyes.length > 1 ? `eye ${i}: ` : ""}${(e["height_v@1e-06"] * 1e3).toFixed(1)} mV
+     &times; ${e["width_ui@1e-06"].toFixed(3)} UI @1e-6,
+     ${(e["height_v@1e-12"] * 1e3).toFixed(1)} mV &times; ${e["width_ui@1e-12"].toFixed(3)} UI @1e-12`)
+    .join("<br>");
+  const fin = Object.entries(ami.final_params || {})
+    .filter(([, v]) => typeof v === "number" || Array.isArray(v))
+    .map(([k, v]) => `${k} ${Array.isArray(v) ? v.map((x) => (+x).toFixed(3)).join(", ")
+      : (+v).toPrecision(4)}`).join("; ");
+  const div = document.createElement("div");
+  div.className = "link-grid";
+  div.innerHTML = `
+    <table id="link-table">
+      <tr><th>IBIS-AMI Rx</th><td><b>${ami.model}</b> (${ami.where}) on
+        ${ami.probe}, ${ami.modulation}, UI ${fmtSI(ami.ui)}s</td></tr>
+      <tr><th>counted BER</th><td><b>${berTxt}</b>
+        <span class="link-hint">(GetWave + its recovered clock, after
+        ${ami.td.skip} ignored UI; Q-fit ${fmtE(ami.td.qfit_ber)})</span></td></tr>
+      <tr><th>statistical BER</th><td>${fmtE(ami.stat.ber)}
+        <span class="link-hint">(Init on the channel estimated from the probe;
+        noise ${fmtSI(ami.noise_at_slicer)}V incl. ${fmtSI(ami.distortion_at_slicer)}V
+        of nonlinear distortion at the slicer. As pure LTI: ${fmtE(ami.stat.ber_lti)})</span></td></tr>
+      <tr><th>eye</th><td>${eyes}</td></tr>
+      <tr><th>CDR samples at</th><td>${ami.td.sampling_phase_ui >= 0 ? "+" : ""}${ami.td.sampling_phase_ui.toFixed(3)}
+        UI from the pulse peak</td></tr>
+      <tr><th>linear fit</th><td>${(100 * ami.linear_residual).toFixed(1)} % residual
+        <span class="link-hint">(how far the link is from the LTI channel
+        Init assumes)</span></td></tr>
+      <tr><th>Init</th><td class="link-hint">${ami.init_message}</td></tr>
+      <tr><th>adapted (end)</th><td class="link-hint">${fin}</td></tr>
+    </table>
+    <div id="ami-plots" style="display:flex;gap:12px;flex-wrap:wrap"></div>`;
+  holder.appendChild(div);
+  const box = div.querySelector("#ami-plots");
+  const canvas = document.createElement("canvas");
+  canvas.width = 320; canvas.height = 240;
+  box.appendChild(canvas);
+  drawBerMap(canvas, ami.stat.map);
+
+  // bathtubs: statistical per eye + time domain on a common phase grid
+  const xs = [...new Set([...ami.stat.bathtubs[0].phase_ui,
+    ...ami.td.bathtub.phase_ui])].sort((a, b) => a - b);
+  const on = (px, py) => xs.map((x) => { const k = px.indexOf(x); return k >= 0 ? py[k] : null; });
+  const tubSeries = [{ label: "phase" }];
+  const tubData = [xs];
+  ami.stat.bathtubs.forEach((tb, i) => {
+    tubSeries.push({ label: ami.stat.bathtubs.length > 1 ? `stat eye ${i}` : "statistical",
+      stroke: AMI_COLORS[i], width: 1.5, spanGaps: true });
+    tubData.push(on(tb.phase_ui, tb.log10_ber));
+  });
+  tubSeries.push({ label: "time domain", stroke: "#ffffff", width: 0,
+    points: { show: true, size: 4, fill: "#ffffff" } });
+  tubData.push(on(ami.td.bathtub.phase_ui, ami.td.bathtub.log10_ber));
+  const tub = document.createElement("div");
+  box.appendChild(tub);
+  plots.push(new uPlot({ width: 340, height: 240, scales: { x: { time: false },
+    y: { range: [-16, 0] } }, axes: amiAxes("sampling phase [UI]", "log10 BER"),
+    series: tubSeries }, tubData, tub));
+
+  // adaptation trace: every varying quantity the model reported per call
+  const t = ami.td.trace_t_ui;
+  const keys = Object.keys(ami.td.series).filter((k) => {
+    const v = ami.td.series[k].filter((x) => x !== null);
+    return v.length && Math.max(...v) - Math.min(...v) > 1e-12
+      && !/fom|peaking/.test(k);
+  });
+  if (t.length > 1 && keys.length) {
+    const ad = document.createElement("div");
+    box.appendChild(ad);
+    plots.push(new uPlot({ width: 420, height: 240, scales: { x: { time: false } },
+      axes: amiAxes("time [UI]", "adaptation"),
+      series: [{ label: "UI" }, ...keys.map((k, i) => ({
+        label: k, stroke: AMI_COLORS[i % AMI_COLORS.length], width: 1.2 }))] },
+    [t, ...keys.map((k) => ami.td.series[k])], ad));
+  }
 }
 
 /* tiny 1-D k-means for eye levels (k = 2 or 4), quantile-initialised */
@@ -4061,7 +4206,9 @@ $("btn-upva").addEventListener("click", () => {
 // coerce a persisted schematic into the in-memory shape (missing collections
 // default to empty; wires may be legacy [from, to] pairs)
 // sources whose symbol rate is the global baud rate (UI injected on Run)
-function isPatternSrc(type) { return type === "prbs" || type === "qam_source"; }
+function isPatternSrc(type) {
+  return type === "prbs" || type === "qam_source" || type === "ami_tx";
+}
 
 // Older schematics: QAM drive was a PRBS-source mode, and SJ was called
 // "periodic jitter" (pj_*). Rewrite them in place to the current parts.

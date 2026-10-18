@@ -41,7 +41,8 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
 import numpy as np  # noqa: E402
 
-from _common import density_of, ensure_built, fmt_ber, model, save  # noqa: E402
+from _common import (density_of, ensure_built, fmt_ber, model,  # noqa: E402
+                     plot_counted, save)
 
 from photonflux import serdes  # noqa: E402
 
@@ -136,7 +137,7 @@ def main(argv=None) -> int:
     stat_ber = [serdes.stat_eye(st.pulse, ts, ui, levels=4, noise_rms=g * s,
                                 nv=301, crosstalk=xt).bit_error_rate() for s in sig]
     frozen = {"ffe_mode": 1, "dfe_mode": 1, "cdr_mode": 0}
-    pts, counted, counted_frozen = [], [], []
+    pts, counted, counted_frozen = [], [], []   # TimeDomainLink results
     for s in sig[::3][1:]:
         r = serdes.time_domain_link(tx, ch, rx, ui, modulation="PAM4",
                                     nsym=120000, noise_rms=s, seed=5)
@@ -145,8 +146,8 @@ def main(argv=None) -> int:
                                      rx_params=frozen)
         rx.params.update(ffe_mode=2, dfe_mode=2, cdr_mode=2)
         pts.append(s)
-        counted.append(r.counted["ber"])
-        counted_frozen.append(rf.counted["ber"])
+        counted.append(r)
+        counted_frozen.append(rf)
         print(f"  sigma_in {s * 1e3:5.1f} mV: counted {fmt_ber(r.counted['ber'])} "
               f"adaptive, {fmt_ber(rf.counted['ber'])} frozen at the Init design")
 
@@ -237,10 +238,9 @@ def main(argv=None) -> int:
 
     ax = axs[2, 3]
     ax.loglog(sig * 1e3, stat_ber, "-", label="statistical (Init)")
-    ax.loglog(np.asarray(pts) * 1e3, np.maximum(counted_frozen, 1e-7), "s",
-              mfc="none", label="counted, GetWave frozen at Init's design")
-    ax.loglog(np.asarray(pts) * 1e3, np.maximum(counted, 1e-7), "o",
-              label="counted, GetWave adapting (LMS FFE/DFE, MM CDR)")
+    plot_counted(ax, pts, counted_frozen, "counted, frozen at Init's design",
+                 "s", mfc="none")
+    plot_counted(ax, pts, counted, "counted, adapting (LMS, MM CDR)")
     ax.set(xlabel="Rx input noise [mV rms / sample]", ylabel="BER (Gray)",
            title="statistical vs time-domain BER (no jitter)")
     ax.grid(True, which="both", alpha=0.3)

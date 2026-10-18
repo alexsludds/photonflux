@@ -31,9 +31,12 @@ What it does, the way an IBIS-AMI channel simulator would:
    input -- so it steps at each data edge (+/-0.5 UI) where the feedback
    switches; only its opening at the clock is meaningful, as on silicon.
 4. **Cross-check of the two flows**: counted BER vs the statistical
-   prediction across Rx input noise -- the GetWave adaptation and CDR land
-   close to, not exactly on, Init's design, which is the classic
-   statistical/time-domain correlation exercise.
+   prediction across Rx input noise, with jitter off in both flows (the
+   statistical flow applies Tx jitter as sampling jitter, the pessimistic
+   reading; in the time domain the channel filters it). The adapting link
+   lands on the statistical curve; frozen at its Init design the Rx samples
+   at Init's figure-of-merit phase, a little off the BER-optimal phase the
+   statistical eye reports, and loses a few x at 1e-5.
 
     python examples/ibis_ami/electrical_nrz_backplane.py
     python examples/ibis_ami/electrical_nrz_backplane.py --length 0.9 --xtalk -35
@@ -50,7 +53,8 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
 import numpy as np  # noqa: E402
 
-from _common import density_of, ensure_built, fmt_ber, model, save  # noqa: E402
+from _common import (density_of, ensure_built, fmt_ber, model,  # noqa: E402
+                     plot_counted, save)
 
 from photonflux import serdes  # noqa: E402
 
@@ -123,27 +127,35 @@ def main(argv=None) -> int:
 
     # -- 4. statistical vs counted BER across input noise ------------------
     # slicer noise per unit input sigma, from the Rx's own linear response
+    # jitter-free in both flows (see the PAM4 example for why); crosstalk on
     g = st.noise_rms / args.sigma
+    xt = [np.convolve(a, np.ones(nspui))[: len(a)] * ts for a in st.rx_aggressors]
+
+    def stat_ber(sig):
+        return serdes.stat_eye(st.pulse, ts, ui, noise_rms=g * sig, nv=301,
+                               crosstalk=xt).bit_error_rate()
+
     sig_grid = []
     for target in (1e-2, 1e-3, 1e-4, 1e-5):
         lo, hi = 1e-5, 1.0
-        for _ in range(40):              # bisect the statistical BER
+        for _ in range(30):              # bisect the statistical BER
             mid = np.sqrt(lo * hi)
-            e = serdes.stat_eye(st.pulse, ts, ui, noise_rms=g * mid, rj_ui=rj,
-                                dj_ui=dj, nv=301)
-            lo, hi = (mid, hi) if e.bit_error_rate() < target else (lo, mid)
+            lo, hi = (mid, hi) if stat_ber(mid) < target else (lo, mid)
         sig_grid.append(np.sqrt(lo * hi))
     sig_fine = np.geomspace(sig_grid[0] * 1.1, sig_grid[-1] * 0.7, 12)
-    stat_ber = [serdes.stat_eye(st.pulse, ts, ui, noise_rms=g * s, rj_ui=rj,
-                                dj_ui=dj, nv=301).bit_error_rate() for s in sig_fine]
-    counted, qfit = [], []
+    stat_curve = [stat_ber(s) for s in sig_fine]
+    frozen = {"dfe_mode": 1, "cdr_mode": 0}
+    counted, counted_frozen = [], []
     for s in sig_grid:
-        r = serdes.time_domain_link(tx, ch, rx, ui, nsym=150000, noise_rms=s,
-                                    rj_ui=rj, dj_ui=dj, seed=3)
-        counted.append(r.counted["ber"])
-        qfit.append(r.qfit["ber_est"])
-        print(f"  sigma_in {s * 1e3:6.2f} mV: counted {fmt_ber(r.counted['ber'])} "
-              f"({r.counted['bit_errors']} errors), Q-fit {r.qfit['ber_est']:.2e}")
+        r = serdes.time_domain_link(tx, ch, rx, ui, nsym=150000, noise_rms=s, seed=3)
+        rf = serdes.time_domain_link(tx, ch, rx, ui, nsym=150000, noise_rms=s,
+                                     seed=3, rx_params=frozen)
+        rx.params.update(dfe_mode=2, cdr_mode=1)
+        counted.append(r)
+        counted_frozen.append(rf)
+        print(f"  sigma_in {s * 1e3:6.2f} mV: statistical {stat_ber(s):.2e}, counted "
+              f"{fmt_ber(r.counted['ber'])} adapting, "
+              f"{fmt_ber(rf.counted['ber'])} frozen at the Init design")
 
     # -- figure -------------------------------------------------------------
     fig, axs = plt.subplots(3, 3, figsize=(16, 13), layout="constrained")
@@ -211,15 +223,15 @@ def main(argv=None) -> int:
     ax.set_title("Rx GetWave adaptation (AMI_parameters_out per call)")
 
     ax = axs[2, 2]
-    ax.loglog(np.asarray(sig_fine) * 1e3, stat_ber, "-", label="statistical (Init)")
-    ax.loglog(np.asarray(sig_grid) * 1e3, np.maximum(counted, 1e-7), "o",
-              label="counted (GetWave)")
-    ax.loglog(np.asarray(sig_grid) * 1e3, qfit, "x", label="Q-fit (GetWave)")
+    ax.loglog(np.asarray(sig_fine) * 1e3, stat_curve, "-", label="statistical (Init)")
+    plot_counted(ax, sig_grid, counted_frozen, "counted, frozen at Init's design",
+                 "s", mfc="none")
+    plot_counted(ax, sig_grid, counted, "counted, adapting (LMS DFE, BB CDR)")
     ax.set_xlabel("Rx input noise [mV rms / sample]")
     ax.set_ylabel("BER")
     ax.grid(True, which="both", alpha=0.3)
     ax.legend(fontsize=8)
-    ax.set_title("statistical vs time-domain BER")
+    ax.set_title("statistical vs time-domain BER (no jitter)")
 
     e0 = summ["eyes"][0]
     fig.suptitle(

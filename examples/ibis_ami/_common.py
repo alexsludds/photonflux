@@ -46,3 +46,16 @@ def save(fig, name: str) -> Path:
 
 def fmt_ber(x: float) -> str:
     return "0" if x <= 0 else f"{x:.2e}"
+
+
+def plot_counted(ax, sigma, results, label, marker="o", **kw):
+    """Counted BER points; zero-error runs drawn as upper bounds (< 1/N)."""
+    sigma = np.asarray(sigma) * 1e3
+    ber = np.array([r.counted["ber"] for r in results])
+    bound = np.array([1.0 / max(r.counted["bits"], 1) for r in results])
+    hit = ber > 0
+    line = ax.loglog(sigma[hit], ber[hit], marker, ls="none", label=label, **kw)
+    if (~hit).any():
+        ax.loglog(sigma[~hit], bound[~hit], "v", ls="none",
+                  color=line[0].get_color(), mfc="none",
+                  label=f"{label}: 0 errors (< 1/N)")

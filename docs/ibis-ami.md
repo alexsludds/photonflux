@@ -269,6 +269,17 @@ trustworthy, at about 4x the cost per evaluation. With 15 dB host traces,
 this driver, MZM and Tx FFE did not meet RLM ≥ 0.95 together with the Rx
 BER in any run.
 
+A fourth run scored on 8k UI throughout. It varied ten knobs: the run
+above's set minus c(-2) and the MZM length, plus pf_tx PAM4 pre-distortion
+(`tx_pam4_lo` / `tx_pam4_hi`), the junction reverse bias (held above the
+electrode swing so the junctions cannot forward-bias), the driver's swing
+limit, and wider c(-1) and gain bounds. It produced no usable design. At
+evaluation 27 a closed eye was mis-scored as TDECQ −47.6 dB, giving
+OMA − TDECQ ≈ +50 dB. The search then chased such points, and its "optimum"
+has Rx BER 0.37. The one real design meeting RLM ≥ 0.95 scored −22 dB, and
+the best real one scored −4.1 dB at RLM 0.92. A TDECQ that comes out
+negative or undefined should fail the evaluation rather than score.
+
 ## Building
 
 `python -m photonflux ami build` (also run on first use):

@@ -3839,10 +3839,12 @@ function renderAmi(holder, ami) {
      &times; ${e["width_ui@1e-06"].toFixed(3)} UI @1e-6,
      ${(e["height_v@1e-12"] * 1e3).toFixed(1)} mV &times; ${e["width_ui@1e-12"].toFixed(3)} UI @1e-12`)
     .join("<br>");
-  const fin = Object.entries(ami.final_params || {})
-    .filter(([, v]) => typeof v === "number" || Array.isArray(v))
+  const fmtParams = (params) => Object.entries(params || {})
+    .filter(([k, v]) => (typeof v === "number" || Array.isArray(v)) && k !== "symbols")
     .map(([k, v]) => `${k} ${Array.isArray(v) ? v.map((x) => (+x).toFixed(3)).join(", ")
       : (+v).toPrecision(4)}`).join("; ");
+  const fin = fmtParams(ami.final_params);
+  const design = fmtParams(ami.init_params);
   const div = document.createElement("div");
   div.className = "link-grid";
   div.innerHTML = `
@@ -3865,6 +3867,7 @@ function renderAmi(holder, ami) {
         <span class="link-hint">(how far the link is from the LTI channel
         Init assumes)</span></td></tr>
       <tr><th>Init</th><td class="link-hint">${ami.init_message}</td></tr>
+      <tr><th>Init design</th><td class="link-hint">${design}</td></tr>
       <tr><th>adapted (end)</th><td class="link-hint">${fin}</td></tr>
     </table>
     <div id="ami-plots" style="display:flex;gap:12px;flex-wrap:wrap;flex:1;min-width:340px"></div>`;

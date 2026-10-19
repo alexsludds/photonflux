@@ -19,10 +19,13 @@
  *
  * GetWave (time-domain flow) runs the same filters sample by sample and
  *   - recovers the clock: bang-bang (Alexander, cdr_mode 1) or
- *     Mueller-Muller (cdr_mode 2) phase detector, proportional-integral loop,
+ *     Mueller-Muller phase detector on the slicer input (cdr_mode 2) or on
+ *     the FFE input (cdr_mode 3), proportional-integral loop,
  *   - slices NRZ or PAM4 (Modulation) against adapted data levels,
  *   - adapts the DFE (dfe_mode 2) and FFE (ffe_mode 2) taps by LMS and the
- *     AGC (agc_mode 2) toward agc_target,
+ *     AGC (agc_mode 2) toward agc_target, starting from Init's design or,
+ *     with adapt_start 1, from a cold start (pass-through FFE, no DFE,
+ *     gain and phase from the unequalized pulse),
  *   - writes the equalized waveform (the slicer input) back into `wave`,
  *     the clock ticks (sampling instant - UI/2, IBIS convention) into
  *     clock_times, and the live adaptation state into AMI_parameters_out
@@ -71,13 +74,14 @@ typedef struct {
     long cdr_mode;
     double kp, ki, integ;
     double cdr_off;     /* data sample - bang-bang lock point, in UI */
-    double t, t_clk, t_edge, edge_val, y_prev, z_prev, yk_prev, dk_prev;
+    double t, t_clk, t_edge, edge_val, y_prev, z_prev, yk_prev, xk_prev;
+    double dk_prev;
     double pend[8];     /* clock ticks deferred to the next GetWave call */
     int npend;
     int edge_done;
     long nsym;
 
-    long cdr_cal;
+    long cdr_cal, cold;
     double rx_noise_nv, init_fom_db, init_phase;
     pf_str params_out, msg;
 } pf_rx;
@@ -127,6 +131,7 @@ static void configure(pf_rx *m, const pf_params *p)
     m->init_phase = pf_param_double(p, "cdr_init_phase", 0.5);
     m->cdr_off = pf_param_double(p, "cdr_offset_ui", 0.0);
     m->cdr_cal = pf_param_long(p, "cdr_calibrate", 1);
+    m->cold = pf_param_long(p, "adapt_start", 0) == 1;
     m->rx_noise_nv = pf_param_double(p, "rx_noise_nv", 5.0);
 }
 
@@ -225,6 +230,24 @@ static void mmse_ffe(const double *c, int lc, int nf, int pre, int ndfe,
     free(b);
 }
 
+/* Where a Mueller-Muller loop locks on pulse p: p(+1 UI) = p(-1 UI), within
+ * half a UI of the peak npk */
+static long mm_lock(const double *p, long n, long npk, long N)
+{
+    long best = npk;
+    double bd = 1e300;
+    for (long k = npk - N / 2; k <= npk + N / 2; k++) {
+        if (k - N < 0 || k + N >= n)
+            continue;
+        double d = fabs(p[k + N] - p[k - N]);
+        if (d < bd) {
+            bd = d;
+            best = k;
+        }
+    }
+    return best;
+}
+
 typedef struct {
     double fom, main, noise_gain;
     long n0;              /* sampling sample of the unequalized pulse */
@@ -255,7 +278,11 @@ static eval_t evaluate(const pf_rx *m, const double *hc, long n, double g2,
     /* white input noise of rx_noise_nv nV/rtHz, per-sample variance */
     double sn2 = pow(m->rx_noise_nv * 1e-9, 2) / (2.0 * m->ts);
     long step = PF_MAX(1, m->nspui / 32);
-    for (long n0 = npk - m->nspui / 2; n0 <= npk + m->nspui / 2; n0 += step) {
+    long lo = npk - m->nspui / 2, hi = npk + m->nspui / 2;
+    if (m->cdr_mode == 3) { /* a CDR on the FFE input locks on this pulse */
+        lo = hi = mm_lock(pulse, n, npk, m->nspui);
+    }
+    for (long n0 = lo; n0 <= hi; n0 += step) {
         if (n0 < 0 || n0 >= n)
             continue;
         int lc = KPRE + 1 + (int)PF_MIN((n - 1 - n0) / m->nspui, KPOST_MAX);
@@ -342,6 +369,17 @@ static void report(pf_rx *m)
                   m->init_fom_db);
 }
 
+/* GetWave's first data and edge sampling instants, from init_phase */
+static void seed_clock(pf_rx *m)
+{
+    m->t_clk = m->init_phase * m->ui;
+    if (m->t_clk < 0.5 * m->ui) /* clock ticks (t_clk - UI/2) stay >= 0 */
+        m->t_clk += m->ui;
+    m->t_edge = m->t_clk - (0.5 + m->cdr_off) * m->ui;
+    m->edge_done = m->t_edge < 0.0;
+    m->t_fb = 1e300;
+}
+
 /* ---- AMI API ------------------------------------------------------------- */
 
 PF_AMI_EXPORT long AMI_Init(double *impulse_matrix, long row_size,
@@ -418,6 +456,38 @@ PF_AMI_EXPORT long AMI_Init(double *impulse_matrix, long row_size,
         best.n0 = 0;
     }
     m->ctle_peak = best_pk;
+    /* A cold start needs every equalizer stage in use to adapt: a fixed FFE
+     * (DFE) was designed around its partner's Init taps. It samples the
+     * unequalized (CTLE-only) pulse at its peak, or at Init's phase under a
+     * fixed-phase CDR or one on the FFE input (which locks there on this
+     * pulse). */
+    int ffe_fixed = m->ffe_mode == 1;
+    int dfe_fixed = m->dfe_mode == 1 && m->dfe_n > 0;
+    int cold = m->cold && best.fom > 0.0 && !ffe_fixed && !dfe_fixed &&
+               (m->ffe_mode == 2 || (m->dfe_mode == 2 && m->dfe_n > 0));
+    long cold_n0 = -1;
+    double cold_main = 0.0;
+    if (cold) {
+        memcpy(hc, h, (size_t)n * sizeof(double));
+        if (m->ctle_mode > 0) {
+            design_ctle(&m->ctle, m->ts, m->ctle_peak, m->ctle_fp1,
+                        m->ctle_fp2m);
+            for (long i = 0; i < n; i++)
+                hc[i] = pf_biquad_step(&m->ctle, hc[i]);
+        }
+        double acc = 0.0;
+        for (long i = 0; i < n; i++) {
+            acc += hc[i];
+            if (i >= m->nspui)
+                acc -= hc[i - m->nspui];
+            pulse[i] = acc * m->ts;
+            if (cold_n0 < 0 || pulse[i] > pulse[cold_n0])
+                cold_n0 = i;
+        }
+        if (m->cdr_mode == 0 || m->cdr_mode == 3)
+            cold_n0 = best.n0;
+        cold_main = pulse[cold_n0];
+    }
     memcpy(m->ffe_w, best.w, sizeof m->ffe_w);
     memcpy(m->dfe_b, best.b, sizeof m->dfe_b);
     m->init_fom_db = best.fom > 0.0 ? 20.0 * log10(best.fom) : -99.0;
@@ -463,10 +533,12 @@ PF_AMI_EXPORT long AMI_Init(double *impulse_matrix, long row_size,
                 acc -= h[i - N];
             pulse[i] = acc;
         }
-        for (long k = n_main; k < n_main + N && k < n; k++) {
+        for (long k = n_main; k < n_main + N && k + 1 < n; k++) {
+            if (k - N < 0)
+                continue;
             double d0 = pulse[k] - pulse[k - N];
             double d1 = pulse[k + 1] - pulse[k + 1 - N];
-            if (k - N >= 0 && d0 >= 0.0 && d1 < 0.0) {
+            if (d0 >= 0.0 && d1 < 0.0) {
                 mb = k;
                 break;
             }
@@ -491,21 +563,51 @@ PF_AMI_EXPORT long AMI_Init(double *impulse_matrix, long row_size,
     pf_delay_init(&m->ffe_in, (m->ffe_n - 1) * m->nspui + 4);
     if (best.fom > 0.0)
         m->init_phase = fmod(n_main * m->ts, m->ui) / m->ui;
-    m->t_clk = m->init_phase * m->ui;
-    if (m->t_clk < 0.5 * m->ui) /* clock ticks (t_clk - UI/2) stay >= 0 */
-        m->t_clk += m->ui;
-    m->t_edge = m->t_clk - (0.5 + m->cdr_off) * m->ui;
-    m->edge_done = m->t_edge < 0.0;
-    m->t_fb = 1e300;
+    seed_clock(m);
+    report(m); /* Init's output parameters are its design */
+
+    /* Cold start: the adaptive taps are reset, and with an adaptive FFE the
+     * gain, data level and sampling phase come from the unequalized pulse,
+     * so LMS and the CDR learn the rest from the waveform. A CDR on the
+     * slicer input holds the first pre-cursor tap (see GetWave): it keeps
+     * Init's value. */
+    double design_phase = m->init_phase;
+    if (cold_n0 >= 0 && cold_main > 0.0) {
+        if (m->dfe_mode == 2)
+            memset(m->dfe_b, 0, sizeof m->dfe_b);
+        if (m->ffe_mode == 2) {
+            long hold = (m->cdr_mode == 1 || m->cdr_mode == 2)
+                            ? m->ffe_pre - 1 : -1;
+            double held = hold >= 0 ? m->ffe_w[hold] : 0.0;
+            memset(m->ffe_w, 0, sizeof m->ffe_w);
+            m->ffe_w[m->ffe_pre] = 1.0;
+            if (hold >= 0)
+                m->ffe_w[hold] = held;
+            if (m->agc_mode > 0)
+                m->agc_gain = m->agc_target / (0.5 * cold_main);
+            m->amp = 0.5 * cold_main * m->agc_gain;
+            n_main = cold_n0 + m->ffe_pre * m->nspui;
+            m->init_phase = fmod(n_main * m->ts, m->ui) / m->ui;
+            seed_clock(m);
+        }
+    }
 
     free(hc); free(pulse); free(cur); free(g);
-    report(m);
+    char start[96] = "";
+    if (cold)
+        snprintf(start, sizeof start, "; GetWave adapts from a cold start "
+                                      "at %.3f UI", m->init_phase);
+    else if (m->cold && best.fom > 0.0)
+        snprintf(start, sizeof start, "; adapt_start ignored: a fixed FFE "
+                                      "or DFE needs Init's design");
     pf_str_printf(&m->msg, "pf_rx: %s, CTLE %.3g dB%s, FFE %ld taps, DFE "
-                           "%ld taps, FOM %.2f dB, sampling phase %.3f UI",
-                  m->levels == 4 ? "PAM4" : "NRZ", m->ctle_peak,
-                  m->ctle_mode == 2 ? " (adapted)" : "",
+                           "%ld taps, FOM %.2f dB, sampling phase %.3f UI%s",
+                  m->levels == 4 ? "PAM4" : "NRZ",
+                  m->ctle_mode > 0 ? m->ctle_peak : 0.0,
+                  m->ctle_mode == 2 ? " (adapted)"
+                                    : (m->ctle_mode == 0 ? " (off)" : ""),
                   m->ffe_mode > 0 ? m->ffe_n : 0L, m->dfe_n, m->init_fom_db,
-                  m->init_phase);
+                  design_phase, start);
     *AMI_parameters_out = m->params_out.s;
     *msg = m->msg.s;
     return 1;
@@ -587,19 +689,24 @@ PF_AMI_EXPORT long AMI_GetWave(double *wave, long wave_size,
                     m->dfe_b[j] = PF_CLAMP(m->dfe_b[j] + m->dfe_mu * (e / amp) *
                                                              m->dhist[j],
                                            -m->dfe_max, m->dfe_max);
-            if (m->ffe_mode == 2 && m->ffe_n > 1) {
-                double r[MAXFFE], nrm = 1e-30;
+            if (m->ffe_mode == 2 && m->ffe_n > 1 && m->nsym >= m->ffe_n) {
+                /* normalized LMS, regularized so a run of near-zero
+                 * samples cannot blow a step up */
+                double r[MAXFFE], nrm = 0.01 * m->ffe_n * amp * amp;
                 for (int j = 0; j < m->ffe_n; j++) {
                     r[j] = pf_delay_at(&m->ffe_in,
                                        (1.0 - fr) + (double)j * m->nspui);
                     nrm += r[j] * r[j];
                 }
-                /* the main tap is fixed (the AGC owns gain); under an
-                 * adaptive CDR the first pre-cursor tap is held too: an FFE
-                 * can move the pulse in time as well as the CDR can, and
-                 * with both free they walk phase and taps off together
-                 * (a Mueller-Muller CDR locks on h(-1) itself) */
-                long hold = m->cdr_mode != 0 ? m->ffe_pre - 1 : -1;
+                /* the main tap is fixed (the AGC owns gain); under a CDR
+                 * on the slicer input the first pre-cursor tap is held
+                 * too: an FFE can move the pulse in time as well as the
+                 * CDR can, and with both free they walk phase and taps off
+                 * together (a Mueller-Muller CDR locks on h(-1) itself). A
+                 * CDR on the FFE input (cdr_mode 3) never sees the taps,
+                 * so every tap but the main one adapts */
+                long hold = (m->cdr_mode == 1 || m->cdr_mode == 2)
+                                ? m->ffe_pre - 1 : -1;
                 for (int j = 0; j < m->ffe_n; j++)
                     if (j != m->ffe_pre && j != hold)
                         m->ffe_w[j] -= m->ffe_mu * e * r[j] / nrm;
@@ -617,6 +724,14 @@ PF_AMI_EXPORT long AMI_GetWave(double *wave, long wave_size,
                     pd = (m->edge_val * m->dk_prev > 0.0) ? 1.0 : -1.0;
             } else if (m->cdr_mode == 2) {
                 pd = (yk * m->dk_prev - m->yk_prev * d) / amp;
+            } else if (m->cdr_mode == 3) {
+                /* the same detector on the FFE input's main-tap sample:
+                 * it locks where the channel's own h(-1) = h(+1) */
+                double xk = pf_delay_at(&m->ffe_in, (1.0 - fr) +
+                                                    (double)m->ffe_pre *
+                                                        m->nspui);
+                pd = (xk * m->dk_prev - m->xk_prev * d) / amp;
+                m->xk_prev = xk;
             }
             m->integ += m->ki * pd;
             double stp = m->kp * pd + m->integ;

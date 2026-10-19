@@ -243,6 +243,10 @@ def objective_terms(objective: str) -> tuple[list[str], str | None]:
 # ---------------------------------------------------------------------------
 
 def _split_key(key: str) -> tuple[str, str]:
+    if ".ami:" in str(key):        # INST.ami:name, name may be dotted
+        inst, _, name = str(key).partition(".ami:")
+        if inst and name:
+            return inst, "ami:" + name
     inst, dot, param = str(key).rpartition(".")
     if not dot or not inst or not param:
         raise FlowError(f"set target {key!r}: write it as INSTANCE.param "
@@ -297,7 +301,7 @@ def _set_ami(sch: dict, inst: str, key: str, val: float) -> None:
         raise FlowError(f"set {inst}.ami:{key}: not a parameter name")
     settings = node.setdefault("settings", {})
     over = amilink.parse_overrides(settings.get("ami_params"))
-    over[key] = int(val) if float(val).is_integer() and abs(val) < 1e15 else val
+    over[key] = float(val)          # the model coerces to the parameter's type
     settings["ami_params"] = " ".join(
         f"{k}={v!r}" if isinstance(v, float) else f"{k}={v}"
         for k, v in over.items())
@@ -425,8 +429,10 @@ def _result_ctx(res: dict, sch: dict, vars_: dict, flow: dict):
             ctx.setdefault(row["name"], float(row["value"]))
     for s in res.get("scalars") or []:
         ctx.setdefault(s["name"], float(s["value"]))
+    # the IBIS-AMI Rx link report (NaN, i.e. undefined, if it did not run)
+    ctx["ami_ber"] = ctx["ami_ber_counted"] = float("nan")
     ami = res.get("ami") or {}
-    if ami:                                    # the IBIS-AMI Rx link report
+    if ami:
         ctx["ami_ber"] = float(ami["stat"]["ber"])
         ctx["ami_ber_counted"] = float(ami["td"]["counted"]["ber"])
 
@@ -663,7 +669,14 @@ class _Runner:
                 node = (start_sch.get("instances") or {}).get(p["inst"])
                 if node is None:
                     raise FlowError(f"optimize: no instance {p['inst']!r}")
-                cur = (node.get("settings") or {}).get(p["param"])
+                settings = node.get("settings") or {}
+                if str(p["param"]).startswith("ami:"):
+                    import amilink
+                    cur = amilink.parse_overrides(
+                        settings.get("ami_params")).get(p["param"][4:])
+                    cur = cur if isinstance(cur, (int, float)) else None
+                else:
+                    cur = settings.get(p["param"])
             keys.append(key)
             lo.append(a)
             hi.append(b)
@@ -933,9 +946,21 @@ class _Runner:
         except FlowError:
             return []
         resolved: dict = {}
+        ami_nodes: dict = {}      # IBIS-AMI parameters fold into ami_params
         for inst, param, val in assigns:
+            if param.startswith("ami:"):
+                if inst not in ami_nodes:
+                    base_node = (self.base.get("instances") or {}).get(inst)
+                    if base_node is None:
+                        continue
+                    ami_nodes[inst] = {"instances": {inst: copy.deepcopy(base_node)}}
+                _set_ami(ami_nodes[inst], inst, param[4:], val)
+                continue
             for name in _expand(self.base, inst, param):
                 resolved[(name, param)] = val
+        for inst, sub in ami_nodes.items():
+            resolved[(inst, "ami_params")] = (
+                sub["instances"][inst]["settings"]["ami_params"])
         return [{"inst": i, "param": p, "value": v}
                 for (i, p), v in resolved.items()]
 

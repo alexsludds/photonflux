@@ -710,7 +710,7 @@
    "TX1.ami:tx_tap_m1": "c_m1",
    "TX1.ami:tx_tap_p1": "c_p1",
    "TX1.ami:tx_tap_p2": "c_p2",
-   "WG_B.length_m": "20e-6 + bias_deg / 659038901.6"
+   "WG_B.length_m": "20e-6 + bias_deg / 360 * 1311e-9 / 2.4"
   },
   "stateye": {
    "rx_bw": "auto",

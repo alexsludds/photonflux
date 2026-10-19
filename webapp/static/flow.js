@@ -50,7 +50,9 @@ function flowLines(text) {
 function flowParseAssign(text, what, errs, numeric = false) {
   const out = {};
   for (const line of flowLines(text)) {
-    const m = line.match(/^([A-Za-z_*][\w*]*(?:\.[A-Za-z_]\w*)?)\s*=\s*(.+)$/);
+    // INST.param, *.param, a variable, or INST.ami:name (an IBIS-AMI
+    // block's model parameter; dotted for nested names)
+    const m = line.match(/^([A-Za-z_*][\w*]*(?:\.(?:ami:[A-Za-z_][\w.]*|[A-Za-z_]\w*))?)\s*=\s*(.+)$/);
     if (!m) { errs.push(`${what}: cannot read "${line}" (want name = value)`); continue; }
     if (numeric) {
       const v = parseSI(m[2]);
@@ -66,7 +68,7 @@ const flowFmtAssign = (obj) => Object.entries(obj || {})
 function flowParseParams(text, errs) {
   const out = [];
   for (const line of flowLines(text)) {
-    const m = line.match(/^([A-Za-z_]\w*)(?:\.([A-Za-z_]\w*))?\s*=\s*([^:]+):(.+)$/);
+    const m = line.match(/^([A-Za-z_]\w*)(?:\.(ami:[A-Za-z_][\w.]*|[A-Za-z_]\w*))?\s*=\s*((?:(?!:).)+?)\s*:\s*(.+)$/);
     const lo = m ? parseSI(m[3]) : NaN, hi = m ? parseSI(m[4]) : NaN;
     if (!m || isNaN(lo) || isNaN(hi) || !(hi > lo)) {
       errs.push(`vary: cannot read "${line}" (want name = min : max)`);

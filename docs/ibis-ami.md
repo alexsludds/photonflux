@@ -250,12 +250,16 @@ Rx BER as `ami_ber` / `ami_ber_counted`.
 | | CTLE | gain | Tx FFE c(-1)/c(+1)/c(+2) | bias | TDECQ | OMA_outer | OMA − TDECQ | RLM | ER | Rx BER (stat / counted) |
 |---|---|---|---|---|---|---|---|---|---|---|
 | start (the 10 dB design) | 12 dB | 25.3 | −0.161 / −0.142 / +0.023 | 90° | 3.25 dB | −0.49 dBm | −3.74 dB | 0.84 | 2.0 dB | — |
-| optimized | 14.8 dB | 60 (bound) | −0.190 / −0.129 / +0.027 | 91.9° | 1.80 dB | 1.36 dBm | −0.45 dB | 0.78 | 3.3 dB | 5.0e-8 / 0 |
+| optimized, no RLM limit | 14.8 dB | 60 (bound) | −0.190 / −0.129 / +0.027 | 91.9° | 1.80 dB | 1.36 dBm | −0.45 dB | 0.78 | 3.3 dB | 5.0e-8 / 0 |
+| optimized, `rlm >= 0.95` | 15 dB (bound) | 21.0 | −0.208 / −0.114 / +0.036 | 85.0° | 1.25 dB | −2.98 dBm | −4.22 dB | 0.93 | 1.0 dB | 5.2e-4 / 1.2e-3 |
 
-The search buys OMA with driver swing: the gain ends at its upper bound,
-and the driver and MZM compression pull RLM down to 0.78. A real 802.3
-transmitter also needs RLM ≥ 0.95, which a constraint `rlm >= 0.95` on the
-optimize step would enforce.
+Without a limit, the search buys OMA with driver swing: the gain ends at its
+bound, and driver and MZM compression pull RLM down to 0.78. With the
+constraint `rlm >= 0.95`, the search keeps the swing small. Its pick reads
+RLM 0.948 on the 2k-UI eye but 0.93 on the 8k-UI record, so the short record
+overstates RLM. At OMA_outer −3 dBm the Rx BER also fails the KP4 limit of
+2.4e-4. With 15 dB host traces, this driver, MZM and Tx FFE cannot meet
+RLM ≥ 0.95 and the Rx BER together.
 
 ## Building
 

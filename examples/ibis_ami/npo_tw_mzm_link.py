@@ -17,7 +17,9 @@ How each piece is modeled:
   lines (sqrt(f) skin loss with its internal inductance, causal
   Djordjevic-Sarkar dielectric), die pads, bumps, BGA balls and vias, the
   LGA interposer, and the source and load impedances of the chips on each
-  end. Each channel is the terminated transfer V(load) / V(source EMF), so
+  end. SerDes, driver-input and TIA-output pads hide their capacitance in a
+  pi-coil ladder (as T-coils do on real 112G I/O); the driver *output* pad
+  is a bare capacitance in the circuit, next to the back-termination. Each channel is the terminated transfer V(load) / V(source EMF), so
   every impedance step and every re-reflection (including the 2.3 ns
   round trip of the board trace) is in its impulse response. The PCB trace
   alone is sized for 10.0 dB at 26.5625 GHz; packages and transitions add
@@ -135,7 +137,8 @@ TIA_NOISE = 16e-12       # input-referred, A/rtHz
 
 def _materials():
     return dict(
-        pcb=rfnet.line_rlgc(F, z0=50.0, er=3.6, tand=0.004, cond_db_m_rtghz=7.0),
+        pcb=rfnet.line_rlgc(F, z0=50.0, er=3.6, tand=0.004, cond_db_m_rtghz=7.0,
+                            r_dc=8.0),        # 5 mil x 0.5 oz copper
         pkg=rfnet.line_rlgc(F, z0=45.0, er=3.4, tand=0.010, cond_db_m_rtghz=14.0),
         sub=rfnet.line_rlgc(F, z0=48.0, er=3.4, tand=0.010, cond_db_m_rtghz=14.0),
         lga=rfnet.line_rlgc(F, z0=58.0, er=1.0),
@@ -180,7 +183,7 @@ def channels() -> dict:
         ch["s"] = ch["net"].s(50.0)
     k = int(np.argmin(np.abs(F - F_NYQ)))
     summary = {"trace_cm": 100 * trace_m,
-               "trace_delay_ns": 1e9 * m["pcb"].delay_s_m() * trace_m,
+               "trace_delay_ns": 1e9 * m["pcb"].delay_s_m(F_NYQ) * trace_m,
                "trace_il_db": -20 * np.log10(abs(n.line(m["pcb"], trace_m).s()[1, 0, k]))}
     for key, ch in (("tx", tx), ("rx", rx)):
         s = ch["s"][:, :, k]
@@ -198,7 +201,7 @@ def electrode(f: np.ndarray, r_bt: float, r_t: float) -> dict:
     """Loaded-line Zc, gamma and the EO response (optical phase per volt of
     driver EMF, normalized at DC) of one arm with its launch network."""
     w = 2 * np.pi * np.maximum(f, 1.0)
-    c0 = 299792458.0
+    c0 = rfnet.C0
     lp = PN["z0_ohm"] * PN["n_rf"] / c0
     cp = PN["n_rf"] / (PN["z0_ohm"] * c0)
     rp = 2 * PN["z0_ohm"] * PN["rf_loss_dB_cm"] * 100 / rfnet.NP_DB
@@ -345,7 +348,8 @@ def schematic(emf: np.ndarray, r_term: float) -> dict:
     w("PD,an", "TIA,inp")
     add("RL", "resistor", R=1e6), add("GRL", "ground")
     w("TIA,out", "RL,p1"), w("RL,p2", "GRL,p1")
-    probes = [{"name": "ptx", "at": "DC2,p4"}, {"name": "vtia", "at": "TIA,out"},
+    # TP2: in the fiber, after the PIC-to-fiber coupling
+    probes = [{"name": "ptx", "at": "ATT,p2"}, {"name": "vtia", "at": "TIA,out"},
               {"name": "vlaunch", "at": "PN_A,e_in"}, {"name": "vend", "at": "PN_A,e_out"}]
     return {"instances": inst, "wires": wires, "probes": probes,
             "globals": {"baud": BAUD}}
@@ -380,12 +384,13 @@ def levels(p_mw: np.ndarray, per: np.ndarray) -> np.ndarray:
     best = (-np.inf, 0, 0)
     for ph in range(NSPUI):
         c = np.fft.ifft(np.fft.fft(x[:, ph] - x[:, ph].mean()) * A).real
-        k = int(np.argmax(c))
-        if c[k] > best[0]:
-            best = (c[k], ph, k)
+        k = int(np.argmax(np.abs(c)))
+        if abs(c[k]) > best[0]:
+            best = (abs(c[k]), ph, k)
     _, ph, k = best
     s = np.roll(per, k)                  # x[n, ph] carries symbol s[n]
-    return np.array([x[8:, ph][s[8:] == v].mean() for v in range(4)])
+    lv = np.array([x[8:, ph][s[8:] == v].mean() for v in range(4)])
+    return lv if lv[3] > lv[0] else lv[::-1]
 
 
 def tdecq(p_mw: np.ndarray, per: np.ndarray, dec: int = 1) -> dict:
@@ -428,7 +433,7 @@ class Surrogate:
         nf = 1 << int(np.ceil(np.log2(2 * n)))
         U, Y = np.fft.rfft(u0, nf), np.fft.rfft(y0, nf)
         ruu = np.fft.irfft(U * U.conj(), nf)[: self.SPAN] / n
-        ruy = np.fft.irfft(Y * U.conj(), nf)                  # r[k] = E[y(t+k)u(t)]
+        ruy = np.fft.irfft(Y * U.conj(), nf) / n              # r[k] = E[y(t+k)u(t)]
         rhs = np.concatenate([ruy[-self.PRE:], ruy[: self.SPAN - self.PRE]])
         self.h = solve_toeplitz(ruu, rhs)                     # lags -PRE..SPAN-PRE-1
         z = self._lin(u)
@@ -470,7 +475,6 @@ def adapt(sur: Surrogate, per, rec, ch, x0, max_iter: int) -> tuple[np.ndarray, 
     cache = {}
 
     def f(x):
-        x = np.clip(x, [b[0] for b in BOUNDS], [b[1] for b in BOUNDS])
         key = (round(float(x[0]) * 2) / 2,) + tuple(_taps(x).values())  # 0.5 dB CTLE codes
         if key not in cache:
             d = drive(rec, key[0], _taps(x), ch)
@@ -482,10 +486,11 @@ def adapt(sur: Surrogate, per, rec, ch, x0, max_iter: int) -> tuple[np.ndarray, 
     start = np.r_[min(sweep, key=lambda r: r[1])[0], x0[1:]]
     minimize(f, start, method="Nelder-Mead", bounds=BOUNDS,
                  options={"maxfev": max_iter, "xatol": 0.02, "fatol": 0.01,
-                          "initial_simplex": [start, start + [2, 0, 0, 0],
-                                              start + [0, -0.06, 0, 0],
-                                              start + [0, 0, -0.08, 0],
-                                              start + [0, 0, 0, 0.05]]})
+                          "initial_simplex": [start] + [
+                              start + np.eye(4)[i] * step
+                              * (1 if start[i] - lo < hi - start[i] else -1)
+                              for i, (step, (lo, hi)) in enumerate(
+                                  zip((2.0, 0.06, 0.08, 0.05), BOUNDS))]})
     # TDECQ is undefined (NaN, scored 30 dB) at some over-equalized corners,
     # so take the best setting the search actually scored
     key, val = min(cache.items(), key=lambda kv: kv[1])
@@ -497,12 +502,12 @@ def run_point(label, x, per, rec, ch, r_term) -> dict:
     d = drive(rec, float(x[0]), _taps(x), ch)
     tr = transient(d["emf"], r_term)
     out = {"label": label, "peaking_db": float(x[0]), "taps": _taps(x),
-           "driver_gain": d["gain"], **d, **tr}
+           **d, **tr}
     out["tdecq"] = tdecq(tr["ptx"], per)
     out["sec"] = time.time() - t0
     q = out["tdecq"]
     print(f"  {label}: CTLE {x[0]:.1f} dB, taps {_taps(x)} -> TDECQ {q['tdecq_outer']:.2f} dB "
-          f"(C_eq {q['ceq']:.3f}, TDECQ-10log10(C_eq) {q['tdecq_outer'] - 10 * np.log10(q['ceq']):.2f} dB), "
+          f"(C_eq {q['ceq']:.3f}, TDECQ - 10log10(min(C_eq, 1)) {q['score']:.2f} dB), "
           f"OMA_outer {10 * np.log10(q['oma_outer']):.2f} dBm, ER {q['er_db']:.2f} dB, "
           f"RLM {q['rlm']:.3f} ({out['sec']:.0f} s transient)")
     return out
@@ -524,8 +529,9 @@ def receive(pt: dict, per, rec, ch) -> serdes.WaveformAnalysis:
     yu = y.reshape(-1, NSPUI).mean(axis=1)
     lag = np.arange(400)
     xc = [np.dot(yu[k + N_PRE: k + N_PRE + 4000], a[N_PRE: N_PRE + 4000]) for k in lag]
-    d = max(int(np.argmax(np.abs(xc))) - 4, 0)
-    y, a = y[d * NSPUI:], a[: len(a) - d]
+    j = int(np.argmax(np.abs(xc)))
+    d = max(j - 4, 0)
+    y, a = np.sign(xc[j]) * y[d * NSPUI:], a[: len(a) - d]
     rx = model("pf_rx", **RX_PARAMS)
     return serdes.analyze_waveform(rx, y, a, UI, TS, modulation="PAM4",
                                    noise_rms=RX_NOISE_NV * 1e-9 * np.sqrt(0.5 / TS),
@@ -687,7 +693,7 @@ def main(argv=None) -> int:
                       "s11_driver_db_nyq": 20 * np.log10(abs(el["s11_drv"][k])),
                       "eo_db_nyq": eo_db[k], "eo_f3db_ghz": f3 / 1e9},
         "points": [{"label": p["label"], "peaking_db": p["peaking_db"], "taps": p["taps"],
-                    "driver_gain": p["driver_gain"], "tdecq": p["tdecq"],
+                    "driver_gain": p["gain"], "tdecq": p["tdecq"],
                     "predicted": p.get("predicted")} for p in points],
         "adapted": best["label"],
         "rx": {lab: {"counted_ber": wa.td.counted["ber"], "bit_errors": wa.td.counted["bit_errors"],
@@ -702,7 +708,7 @@ def main(argv=None) -> int:
     (OUT / "ibis_ami_npo_tw_mzm.json").write_text(json.dumps(summary, indent=1, default=float))
     q = best["tdecq"]
     print(f"\nTDECQ of the adapted transmitter: {q['tdecq_outer']:.2f} dB "
-          f"(TDECQ - 10log10(C_eq) {q['tdecq_outer'] - 10 * np.log10(q['ceq']):.2f} dB; "
+          f"(TDECQ - 10log10(min(C_eq, 1)) {q['score']:.2f} dB; "
           f"OMA_outer {10 * np.log10(q['oma_outer']):.2f} dBm, ER {q['er_db']:.2f} dB, "
           f"RLM {q['rlm']:.3f}) with driver CTLE {best['peaking_db']:.1f} dB and Tx FFE "
           f"{best['taps']}; reference FFE {[round(c, 3) for c in q['ffe_taps']]}, "

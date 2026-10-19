@@ -15,7 +15,7 @@ def test_lossless_matched_line_is_a_pure_delay():
     s = rfnet.Net.line(ln, 0.1).s(50.0)
     assert np.allclose(np.abs(s[1, 0]), 1.0, atol=1e-9)
     assert np.abs(s[0, 0]).max() < 1e-9
-    assert ln.delay_s_m() == pytest.approx(2.0 / rfnet.C0, rel=1e-6)
+    assert ln.delay_s_m(10e9) == pytest.approx(2.0 / rfnet.C0, rel=1e-6)
 
 
 def test_lossy_line_is_reciprocal_passive_and_calibrates():

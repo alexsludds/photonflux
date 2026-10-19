@@ -67,25 +67,24 @@ class Line:
     gamma: np.ndarray      # 1/m, alpha + j beta
     zc: np.ndarray         # Ohm, characteristic impedance
 
-    def loss_db_m(self, f0: float) -> float:
-        """Attenuation (dB/m) at ``f0``."""
-        return float(np.interp(f0, self.f, self.gamma.real) * NP_DB)
-
-    def delay_s_m(self) -> float:
-        """Group delay per metre at the grid's upper-middle frequencies."""
+    def delay_s_m(self, f0: float) -> float:
+        """Group delay per metre at ``f0``."""
         w = 2 * np.pi * _f_safe(self.f)
-        beta = self.gamma.imag
-        k = slice(len(w) // 8, len(w) // 4)
-        return float(np.median(np.gradient(beta[k], w[k])))
+        k = int(np.clip(np.argmin(np.abs(self.f - f0)), 1, len(w) - 2))
+        return float((self.gamma.imag[k + 1] - self.gamma.imag[k - 1])
+                     / (w[k + 1] - w[k - 1]))
 
 
 def line_rlgc(f: np.ndarray, *, z0: float, er: float, tand: float = 0.0,
-              cond_db_m_rtghz: float = 0.0, f_ref: float = 10e9) -> Line:
+              cond_db_m_rtghz: float = 0.0, r_dc: float = 0.0,
+              f_ref: float = 10e9) -> Line:
     """TEM line: ``z0`` and ``er`` at ``f_ref`` set L and C; conductor loss
     ``cond_db_m_rtghz`` dB/m at 1 GHz scaling as sqrt(f), with an equal
     internal reactance (R = X, the skin effect); dielectric loss from a
     Djordjevic-Sarkar permittivity with ``tand`` at ``f_ref``. Z0 and the
-    loss are what a matched 2D solver would report for the cross-section."""
+    loss are what a matched 2D solver would report for the cross-section.
+    ``r_dc`` (Ohm/m, signal + return) floors the resistance where the skin
+    depth exceeds the conductor: R = sqrt(r_dc^2 + R_skin^2)."""
     fs = _f_safe(f)
     w = 2 * np.pi * fs
     eps = _dj_sarkar(fs, er, tand, f_ref) if tand > 0 else np.full(fs.shape, er + 0j)
@@ -95,7 +94,7 @@ def line_rlgc(f: np.ndarray, *, z0: float, er: float, tand: float = 0.0,
     c_vac = 1.0 / (z0 * np.sqrt(eps_ref) * C0)     # C per unit permittivity
     r1 = 2.0 * z0 * cond_db_m_rtghz / NP_DB                  # Ohm/m at 1 GHz
     rs = r1 * np.sqrt(fs / 1e9)
-    z = rs * (1 + 1j) + 1j * w * l_ext
+    z = np.hypot(r_dc, rs) + 1j * rs + 1j * w * l_ext
     y = 1j * w * c_vac * eps            # G = w C eps'' from the complex eps
     gamma = np.sqrt(z * y)
     # the forward wave: alpha >= 0, and beta > 0 where the line is lossless
@@ -120,10 +119,6 @@ class Net:
         m[0, 0], m[0, 1] = np.broadcast_to(a, shp), np.broadcast_to(b, shp)
         m[1, 0], m[1, 1] = np.broadcast_to(c, shp), np.broadcast_to(d, shp)
         return cls(f, m)
-
-    @classmethod
-    def thru(cls, f) -> "Net":
-        return cls._from(f, 1.0, 0.0, 0.0, 1.0)
 
     @classmethod
     def series(cls, f, z) -> "Net":

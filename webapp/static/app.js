@@ -1660,7 +1660,10 @@ async function fillAmiForm(body, inst, cat) {
     }
     if (d.ok) _amiDescribed.set(model, d);
   }
-  if (!body.contains(box)) return;          // the inspector moved on meanwhile
+  // the inspector moved on, or the block's model changed, while we waited
+  const nowModel = inst.settings?.model
+    ?? cat.params.find((p) => p.name === "model")?.default;
+  if (!body.contains(box) || nowModel !== model) return;
   if (!d.ok) {
     box.innerHTML = `<div class="insp-type">${esc(d.error)}</div>`;
     return;
@@ -1692,7 +1695,8 @@ async function fillAmiForm(body, inst, cat) {
       field = `<select data-ami="${esc(p.key)}">${opts}</select>`;
     } else {
       const num = p.type !== "String";
-      field = `<input data-ami="${esc(p.key)}"
+      // a Value-format parameter is fixed by the model: shown, not edited
+      field = `<input data-ami="${esc(p.key)}" ${p.format === "Value" ? "disabled" : ""}
         value="${esc(num && isFinite(+v) ? fmtNum(+v) : v)}">`;
     }
     html += `<div class="insp-row${set ? " ami-set" : ""}" title="${tip}">
@@ -1705,18 +1709,28 @@ async function fillAmiForm(body, inst, cat) {
   box.innerHTML = html;
 
   const write = (key, value, el) => {
+    if (sheetReadOnly) {
+      setHint("Read-only view — built-in composite internals cannot be edited.", true);
+      fillAmiForm(body, inst, cat);
+      return;
+    }
     const p = byKey[key];
     let val = value;
-    if (!p.choices && p.type !== "Boolean" && p.type !== "String") {
+    let err = null;
+    if (p.type === "String" && !p.choices) {
+      if (/[\s,;=]/.test(val)) err = "may not contain spaces, commas, ';' or '='";
+    } else if (!p.choices && p.type !== "Boolean") {
       val = parseSI(value);
-      const bad = isNaN(val) || (p.min !== null && val < p.min)
-        || (p.max !== null && val > p.max);
-      el.classList.toggle("bad", bad);
-      if (bad) {
-        setHint(`${key}: ${value} is outside [${fmtNum(p.min)} .. ${fmtNum(p.max)}]`, true);
-        return;
+      if (isNaN(val)) err = `${value} is not a number`;
+      else if ((p.min !== null && val < p.min) || (p.max !== null && val > p.max)) {
+        err = `${value} is outside [${fmtNum(p.min)} .. ${fmtNum(p.max)}]`;
       }
       if (p.type === "Integer") val = Math.round(val);
+    }
+    el.classList.toggle("bad", !!err);
+    if (err) {
+      setHint(`${key}: ${err}`, true);
+      return;
     }
     const isDefault = typeof val === "number"
       ? val === Number(p.default)
@@ -3953,6 +3967,9 @@ function drawBerMap(canvas, map) {
   ctx.fillText("statistical eye (white: 1e-6 / 1e-12)", m, 14);
 }
 
+const escHtml = (s) => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;")
+  .replace(/>/g, "&gt;");
+
 function renderAmi(holder, ami) {
   const fmtE = (x) => (x === null || x === undefined) ? "\u2014"
     : (x === 0 ? "0" : Number(x).toExponential(2));
@@ -3985,14 +4002,14 @@ function renderAmi(holder, ami) {
     const b = fin[k];
     const moved = a !== undefined && b !== undefined
       && Math.abs(b - a) > 1e-4 * Math.max(Math.abs(a), Math.abs(b), 1e-12);
-    return `<tr class="${moved ? "moved" : ""}"><td>${k}</td><td>${fmtV(a)}</td>
+    return `<tr class="${moved ? "moved" : ""}"><td>${escHtml(k)}</td><td>${fmtV(a)}</td>
       <td>${fmtV(b)}</td></tr>`;
   }).join("");
   const div = document.createElement("div");
   div.className = "link-grid";
   div.innerHTML = `<div style="display:flex;flex-direction:column;gap:10px;max-width:560px">
     <table id="link-table" style="max-width:560px">
-      <tr><th>IBIS-AMI Rx</th><td><b>${ami.model}</b> (${ami.where}) on
+      <tr><th>IBIS-AMI Rx</th><td><b>${escHtml(ami.model)}</b> (${ami.where}) on
         ${ami.probe}, ${ami.modulation}, UI ${fmtSI(ami.ui)}s</td></tr>
       <tr><th>counted BER</th><td><b>${berTxt}</b>
         <span class="link-hint">(GetWave + its recovered clock, after
@@ -4009,7 +4026,7 @@ function renderAmi(holder, ami) {
       <tr><th>linear fit</th><td>${(100 * ami.linear_residual).toFixed(1)} % residual
         <span class="link-hint">(how far the link is from the LTI channel
         Init assumes)</span></td></tr>
-      <tr><th>Init</th><td class="link-hint">${ami.init_message}</td></tr>
+      <tr><th>Init</th><td class="link-hint">${escHtml(ami.init_message)}</td></tr>
     </table>
     <table class="ami-adapt">
       <tr><th colspan="3">Rx adaptation <span class="link-hint">(Init's design

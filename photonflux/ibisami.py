@@ -312,7 +312,6 @@ class AmiParams:
             fmt = prm.pformat
             out.append({
                 "key": key, "group": ".".join(path[:-1]),
-                "reserved": path[0] in self.reserved,
                 "type": prm.ptype, "format": fmt, "default": value,
                 "min": (float(prm.pmin) if fmt == "Range" and prm.pmin is not None
                         else None),

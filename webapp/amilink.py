@@ -67,12 +67,17 @@ def describe(name: str) -> dict:
     if name not in _DESCRIBED:
         from photonflux import ibisami
 
-        with ibisami.load(name) as m:
-            _DESCRIBED[name] = {
-                "model": name, "kind": m.kind,
-                "description": m.params.description.strip('"'),
-                "params": [p for p in m.params.describe()
-                           if p["key"] not in BLOCK_SET]}
+        # the .ami text is all a form needs: no build, no executable load
+        # (a foreign-platform model would otherwise start its container)
+        entry = next((e for e in ibisami.library() if e.name == name), None)
+        if entry is None:
+            raise KeyError(f"no IBIS-AMI model {name!r} in the library "
+                           "(python -m photonflux ami list)")
+        params = ibisami.AmiParams(entry.ami.read_text())
+        _DESCRIBED[name] = {
+            "model": name, "kind": entry.kind,
+            "params": [p for p in params.describe()
+                       if p["key"] not in BLOCK_SET]}
     return _DESCRIBED[name]
 
 

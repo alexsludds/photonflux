@@ -881,7 +881,25 @@ function chanGlyph(tag) {
 }
 S.channel = chanGlyph("CHAN");
 S.s2p_channel = chanGlyph("S2P");
-S.pcb_link = chanGlyph("PCB");
+// host-board transmission line between a package and a module: the
+// classic coax / TL cylinder (body + end ellipses) with the signal conductor
+// through it, a package pad block at each end and a ground return below
+S.pcb_link = {
+  w: 120, h: 44, pins: { inp: [0, 20], out: [120, 20] },
+  label: [30, -6], pinLabels: true,
+  draw: () => `
+    <line class="${EL}" x1="0" y1="20" x2="10" y2="20"/>
+    <rect class="${EL} body-fill" x="10" y="13" width="10" height="14" rx="1"/>
+    <path class="${EL} body-fill" d="M32 8 H88 A6 12 0 0 1 88 32 H32 A6 12 0 0 1 32 8 Z"/>
+    <ellipse class="${EL}" cx="32" cy="20" rx="6" ry="12" fill="none"/>
+    <line class="${EL}" x1="20" y1="20" x2="94" y2="20" stroke-width="1.6"/>
+    <rect class="${EL} body-fill" x="100" y="13" width="10" height="14" rx="1"/>
+    <line class="${EL}" x1="94" y1="20" x2="100" y2="20"/>
+    <line class="${EL}" x1="110" y1="20" x2="120" y2="20"/>
+    <line class="${EL}" x1="10" y1="40" x2="110" y2="40" stroke-dasharray="3 2"
+      stroke-width="0.8"/>
+    <text x="44" y="30" style="font-size:7px">PCB TL</text>`,
+};
 
 S.fiber_cd = {
   w: 80, h: 26, pins: { p1: [0, 13], p2: [80, 13] }, label: [14, -8],

@@ -505,6 +505,13 @@ def receive(pt: dict, per, rec, ch) -> serdes.WaveformAnalysis:
     v_emf = -(pt["vtia"] - pt["vtia"].mean()) - v_n
     y = fftconvolve(v_emf, ch["h"])[: len(v_emf)] * TS
     a = (2.0 * rec - 3.0) / 3.0
+    # the link's bulk latency (two 1.2 ns traces, fiber, circuit) is longer
+    # than the channel estimate's window: drop it, keeping 4 UI of lead
+    yu = y.reshape(-1, NSPUI).mean(axis=1)
+    lag = np.arange(400)
+    xc = [np.dot(yu[k + N_PRE: k + N_PRE + 4000], a[N_PRE: N_PRE + 4000]) for k in lag]
+    d = max(int(np.argmax(np.abs(xc))) - 4, 0)
+    y, a = y[d * NSPUI:], a[: len(a) - d]
     rx = model("pf_rx", **RX_PARAMS)
     return serdes.analyze_waveform(rx, y, a, UI, TS, modulation="PAM4",
                                    noise_rms=RX_NOISE_NV * 1e-9 * np.sqrt(0.5 / TS),

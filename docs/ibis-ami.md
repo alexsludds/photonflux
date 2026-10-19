@@ -15,6 +15,7 @@ examples: [examples/ibis_ami/README.md](../examples/ibis_ami/README.md).
 | [`photonflux/ibisami.py`](../photonflux/ibisami.py) | loading and running models: `AmiParams` (PyAMI-parsed parameter tree and values), `AmiModel` (`init`, `getwave`), executors, `library()` / `load()` |
 | [`photonflux/ami_build.py`](../photonflux/ami_build.py) | compiling models for the host; container hosts |
 | [`photonflux/serdes.py`](../photonflux/serdes.py) | the link engine: channels, statistical eye, both flows, waveform analysis, plotting |
+| [`photonflux/rfnet.py`](../photonflux/rfnet.py) | analog channels as ABCD cascades: causal RLGC lines, pads, bumps, vias, stubs; terminated transfer V(load)/V(source) with every re-reflection, S-parameters, causal impulse |
 | [`models/ibis_ami/`](../models/ibis_ami/) | photonflux's own models (`pf_tx`, `pf_rx`) and `ami_host` |
 | [`webapp/amilink.py`](../webapp/amilink.py) | the web app's IBIS-AMI Tx source and Rx report |
 

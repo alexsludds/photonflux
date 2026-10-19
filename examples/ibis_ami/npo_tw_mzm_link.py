@@ -43,17 +43,20 @@ How each piece is modeled:
   ``serdes.analyze_waveform``: counted BER from its own recovered clock, and
   the statistical flow on the data-aided channel estimate.
 
-Adaptation: the driver's CTLE peaking and pf_tx's c(-1), c(+1), c(+2) taps
-are chosen to minimize TDECQ at TP2 (IEEE 802.3cd method: 4th-order
-Bessel-Thomson at 26.5625 GHz, 5-tap reference FFE, SER 4.8e-4). A
+Adaptation: the driver's CTLE peaking (0.5 dB codes, 0-12 dB) and pf_tx's
+c(-1), c(+1), c(+2) taps are chosen to minimize TDECQ at TP2 (IEEE 802.3cd
+method: 4th-order Bessel-Thomson at 26.5625 GHz, 5-tap reference FFE, SER
+4.8e-4), guarded against over-equalization: where the reference FFE has to
+low-pass the signal (C_eq < 1) the search scores TDECQ - 10 log10(C_eq),
+the quantity 802.3 limits alongside TDECQ. A
 transient costs minutes, so the search runs on a Wiener surrogate of the
 optical core (linear FIR from the driver EMF to the optical power, then a
 cubic for the MZM / junction compression) fitted to a transient, and every
 reported TDECQ comes from a full circuit transient at the chosen setting;
 the surrogate is refitted on that transient until the two agree.
 
-    python examples/ibis_ami/npo_tw_mzm_link.py          # ~25 min
-    python examples/ibis_ami/npo_tw_mzm_link.py --quick  # ~12 min, no baseline run
+    python examples/ibis_ami/npo_tw_mzm_link.py          # ~10 min
+    python examples/ibis_ami/npo_tw_mzm_link.py --quick  # shorter search, no baseline Rx run
         -> out/ibis_ami_npo_tw_mzm.png, out/ibis_ami_npo_tw_mzm.json
 """
 from __future__ import annotations
@@ -398,7 +401,17 @@ def tdecq(p_mw: np.ndarray, per: np.ndarray, dec: int = 1) -> dict:
             "er_db": float(m.get("extinction_ratio_outer", np.nan)),
             "rlm": float(min(3 * es1, 3 * es2, 2 - 3 * es1, 2 - 3 * es2)),
             "ceq": float(m.get("ceq", np.nan)),
-            "ffe_taps": [float(c) for c in m.get("ffe_taps", [])]}
+            "ffe_taps": [float(c) for c in m.get("ffe_taps", [])]} | {"score": score(m)}
+
+
+def score(m) -> float:
+    """What the search minimizes: TDECQ - 10 log10(C_eq) when the reference
+    FFE has to low-pass the signal (C_eq < 1), TDECQ otherwise. Plain TDECQ
+    rewards over-equalizing: an overshooting drive that the reference FFE
+    smooths back scores well while ER and OMA collapse, which is why 802.3
+    limits TDECQ - 10 log10(C_eq) as well."""
+    t, c = float(m.get("tdecq_outer", np.nan)), float(m.get("ceq", np.nan))
+    return t - 10 * np.log10(min(c, 1.0))
 
 
 class Surrogate:
@@ -461,7 +474,7 @@ def adapt(sur: Surrogate, per, rec, ch, x0, max_iter: int) -> tuple[np.ndarray, 
         key = (round(float(x[0]) * 2) / 2,) + tuple(_taps(x).values())  # 0.5 dB CTLE codes
         if key not in cache:
             d = drive(rec, key[0], _taps(x), ch)
-            v = tdecq(np.repeat(sur(d["emf"]), sur.DEC), per, dec=sur.DEC)["tdecq_outer"]
+            v = tdecq(np.repeat(sur(d["emf"]), sur.DEC), per, dec=sur.DEC)["score"]
             cache[key] = v if np.isfinite(v) else 30.0
         return cache[key]
 
@@ -488,7 +501,8 @@ def run_point(label, x, per, rec, ch, r_term) -> dict:
     out["tdecq"] = tdecq(tr["ptx"], per)
     out["sec"] = time.time() - t0
     q = out["tdecq"]
-    print(f"  {label}: CTLE {x[0]:.1f} dB, taps {_taps(x)} -> TDECQ {q['tdecq_outer']:.2f} dB, "
+    print(f"  {label}: CTLE {x[0]:.1f} dB, taps {_taps(x)} -> TDECQ {q['tdecq_outer']:.2f} dB "
+          f"(C_eq {q['ceq']:.3f}, TDECQ-10log10(C_eq) {q['tdecq_outer'] - 10 * np.log10(q['ceq']):.2f} dB), "
           f"OMA_outer {10 * np.log10(q['oma_outer']):.2f} dBm, ER {q['er_db']:.2f} dB, "
           f"RLM {q['rlm']:.3f} ({out['sec']:.0f} s transient)")
     return out
@@ -532,7 +546,7 @@ def eye(ax, p, per_ui=2, title=""):
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--quick", action="store_true",
-                    help="skip the unequalized baseline transient; shorter search")
+                    help="shorter search; skip pf_rx on the unequalized baseline")
     args = ap.parse_args(argv)
     ensure_built()
     t_all = time.time()
@@ -571,15 +585,15 @@ def main(argv=None) -> int:
                                x if it else np.array([0, -0.05, -0.1, 0.0]),
                                40 if args.quick else 80)
         history.append({"sweep": sweep, "pred": pred, "x": x.tolist()})
-        print(f"  surrogate optimum: CTLE {x[0]:.1f} dB, taps {_taps(x)}, predicted TDECQ "
+        print(f"  surrogate optimum: CTLE {x[0]:.1f} dB, taps {_taps(x)}, predicted score "
               f"{pred:.2f} dB ({time.time() - t0:.0f} s)")
         pt = run_point(f"adapted #{it + 1}", x, per, rec, ch["tx"], r_term)
         pt["predicted"] = pred
         points.append(pt)
-        if abs(pt["tdecq"]["tdecq_outer"] - pred) < 0.15:
+        if abs(pt["tdecq"]["score"] - pred) < 0.15:
             break
         sur = Surrogate(pt["emf"], pt["ptx"])
-    best = min(points[1:], key=lambda p: p["tdecq"]["tdecq_outer"])
+    best = min(points[1:], key=lambda p: p["tdecq"]["score"])
 
     print("IBIS-AMI receive (pf_rx) after the 10 dB Rx trace:")
     rx_runs = {}
@@ -635,9 +649,9 @@ def main(argv=None) -> int:
         pk, v = zip(*h["sweep"])
         ax.plot(pk, v, "o-", ms=4, label=f"surrogate #{i + 1}, peaking sweep")
     for p in points:
-        ax.plot(p["peaking_db"], p["tdecq"]["tdecq_outer"], "k*" if p is best else "kx", ms=10)
+        ax.plot(p["peaking_db"], p["tdecq"]["score"], "k*" if p is best else "kx", ms=10)
     ax.set_xlabel("driver CTLE peaking [dB]")
-    ax.set_ylabel("TDECQ [dB]")
+    ax.set_ylabel("TDECQ - 10 log10(min(C_eq, 1)) [dB]")
     ax.set_title("adaptation (x / star: full circuit transients)", fontsize=9)
     ax.grid(alpha=0.3)
     ax.legend(fontsize=7)
@@ -658,8 +672,8 @@ def main(argv=None) -> int:
     eye(axs[1, 0], points[0]["ptx"], title=f"TP2, no EQ: TDECQ {points[0]['tdecq']['tdecq_outer']:.2f} dB")
     eye(axs[1, 1], best["ptx"], title=(
         f"TP2, adapted: TDECQ {best['tdecq']['tdecq_outer']:.2f} dB, "
-        f"OMA_outer {10 * np.log10(best['tdecq']['oma_outer']):.1f} dBm "
-        "(BT4 26.6 GHz ref. Rx, before ref. FFE)"))
+        f"OMA_outer {10 * np.log10(best['tdecq']['oma_outer']):.1f} dBm, "
+        f"ER {best['tdecq']['er_db']:.1f} dB\n(BT4 26.6 GHz reference Rx, before its FFE)"))
     wa = rx_runs[best["label"]]
     serdes.plot_eye_density(axs[1, 2], wa.td, title="pf_rx output (recovered clock), adapted Tx")
     serdes.plot_stat_eye(axs[1, 3], wa.stat.eye, title="pf_rx statistical eye (+ distortion)")
@@ -688,9 +702,11 @@ def main(argv=None) -> int:
     (OUT / "ibis_ami_npo_tw_mzm.json").write_text(json.dumps(summary, indent=1, default=float))
     q = best["tdecq"]
     print(f"\nTDECQ of the adapted transmitter: {q['tdecq_outer']:.2f} dB "
-          f"(CTLE {best['peaking_db']:.1f} dB, Tx FFE {best['taps']}; reference FFE "
-          f"{[round(c, 3) for c in q['ffe_taps']]}, C_eq {q['ceq']:.3f}); "
-          f"total {summary['minutes']:.1f} min")
+          f"(TDECQ - 10log10(C_eq) {q['tdecq_outer'] - 10 * np.log10(q['ceq']):.2f} dB; "
+          f"OMA_outer {10 * np.log10(q['oma_outer']):.2f} dBm, ER {q['er_db']:.2f} dB, "
+          f"RLM {q['rlm']:.3f}) with driver CTLE {best['peaking_db']:.1f} dB and Tx FFE "
+          f"{best['taps']}; reference FFE {[round(c, 3) for c in q['ffe_taps']]}, "
+          f"C_eq {q['ceq']:.3f}. Total {summary['minutes']:.1f} min")
     return 0
 
 

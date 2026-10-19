@@ -15,6 +15,7 @@ examples: [examples/ibis_ami/README.md](../examples/ibis_ami/README.md).
 | [`photonflux/ibisami.py`](../photonflux/ibisami.py) | loading and running models: `AmiParams` (PyAMI-parsed parameter tree and values), `AmiModel` (`init`, `getwave`), executors, `library()` / `load()` |
 | [`photonflux/ami_build.py`](../photonflux/ami_build.py) | compiling models for the host; container hosts |
 | [`photonflux/serdes.py`](../photonflux/serdes.py) | the link engine: channels, statistical eye, both flows, waveform analysis, plotting |
+| [`photonflux/rfnet.py`](../photonflux/rfnet.py) | analog channels as ABCD cascades: causal RLGC lines, pads, bumps, vias, stubs; terminated transfer V(load)/V(source) with every re-reflection, S-parameters, causal impulse |
 | [`models/ibis_ami/`](../models/ibis_ami/) | photonflux's own models (`pf_tx`, `pf_rx`) and `ami_host` |
 | [`webapp/amilink.py`](../webapp/amilink.py) | the web app's IBIS-AMI Tx source and Rx report |
 
@@ -159,6 +160,56 @@ says 1e-300 at every length, while the split tracks the time domain:
 | 20 km | 28.5 % | 8e-6 | Q-fit 1.3e-4 |
 | 22 km | 29.6 % | 4.2e-2 | counted 4.6e-2 |
 
+## Near-package optics: host traces, driver, traveling-wave MZM
+
+`examples/ibis_ami/npo_tw_mzm_link.py` is a 53.125 GBd PAM4 link with the
+optics on the host board: pf_tx -> 10 dB PCB trace -> linear driver with a
+CTLE -> traveling-wave Si MZM -> 500 m SMF -> PD / TIA -> 10 dB PCB trace
+-> pf_rx. Each part is modeled where its physics lives:
+
+* **Host channels** (`photonflux.rfnet`, frequency domain, odd mode of the
+  100 Ohm pair): pi-coil-compensated die pads, bumps, a 10 mm 45 Ohm
+  package trace, BGA ball, backdrilled vias, an 18.4 cm stripline sized for
+  10.0 dB at 26.5625 GHz (sqrt(f) skin loss with a DC floor, causal
+  Djordjevic-Sarkar dielectric), an LGA interposer and the module substrate,
+  between the real source and load impedances. The terminated transfer
+  keeps every re-reflection, including the 2.3 ns trace round trip. Total
+  SDD21 at Nyquist is -12.3 dB; SDD11 / SDD22 are -10.6 to -22 dB.
+* **Driver** (numpy): input-referred noise, CTLE (0-12 dB in 0.5 dB codes),
+  pre-driver pole, a gain control that sets the output swing, and a tanh
+  output stage driving its EMF into the circuit.
+* **Driver output network to TIA** (circulax transient): 40 Ohm
+  back-termination, pad capacitance, flip-chip bump, then two
+  `pn_phase_shifter_tw` arms (3.5 mm, push-pull GSSG). Each is a
+  distributed RLC electrode loaded every 100 um by a sqrt-law depletion
+  junction, with walk-off and an on-chip 40 Ohm termination to the 2 V
+  junction bias. The terminations equal the loaded line's |Zc| at
+  f_nyq / 2 (47 Ohm at 1 GHz, 40.8 Ohm at Nyquist; |S11| at the driver
+  -12.5 dB). The EO response is -3.3 dB at Nyquist. Couplers and a
+  lambda/4 offset bias the MZM at quadrature. Then the fiber, PD and TIA.
+
+The search sets the driver CTLE and pf_tx's c(-1), c(+1), c(+2) for
+minimum TDECQ at TP2, the fiber after the PIC coupling (802.3cd method).
+A transient of the full PRBS13Q period costs ~100 s, so the search runs on
+a Wiener surrogate fitted to a transient: an FIR from the driver EMF to
+the optical power, then a cubic. The surrogate matches the circuit to
+0.25 % rms. Every reported number comes from a full transient at the
+chosen setting.
+
+Plain TDECQ can be gamed by over-equalizing. An overshooting drive that
+the reference FFE low-passes back (C_eq < 1) scored 0.25 dB while ER fell
+to 1.7 dB. The search therefore minimizes TDECQ - 10 log10(min(C_eq, 1)),
+which 802.3 also limits.
+
+| | CTLE | Tx FFE c(-1) / c(+1) / c(+2) | TDECQ | OMA_outer | ER | RLM | pf_rx counted BER | pf_rx statistical BER |
+|---|---|---|---|---|---|---|---|---|
+| no equalization | 0 dB | 0 / 0 / 0 | 16.05 dB | 3.0 dBm | 4.9 dB | 0.958 | 5.1e-4 | 2.0e-4 |
+| adapted | 12 dB (max) | -0.161 / -0.142 / +0.023 | **0.88 dB** (C_eq 0.975) | 0.1 dBm | 2.3 dB | 0.934 | 0 / 11868 bits | 3.7e-12 |
+
+The CTLE ends at its 12 dB limit and the Tx FFE covers the rest. After
+the 10 dB Rx trace, pf_rx opens eyes of 37 / 49 / 37 mV
+at 1e-6.
+
 ## The web app
 
 * **IBIS-AMI Tx** (`ami_tx`, Sources): the PRBS / PAM4 pattern, jitter
@@ -170,8 +221,74 @@ says 1e-300 at every length, while the split tracks the time domain:
   (split and pure-LTI), eye height / width, linear-fit residual, a
   statistical-eye map, bathtubs and every adapted quantity vs time. A
   transient with an AMI Rx is saved at 32 samples/UI automatically.
-* `Parameters` on both blocks takes `name=value` overrides of the `.ami`
-  defaults.
+* The inspector shows one row per settable parameter of the chosen model.
+  It reads them from the model's `.ami` file through `/api/ami_params`
+  (`AmiParams.describe`), grouped as in the file. List parameters get
+  their `List_Tip` labels, and Range parameters are checked against their
+  bounds. Values set away from the default are highlighted. They are kept
+  as `name=value` pairs in `Overrides (text)`, which can also be edited
+  directly; the two stay in sync.
+* **Host PCB Link (NPO)** (`pcb_link`, Channels): `rfnet.host_module_link`
+  terminated at both ends (source R and pad C inside the block, so drive it
+  with the source EMF), vector-fitted with the bulk flight delay removed.
+  The fit runs from 100 kHz, log-spaced so the DC level holds, to 8 f_nyq,
+  so its instant feedthrough stays ~1e-4. Its error is ~0.1 %, and the
+  2.3 ns trace echo stays in the response.
+* **Modulator Driver (CTLE)** (`mod_driver`, Amplifiers & EQ): CTLE,
+  pre-driver pole, gain and a tanh-limited differential EMF output; the
+  back-terminations and pads are separate parts.
+
+Example 54 is the same link in the GUI with **15 dB** host traces each way.
+Its flow (Run panel → Flow) runs a Bayesian search, 40 evaluations on a
+2k-UI eye, over six variables: the driver CTLE peaking (0-15 dB) and gain
+(10-60 V/V), pf_tx c(-1) / c(+1) / c(+2), and the MZM bias phase (45-135°,
+set through WG_B's length). It maximizes OMA_outer − TDECQ. A final 8k-UI
+run at the optimum reports TDECQ, OMA_outer, RLM, ER and the IBIS-AMI Rx
+BER. Flows set model parameters with `INST.ami:name` targets and read the
+Rx BER as `ami_ber` / `ami_ber_counted`.
+
+| | CTLE | gain | Tx FFE c(-1)/c(+1)/c(+2) | bias | TDECQ | OMA_outer | OMA − TDECQ | RLM | ER | Rx BER (stat / counted) |
+|---|---|---|---|---|---|---|---|---|---|---|
+| start (the 10 dB design) | 12 dB | 25.3 | −0.161 / −0.142 / +0.023 | 90° | 3.25 dB | −0.49 dBm | −3.74 dB | 0.84 | 2.0 dB | — |
+| optimized, no RLM limit | 14.8 dB | 60 (bound) | −0.190 / −0.129 / +0.027 | 91.9° | 1.80 dB | 1.36 dBm | −0.45 dB | 0.78 | 3.3 dB | 5.0e-8 / 0 |
+| optimized, `rlm >= 0.95` | 15 dB (bound) | 21.0 | −0.208 / −0.114 / +0.036 | 85.0° | 1.25 dB | −2.98 dBm | −4.22 dB | 0.93 | 1.0 dB | 5.2e-4 / 1.2e-3 |
+| + c(-2), MZM 3.5-10.5 mm, `rlm >= 0.97` | 12.5 dB | 24.9 | c(-2) 0.000, −0.250 (bound) / −0.135 / +0.052 | 89.1°, 3.5 mm | 1.72 dB | −2.82 dBm | −4.55 dB | 0.94 | 1.2 dB | 2.3e-4 / 9.4e-5 |
+| 10 knobs (+ PAM4 pre-distortion, junction bias, swing limit), 8k-UI scoring | 4.3 dB | 57.3 | −0.287 / −0.155 / +0.032; levels −0.301 / +0.296 | 88.9°, 3.5 mm | **1.10 dB** | **1.47 dBm** | **+0.37 dB** | **0.973** | 3.1 dB | 9.8e-10 / 0 |
+
+Without a limit, the search buys OMA with driver swing: the gain ends at its
+bound, and driver and MZM compression pull RLM down to 0.78. With the
+constraint `rlm >= 0.95`, the search keeps the swing small. Its pick reads
+RLM 0.948 on the 2k-UI eye but 0.93 on the 8k-UI record, so the short record
+overstates RLM. At OMA_outer −3 dBm the Rx BER also fails the KP4 limit of
+2.4e-4. The third run adds the second pre-cursor tap and lets the MZM
+grow to 10.5 mm, with `rlm >= 0.97` in the search to cover that gap. The
+search keeps the shortest MZM, leaves c(-2) at zero, and puts c(-1) on its
+bound. Its pick reads RLM 0.97 on 2k UI but 0.94 on 8k UI, and the Rx BER
+of 2.3e-4 only just passes. A 2k-UI eye is not a reliable RLM estimate
+for this link; scoring RLM on the 8k-UI record would make the constraint
+trustworthy, at about 4x the cost per evaluation. With 15 dB host traces,
+this driver, MZM and Tx FFE did not meet RLM ≥ 0.95 together with the Rx
+BER in any run.
+
+A fourth run, scored on 8k UI throughout, varied ten knobs: the run
+above's set minus c(-2) and the MZM length, plus pf_tx PAM4 pre-distortion
+(`tx_pam4_lo` / `tx_pam4_hi`), the junction reverse bias (held above the
+electrode swing so the junctions cannot forward-bias), the driver's swing
+limit, and wider c(-1) and gain bounds. That run was derailed: stateye
+mis-scored closed eyes as TDECQ ≈ −47 dB, the search chased them, and its
+"optimum" had Rx BER 0.37.
+
+The flow now treats a negative TDECQ as undefined, so such an evaluation
+counts as failed. The fifth run, the last table row, tightened the ranges
+(gain 15–60, inner levels ±0.25–0.5, bias 70–110°) and started from the
+fourth run's best real design. It meets every spec: TDECQ 1.10 dB,
+OMA_outer 1.47 dBm, RLM 0.973 and Rx BER 1e-9.
+
+What did it: a 5 V driver swing limit with high gain (57) and little CTLE
+(4.3 dB) gives OMA without hard limiting, and c(-1) ≈ −0.29 works past the
+old −0.25 bound. Pulling both inner levels slightly inward (−0.301 /
++0.296) lifts RLM from ~0.93 to 0.97. The swing limit ends at its bound,
+so the driver's linear range remains the binding resource.
 
 ## Building
 

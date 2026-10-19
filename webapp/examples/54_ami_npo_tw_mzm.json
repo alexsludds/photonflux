@@ -1,0 +1,860 @@
+{
+ "title": "IBIS-AMI near-package optics: TW-MZM PAM4 link",
+ "group": "Photonic links",
+ "description": "53.125 GBd PAM4 NPO: IBIS-AMI Tx (FFE) -> 15 dB host trace -> CTLE driver -> traveling-wave Si MZM -> 500 m -> PD/TIA -> 15 dB trace -> IBIS-AMI Rx; flow: driver, Tx FFE + PAM4 pre-distortion and MZM biases for max OMA_outer - TDECQ",
+ "schematic": {
+  "notes": [
+   {
+    "x": 20,
+    "y": -360,
+    "title": "Near-package optics, 53.125 GBd PAM4: IBIS-AMI SerDes, 15 dB host traces, CTLE driver, traveling-wave Si MZM",
+    "lines": [
+     "Defaults = the flow's optimum. TX1 (IBIS-AMI pf_tx: FFE -0.287 / -0.155 / +0.032,",
+     "PAM4 inner levels -0.301 / +0.296) launches 2 Vppd EMF into CHT: package, BGA, vias, a PCB",
+     "trace with 15 dB loss at 26.56 GHz, LGA and module substrate, terminated in the",
+     "driver's 100 ohm input (reflections included).",
+     "DRV: CTLE 4.3 dB, gain 57, 5 V tanh swing limit; 40 ohm back-terminations, pads, flip-chip",
+     "bumps feed two 3.5 mm traveling-wave PN arms (push-pull, loaded line ~40 ohm)",
+     "terminated on chip into the 3.1 V junction bias (VT). WG_B's length sets the MZM's",
+     "optical bias phase (88.9 deg; 90 = quadrature). TP2 = ptx, in fiber.",
+     "500 m SMF, PD, 500 ohm TIA, CHR (the same 15 dB trace back, P/N crossed) and RX1",
+     "(pf_rx: CTLE, 11-tap FFE, DFE, Mueller-Muller CDR, 5 nV/rtHz input noise).",
+     "",
+     "Flow (Run panel -> Flow): Bayesian search, scored on 8k UI, over driver CTLE / gain /",
+     "swing limit, junction reverse bias, Tx FFE c(-1) / c(+1) / c(+2), pf_tx PAM4",
+     "pre-distortion (inner levels) and MZM bias for max OMA_outer - TDECQ at RLM >= 0.95,",
+     "then an 8k-UI report with the IBIS-AMI Rx BER. Result (70 evals, 3.8 h): CTLE 4.3 dB,",
+     "gain 57, swing limit 5 V, junction margin 1.6 V, FFE -0.287 / -0.155 / +0.032,",
+     "pre-distortion -0.301 / +0.296, bias 88.9 deg -> TDECQ 1.10 dB, OMA_outer 1.47 dBm,",
+     "OMA - TDECQ +0.37 dB, RLM 0.973, ER 3.1 dB, Rx BER 1e-9 (0 counted): all checks pass.",
+     "CHT / CHR are exact terminated channels, vector-fitted with the flight delay",
+     "removed (fit error ~0.1 %, echoes included)."
+    ]
+   }
+  ],
+  "instances": {
+   "TX1": {
+    "type": "ami_tx",
+    "x": 20,
+    "y": 470,
+    "rot": 0,
+    "settings": {
+     "model": "pf_tx",
+     "ami_params": "tx_tap_m1=-0.2865 tx_tap_p1=-0.1547 tx_tap_p2=0.0315 tx_pam4_lo=-0.3013 tx_pam4_hi=0.2962 tx_bw=60e9",
+     "mode": "pam4",
+     "sequence": "prbs+oma",
+     "order": 13,
+     "run_ui": 8,
+     "v0": -1.0,
+     "v1": 1.0,
+     "tr": 3e-12,
+     "seed": 1,
+     "rj_ui": 0.01,
+     "sj_ui": 0.0,
+     "sj_freq": 10000000.0,
+     "dj_ui": 0.02,
+     "dcd_ui": 0.0
+    }
+   },
+   "GTX": {
+    "type": "ground",
+    "x": 20,
+    "y": 560,
+    "rot": 0,
+    "settings": {}
+   },
+   "CHT": {
+    "type": "pcb_link",
+    "x": 100,
+    "y": 450,
+    "rot": 0,
+    "settings": {
+     "loss_db": 15.0,
+     "f_nyq": 26562500000.0,
+     "direction": "host->module",
+     "r_src": 50.0,
+     "c_src": 1.5e-13,
+     "r_load": 50.0,
+     "c_load": 1e-13,
+     "polarity": 1.0,
+     "n_poles": 32
+    }
+   },
+   "DRV": {
+    "type": "mod_driver",
+    "x": 240,
+    "y": 440,
+    "rot": 0,
+    "settings": {
+     "peaking_db": 4.32,
+     "f_p1": 30000000000.0,
+     "fp2_mult": 2.0,
+     "pre_bw": 55000000000.0,
+     "gain": 57.31,
+     "vsat_d": 5.0,
+     "vcm": 3.106
+    }
+   },
+   "RBTA": {
+    "type": "resistor",
+    "x": 340,
+    "y": 60,
+    "rot": 0,
+    "settings": {
+     "R": 40.0
+    }
+   },
+   "CDA": {
+    "type": "capacitor",
+    "x": 380,
+    "y": 100,
+    "rot": 90,
+    "settings": {
+     "C": 8e-14
+    }
+   },
+   "GCDA": {
+    "type": "ground",
+    "x": 390,
+    "y": 150,
+    "rot": 0,
+    "settings": {}
+   },
+   "LBA": {
+    "type": "inductor",
+    "x": 440,
+    "y": 60,
+    "rot": 0,
+    "settings": {
+     "L": 3e-11
+    }
+   },
+   "CPA": {
+    "type": "capacitor",
+    "x": 480,
+    "y": 100,
+    "rot": 90,
+    "settings": {
+     "C": 2e-14
+    }
+   },
+   "GCPA": {
+    "type": "ground",
+    "x": 490,
+    "y": 150,
+    "rot": 0,
+    "settings": {}
+   },
+   "PN_A": {
+    "type": "pn_phase_shifter_tw",
+    "x": 560,
+    "y": 110,
+    "rot": 0,
+    "settings": {
+     "length_m": 0.0035,
+     "vpil_vcm": 1.5,
+     "vref": 2.0,
+     "vbi": 0.85,
+     "loss_dB_cm": 10.0,
+     "dloss_dB_cm": 1.0,
+     "cj0_ff_um": 0.3,
+     "rs_ohm_mm": 10.0,
+     "rleak": 1000000000.0,
+     "z0_ohm": 60.0,
+     "n_rf": 2.4,
+     "rf_loss_dB_cm": 2.0,
+     "polarity": 1.0,
+     "n_sections": 0,
+     "neff": 2.4,
+     "n_group": 4.0,
+     "center_wavelength_nm": 1311.0,
+     "wavelength_nm": 1311.0,
+     "transit": "quasi-static"
+    }
+   },
+   "GRA": {
+    "type": "ground",
+    "x": 610,
+    "y": 180,
+    "rot": 0,
+    "settings": {}
+   },
+   "RTA": {
+    "type": "resistor",
+    "x": 700,
+    "y": 60,
+    "rot": 0,
+    "settings": {
+     "R": 40.0
+    }
+   },
+   "RBTB": {
+    "type": "resistor",
+    "x": 340,
+    "y": 300,
+    "rot": 0,
+    "settings": {
+     "R": 40.0
+    }
+   },
+   "CDB": {
+    "type": "capacitor",
+    "x": 380,
+    "y": 340,
+    "rot": 90,
+    "settings": {
+     "C": 8e-14
+    }
+   },
+   "GCDB": {
+    "type": "ground",
+    "x": 390,
+    "y": 390,
+    "rot": 0,
+    "settings": {}
+   },
+   "LBB": {
+    "type": "inductor",
+    "x": 440,
+    "y": 300,
+    "rot": 0,
+    "settings": {
+     "L": 3e-11
+    }
+   },
+   "CPB": {
+    "type": "capacitor",
+    "x": 480,
+    "y": 340,
+    "rot": 90,
+    "settings": {
+     "C": 2e-14
+    }
+   },
+   "GCPB": {
+    "type": "ground",
+    "x": 490,
+    "y": 390,
+    "rot": 0,
+    "settings": {}
+   },
+   "PN_B": {
+    "type": "pn_phase_shifter_tw",
+    "x": 560,
+    "y": 350,
+    "rot": 0,
+    "settings": {
+     "length_m": 0.0035,
+     "vpil_vcm": 1.5,
+     "vref": 2.0,
+     "vbi": 0.85,
+     "loss_dB_cm": 10.0,
+     "dloss_dB_cm": 1.0,
+     "cj0_ff_um": 0.3,
+     "rs_ohm_mm": 10.0,
+     "rleak": 1000000000.0,
+     "z0_ohm": 60.0,
+     "n_rf": 2.4,
+     "rf_loss_dB_cm": 2.0,
+     "polarity": 1.0,
+     "n_sections": 0,
+     "neff": 2.4,
+     "n_group": 4.0,
+     "center_wavelength_nm": 1311.0,
+     "wavelength_nm": 1311.0,
+     "transit": "quasi-static"
+    }
+   },
+   "GRB": {
+    "type": "ground",
+    "x": 610,
+    "y": 420,
+    "rot": 0,
+    "settings": {}
+   },
+   "RTB": {
+    "type": "resistor",
+    "x": 700,
+    "y": 300,
+    "rot": 0,
+    "settings": {
+     "R": 40.0
+    }
+   },
+   "VT": {
+    "type": "vdc",
+    "x": 800,
+    "y": 160,
+    "rot": 0,
+    "settings": {
+     "V": 3.106
+    }
+   },
+   "GVT": {
+    "type": "ground",
+    "x": 800,
+    "y": 240,
+    "rot": 0,
+    "settings": {}
+   },
+   "LAS": {
+    "type": "cw_laser",
+    "x": 40,
+    "y": 200,
+    "rot": 0,
+    "settings": {
+     "power": 0.016,
+     "wavelength_nm": 1311.0
+    }
+   },
+   "GL": {
+    "type": "ground",
+    "x": 60,
+    "y": 260,
+    "rot": 0,
+    "settings": {}
+   },
+   "DC1": {
+    "type": "dir_coupler",
+    "x": 200,
+    "y": 200,
+    "rot": 0,
+    "settings": {
+     "coupling": 0.5
+    }
+   },
+   "OT1": {
+    "type": "opt_term",
+    "x": 130,
+    "y": 270,
+    "rot": 0,
+    "settings": {
+     "return_loss_db": 50.0
+    }
+   },
+   "WG_A": {
+    "type": "waveguide",
+    "x": 740,
+    "y": 130,
+    "rot": 0,
+    "settings": {
+     "length_m": 2e-05,
+     "loss_dB_cm": 2.0,
+     "neff": 2.4,
+     "n_group": 4.0,
+     "center_wavelength_nm": 1311.0,
+     "wavelength_nm": 1311.0
+    }
+   },
+   "WG_B": {
+    "type": "waveguide",
+    "x": 740,
+    "y": 370,
+    "rot": 0,
+    "settings": {
+     "length_m": 2.0134863055555558e-05,
+     "loss_dB_cm": 2.0,
+     "neff": 2.4,
+     "n_group": 4.0,
+     "center_wavelength_nm": 1311.0,
+     "wavelength_nm": 1311.0
+    }
+   },
+   "DC2": {
+    "type": "dir_coupler",
+    "x": 880,
+    "y": 220,
+    "rot": 0,
+    "settings": {
+     "coupling": 0.5
+    }
+   },
+   "OT2": {
+    "type": "opt_term",
+    "x": 990,
+    "y": 170,
+    "rot": 0,
+    "settings": {
+     "return_loss_db": 50.0
+    }
+   },
+   "ATT": {
+    "type": "opt_atten",
+    "x": 990,
+    "y": 248,
+    "rot": 0,
+    "settings": {
+     "atten_db": 3.0
+    }
+   },
+   "FIB": {
+    "type": "fiber_cd",
+    "x": 1080,
+    "y": 247,
+    "rot": 0,
+    "settings": {
+     "length_km": 0.5,
+     "lambda_nm": 1311.0,
+     "lambda0_nm": 1310.0,
+     "S_ps": 0.092,
+     "atten_db_km": 0.35,
+     "fit_bw": 80000000000.0,
+     "n_poles": 24
+    }
+   },
+   "PD": {
+    "type": "photodiode",
+    "x": 1200,
+    "y": 240,
+    "rot": 0,
+    "settings": {
+     "R": 0.8,
+     "Cj": 3e-14
+    }
+   },
+   "GPO": {
+    "type": "ground",
+    "x": 1180,
+    "y": 320,
+    "rot": 0,
+    "settings": {}
+   },
+   "GPA": {
+    "type": "ground",
+    "x": 1260,
+    "y": 190,
+    "rot": 0,
+    "settings": {}
+   },
+   "TIA": {
+    "type": "tia",
+    "x": 1300,
+    "y": 255,
+    "rot": 0,
+    "settings": {
+     "gain_ohm": 500.0,
+     "f3db": 35000000000.0,
+     "vmax": 0.0,
+     "in_noise": 1.6e-11
+    }
+   },
+   "CHR": {
+    "type": "pcb_link",
+    "x": 1420,
+    "y": 260,
+    "rot": 0,
+    "settings": {
+     "loss_db": 15.0,
+     "f_nyq": 26562500000.0,
+     "direction": "module->host",
+     "r_src": 50.0,
+     "c_src": 8e-14,
+     "r_load": 50.0,
+     "c_load": 2e-13,
+     "polarity": -1.0,
+     "n_poles": 32
+    }
+   },
+   "RX1": {
+    "type": "ami_rx",
+    "x": 1590,
+    "y": 255,
+    "rot": 0,
+    "settings": {
+     "model": "pf_rx",
+     "ami_params": "ctle_fp1=26.5e9 ffe_mode=2 ffe_ntaps=11 ffe_pre=3 dfe_ntaps=1 cdr_mode=2 cdr_kp=2e-3",
+     "noise_rms": 0.0046
+    }
+   },
+   "RL": {
+    "type": "resistor",
+    "x": 1710,
+    "y": 270,
+    "rot": 0,
+    "settings": {
+     "R": 1000000.0
+    }
+   },
+   "GRL": {
+    "type": "ground",
+    "x": 1770,
+    "y": 300,
+    "rot": 0,
+    "settings": {}
+   }
+  },
+  "wires": [
+   {
+    "from": "TX1,p2",
+    "to": "GTX,p1"
+   },
+   {
+    "from": "TX1,p1",
+    "to": "CHT,inp"
+   },
+   {
+    "from": "CHT,out",
+    "to": "DRV,inp"
+   },
+   {
+    "from": "DRV,outp",
+    "to": "RBTA,p1"
+   },
+   {
+    "from": "RBTA,p2",
+    "to": "LBA,p1"
+   },
+   {
+    "from": "RBTA,p2",
+    "to": "CDA,p1"
+   },
+   {
+    "from": "CDA,p2",
+    "to": "GCDA,p1"
+   },
+   {
+    "from": "LBA,p2",
+    "to": "CPA,p1"
+   },
+   {
+    "from": "CPA,p2",
+    "to": "GCPA,p1"
+   },
+   {
+    "from": "LBA,p2",
+    "to": "PN_A,e_in"
+   },
+   {
+    "from": "PN_A,e_out",
+    "to": "RTA,p1"
+   },
+   {
+    "from": "RTA,p2",
+    "to": "VT,p1"
+   },
+   {
+    "from": "PN_A,ref",
+    "to": "GRA,p1"
+   },
+   {
+    "from": "DRV,outn",
+    "to": "RBTB,p1"
+   },
+   {
+    "from": "RBTB,p2",
+    "to": "LBB,p1"
+   },
+   {
+    "from": "RBTB,p2",
+    "to": "CDB,p1"
+   },
+   {
+    "from": "CDB,p2",
+    "to": "GCDB,p1"
+   },
+   {
+    "from": "LBB,p2",
+    "to": "CPB,p1"
+   },
+   {
+    "from": "CPB,p2",
+    "to": "GCPB,p1"
+   },
+   {
+    "from": "LBB,p2",
+    "to": "PN_B,e_in"
+   },
+   {
+    "from": "PN_B,e_out",
+    "to": "RTB,p1"
+   },
+   {
+    "from": "RTB,p2",
+    "to": "VT,p1"
+   },
+   {
+    "from": "PN_B,ref",
+    "to": "GRB,p1"
+   },
+   {
+    "from": "VT,p2",
+    "to": "GVT,p1"
+   },
+   {
+    "from": "LAS,p2",
+    "to": "GL,p1"
+   },
+   {
+    "from": "LAS,p1",
+    "to": "DC1,p1"
+   },
+   {
+    "from": "DC1,p2",
+    "to": "OT1,p1"
+   },
+   {
+    "from": "DC1,p3",
+    "to": "PN_A,p1"
+   },
+   {
+    "from": "DC1,p4",
+    "to": "PN_B,p1"
+   },
+   {
+    "from": "PN_A,p2",
+    "to": "WG_A,p1"
+   },
+   {
+    "from": "PN_B,p2",
+    "to": "WG_B,p1"
+   },
+   {
+    "from": "WG_A,p2",
+    "to": "DC2,p1"
+   },
+   {
+    "from": "WG_B,p2",
+    "to": "DC2,p2"
+   },
+   {
+    "from": "DC2,p3",
+    "to": "OT2,p1"
+   },
+   {
+    "from": "DC2,p4",
+    "to": "ATT,p1"
+   },
+   {
+    "from": "ATT,p2",
+    "to": "FIB,p1"
+   },
+   {
+    "from": "FIB,p2",
+    "to": "PD,po_p"
+   },
+   {
+    "from": "PD,po_n",
+    "to": "GPO,p1"
+   },
+   {
+    "from": "PD,cat",
+    "to": "GPA,p1"
+   },
+   {
+    "from": "PD,an",
+    "to": "TIA,inp"
+   },
+   {
+    "from": "TIA,out",
+    "to": "CHR,inp"
+   },
+   {
+    "from": "CHR,out",
+    "to": "RX1,inp"
+   },
+   {
+    "from": "RX1,out",
+    "to": "RL,p1"
+   },
+   {
+    "from": "RL,p2",
+    "to": "GRL,p1"
+   }
+  ],
+  "probes": [
+   {
+    "name": "ptx",
+    "at": "ATT,p2",
+    "color": "#e6862c"
+   },
+   {
+    "name": "vdrv_in",
+    "at": "CHT,out",
+    "color": "#a78bfa",
+    "hide": true
+   },
+   {
+    "name": "vlaunch",
+    "at": "PN_A,e_in",
+    "color": "#4ade80",
+    "hide": true
+   },
+   {
+    "name": "vrx",
+    "at": "CHR,out",
+    "color": "#6ecbf5"
+   }
+  ],
+  "globals": {
+   "baud": 53125000000.0
+  }
+ },
+ "analysis": {
+  "mode": "transient",
+  "t_stop": 1.5058823529411766e-07,
+  "points": 20000,
+  "dtmax": 5.882352941176471e-13,
+  "link": {
+   "probe": "vrx"
+  }
+ },
+ "flow": {
+  "name": "Driver CTLE / gain / swing, Tx FFE + PAM4 pre-distortion, MZM bias and junction bias for max OMA_outer - TDECQ (RLM >= 0.95)",
+  "vars": {
+   "peak_db": 4.32,
+   "drv_gain": 57.31,
+   "vsat_d": 5.0,
+   "v_m": 1.606,
+   "c_m1": -0.2865,
+   "c_p1": -0.1547,
+   "c_p2": 0.0315,
+   "pd_lo": -0.3013,
+   "pd_hi": 0.2962,
+   "bias_deg": 88.88
+  },
+  "set": {
+   "DRV.peaking_db": "peak_db",
+   "DRV.gain": "drv_gain",
+   "DRV.vsat_d": "vsat_d",
+   "DRV.vcm": "v_m + 0.3 * vsat_d",
+   "VT.V": "v_m + 0.3 * vsat_d",
+   "TX1.ami:tx_tap_m1": "c_m1",
+   "TX1.ami:tx_tap_p1": "c_p1",
+   "TX1.ami:tx_tap_p2": "c_p2",
+   "TX1.ami:tx_pam4_lo": "pd_lo",
+   "TX1.ami:tx_pam4_hi": "pd_hi",
+   "WG_B.length_m": "20e-6 + bias_deg / 360 * 1311e-9 / 2.4"
+  },
+  "stateye": {
+   "rx_bw": "auto",
+   "rx_order": 4,
+   "taps": "auto",
+   "pre": "auto",
+   "dfe": "auto",
+   "method": "mmse",
+   "limits": true,
+   "use_pattern": true,
+   "s_noise": 0.0,
+   "ser": "auto",
+   "nx": 256,
+   "ny": 1024
+  },
+  "steps": [
+   {
+    "id": "eye",
+    "kind": "analysis",
+    "title": "PAM4 eye at TP2 (8k UI)",
+    "analysis": {
+     "mode": "transient",
+     "t_stop": 1.5058823529411766e-07,
+     "points": 256000,
+     "max_points": 256000,
+     "dtmax": 5.882352941176471e-13
+    },
+    "outputs": {
+     "tdecq_db": "tdecq(ptx)",
+     "oma_dbm": "oma_dbm(ptx)",
+     "oma_minus_tdecq": "oma_dbm - tdecq_db",
+     "rlm": "rlm(ptx)",
+     "er_db": "er_db(ptx)"
+    },
+    "checks": []
+   },
+   {
+    "id": "opt",
+    "kind": "optimize",
+    "title": "Maximize OMA_outer - TDECQ at RLM >= 0.95",
+    "inner": [
+     "eye"
+    ],
+    "params": [
+     {
+      "var": "peak_db",
+      "min": 0.0,
+      "max": 15.0
+     },
+     {
+      "var": "drv_gain",
+      "min": 15.0,
+      "max": 60.0
+     },
+     {
+      "var": "vsat_d",
+      "min": 2.0,
+      "max": 5.0
+     },
+     {
+      "var": "v_m",
+      "min": 0.3,
+      "max": 2.5
+     },
+     {
+      "var": "c_m1",
+      "min": -0.35,
+      "max": 0.0
+     },
+     {
+      "var": "c_p1",
+      "min": -0.35,
+      "max": 0.0
+     },
+     {
+      "var": "c_p2",
+      "min": -0.15,
+      "max": 0.15
+     },
+     {
+      "var": "pd_lo",
+      "min": -0.5,
+      "max": -0.25
+     },
+     {
+      "var": "pd_hi",
+      "min": 0.25,
+      "max": 0.5
+     },
+     {
+      "var": "bias_deg",
+      "min": 70.0,
+      "max": 110.0
+     }
+    ],
+    "objective": "oma_minus_tdecq",
+    "maximize": true,
+    "constraints": [
+     "rlm >= 0.95"
+    ],
+    "method": "bayes",
+    "iters": 70
+   },
+   {
+    "id": "final",
+    "kind": "analysis",
+    "title": "Report at the optimum: TDECQ, OMA, RLM, ER, Rx BER (8k UI)",
+    "analysis": {
+     "mode": "transient",
+     "t_stop": 1.5058823529411766e-07,
+     "points": 256000,
+     "max_points": 256000,
+     "dtmax": 5.882352941176471e-13,
+     "link": {
+      "probe": "vrx"
+     }
+    },
+    "outputs": {
+     "tdecq_db": "tdecq(ptx)",
+     "oma_dbm": "oma_dbm(ptx)",
+     "oma_minus_tdecq": "oma_dbm - tdecq_db",
+     "rlm": "rlm(ptx)",
+     "er_db": "er_db(ptx)",
+     "ber": "ami_ber",
+     "ber_counted": "ami_ber_counted"
+    },
+    "checks": [
+     "ber <= 2.4e-4",
+     "rlm >= 0.95"
+    ]
+   }
+  ]
+ }
+}

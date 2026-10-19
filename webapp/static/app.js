@@ -1629,6 +1629,138 @@ function showVeriloga(type, path) {
 // ---------------------------------------------------------------------------
 // inspector
 // ---------------------------------------------------------------------------
+/* IBIS-AMI blocks: one inspector row per settable .ami parameter of the
+   chosen model (/api/ami_params), kept in sync with the block's raw
+   `ami_params` overrides line, which holds only the values that differ from
+   the model's defaults. Rows set away from their default are highlighted. */
+const _amiDescribed = new Map();
+
+function amiOverrides(text) {
+  return String(text || "").split(/[\s,;]+/).filter((t) => t.includes("="))
+    .map((t) => [t.slice(0, t.indexOf("=")), t.slice(t.indexOf("=") + 1)]);
+}
+
+const AMI_UNITS = [[/_db$/, "dB"], [/(_fp\d|_bw|_hz)$/, "Hz"], [/_ui$/, "UI"],
+  [/_nv$/, "nV/\u221aHz"]];
+
+async function fillAmiForm(body, inst, cat) {
+  const box = body.querySelector("#insp-ami");
+  if (!box) return;
+  const esc = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;")
+    .replace(/"/g, "&quot;");
+  const model = inst.settings?.model
+    ?? cat.params.find((p) => p.name === "model")?.default;
+  let d = _amiDescribed.get(model);
+  if (!d) {
+    box.innerHTML = `<div class="insp-type">loading ${esc(model)} parameters&hellip;</div>`;
+    try {
+      d = await (await fetch(`/api/ami_params?model=${encodeURIComponent(model)}`)).json();
+    } catch (e) {
+      d = { ok: false, error: String(e) };
+    }
+    if (d.ok) _amiDescribed.set(model, d);
+  }
+  // the inspector moved on, or the block's model changed, while we waited
+  const nowModel = inst.settings?.model
+    ?? cat.params.find((p) => p.name === "model")?.default;
+  if (!body.contains(box) || nowModel !== model) return;
+  if (!d.ok) {
+    box.innerHTML = `<div class="insp-type">${esc(d.error)}</div>`;
+    return;
+  }
+  const cur = Object.fromEntries(amiOverrides(inst.settings?.ami_params));
+  const byKey = Object.fromEntries(d.params.map((p) => [p.key, p]));
+  const unknown = Object.keys(cur).filter((k) => !byKey[k]);
+  let html = `<div class="insp-ami-head">${esc(model)} parameters</div>`;
+  let group = null;
+  for (const p of d.params) {
+    if (p.group !== group) {
+      group = p.group;
+      if (group) html += `<div class="insp-ami-group">${esc(group)}</div>`;
+    }
+    const set = cur[p.key] !== undefined;
+    const v = set ? cur[p.key] : p.default;
+    const tip = esc(p.description + (p.min !== null && p.max !== null
+      ? ` [${fmtNum(p.min)} .. ${fmtNum(p.max)}]` : "")
+      + ` (default ${p.default})`);
+    const unit = (AMI_UNITS.find(([re]) => re.test(p.key)) || [0, ""])[1];
+    let field;
+    if (p.choices || p.type === "Boolean") {
+      const choices = p.choices || ["True", "False"];
+      const opts = choices.map((c, i) => {
+        const lab = p.tips && p.tips[i] ? `${c} \u2014 ${p.tips[i]}` : String(c);
+        const sel = String(c).toLowerCase() === String(v).toLowerCase();
+        return `<option value="${esc(c)}" ${sel ? "selected" : ""}>${esc(lab)}</option>`;
+      }).join("");
+      field = `<select data-ami="${esc(p.key)}">${opts}</select>`;
+    } else {
+      const num = p.type !== "String";
+      // a Value-format parameter is fixed by the model: shown, not edited
+      field = `<input data-ami="${esc(p.key)}" ${p.format === "Value" ? "disabled" : ""}
+        value="${esc(num && isFinite(+v) ? fmtNum(+v) : v)}">`;
+    }
+    html += `<div class="insp-row${set ? " ami-set" : ""}" title="${tip}">
+      <label>${esc(p.key)}</label>${field}<span class="unit">${unit}</span></div>`;
+  }
+  if (unknown.length) {
+    html += `<div class="insp-type" style="color:var(--danger,#f87171)">not
+      ${esc(model)} parameters: ${esc(unknown.join(", "))}</div>`;
+  }
+  box.innerHTML = html;
+
+  const write = (key, value, el) => {
+    if (sheetReadOnly) {
+      setHint("Read-only view — built-in composite internals cannot be edited.", true);
+      fillAmiForm(body, inst, cat);
+      return;
+    }
+    const p = byKey[key];
+    let val = value;
+    let err = null;
+    if (p.type === "String" && !p.choices) {
+      if (/[\s,;=]/.test(val)) err = "may not contain spaces, commas, ';' or '='";
+    } else if (!p.choices && p.type !== "Boolean") {
+      val = parseSI(value);
+      if (isNaN(val)) err = `${value} is not a number`;
+      else if ((p.min !== null && val < p.min) || (p.max !== null && val > p.max)) {
+        err = `${value} is outside [${fmtNum(p.min)} .. ${fmtNum(p.max)}]`;
+      }
+      if (p.type === "Integer") val = Math.round(val);
+    }
+    el.classList.toggle("bad", !!err);
+    if (err) {
+      setHint(`${key}: ${err}`, true);
+      return;
+    }
+    const isDefault = typeof val === "number"
+      ? val === Number(p.default)
+      : String(val).toLowerCase() === String(p.default).toLowerCase();
+    const pairs = amiOverrides(inst.settings?.ami_params);
+    const at = pairs.findIndex(([k]) => k === key);
+    if (isDefault) {
+      if (at >= 0) pairs.splice(at, 1);
+    } else if (at >= 0) {
+      pairs[at][1] = String(val);
+    } else {
+      pairs.push([key, String(val)]);
+    }
+    const text = pairs.map(([k, x]) => `${k}=${x}`).join(" ");
+    commit(() => {
+      inst.settings = inst.settings || {};
+      inst.settings.ami_params = text;
+    });
+    const line = body.querySelector('input[data-lparam="ami_params"]');
+    if (line) line.value = text;
+    fillAmiForm(body, inst, cat);
+  };
+  box.querySelectorAll("[data-ami]").forEach((el) => {
+    el.addEventListener("change", () => write(el.dataset.ami, el.value, el));
+    if (el.tagName === "INPUT") {
+      el.addEventListener("keydown", (e) => { if (e.key === "Enter") el.blur(); });
+    }
+  });
+}
+
 function renderInspector() {
   schedulePushMirror();   // selection is part of the notebook-facing mirror
   const body = $("inspector-body");
@@ -1694,6 +1826,7 @@ function renderInspector() {
           <span class="unit">${p.unit || ""}</span></div>`;
       }
     }
+    if (cat.ami) html += `<div id="insp-ami"></div>`;
     if (cat.veriloga) {
       const vaTitle = esc(cat.veriloga).replace(/"/g, "&quot;");
       html += `<button id="insp-va" class="insp-va-btn"
@@ -1801,6 +1934,13 @@ function renderInspector() {
     $("insp-del").onclick = deleteSelection;
     if (cat.veriloga) $("insp-va").onclick = () => showVeriloga(inst.type, cat.veriloga);
     $("insp-rename").addEventListener("change", () => renameInstance(id, $("insp-rename").value));
+    if (cat.ami) {
+      // the raw overrides line and the model menu both redraw the form
+      const refill = () => fillAmiForm(body, inst, cat);
+      body.querySelector('input[data-lparam="ami_params"]')?.addEventListener("change", refill);
+      body.querySelector('select[data-eparam="model"]')?.addEventListener("change", refill);
+      refill();
+    }
     return;
   }
   if (selection.kind === "wire") {
@@ -3827,6 +3967,9 @@ function drawBerMap(canvas, map) {
   ctx.fillText("statistical eye (white: 1e-6 / 1e-12)", m, 14);
 }
 
+const escHtml = (s) => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;")
+  .replace(/>/g, "&gt;");
+
 function renderAmi(holder, ami) {
   const fmtE = (x) => (x === null || x === undefined) ? "\u2014"
     : (x === 0 ? "0" : Number(x).toExponential(2));
@@ -3839,17 +3982,34 @@ function renderAmi(holder, ami) {
      &times; ${e["width_ui@1e-06"].toFixed(3)} UI @1e-6,
      ${(e["height_v@1e-12"] * 1e3).toFixed(1)} mV &times; ${e["width_ui@1e-12"].toFixed(3)} UI @1e-12`)
     .join("<br>");
-  const fmtParams = (params) => Object.entries(params || {})
-    .filter(([k, v]) => (typeof v === "number" || Array.isArray(v)) && k !== "symbols")
-    .map(([k, v]) => `${k} ${Array.isArray(v) ? v.map((x) => (+x).toFixed(3)).join(", ")
-      : (+v).toPrecision(4)}`).join("; ");
-  const fin = fmtParams(ami.final_params);
-  const design = fmtParams(ami.init_params);
+  // adaptation: one row per reported quantity (and per tap), Init's design
+  // against the value at the end of GetWave; rows that moved are marked
+  const flat = (params) => {
+    const out = {};
+    for (const [k, v] of Object.entries(params || {})) {
+      if (k === "symbols") continue;
+      if (Array.isArray(v)) v.forEach((x, i) => { out[`${k}[${i}]`] = +x; });
+      else if (typeof v === "number") out[k] = v;
+    }
+    return out;
+  };
+  const init = flat(ami.init_params);
+  const fin = flat(ami.final_params);
+  const fmtV = (x) => (x === undefined ? "\u2014" : Math.abs(x) >= 1e4 || (x !== 0 && Math.abs(x) < 1e-3)
+    ? x.toExponential(3) : (+x).toPrecision(4));
+  const adaptRows = [...new Set([...Object.keys(init), ...Object.keys(fin)])].map((k) => {
+    const a = init[k];
+    const b = fin[k];
+    const moved = a !== undefined && b !== undefined
+      && Math.abs(b - a) > 1e-4 * Math.max(Math.abs(a), Math.abs(b), 1e-12);
+    return `<tr class="${moved ? "moved" : ""}"><td>${escHtml(k)}</td><td>${fmtV(a)}</td>
+      <td>${fmtV(b)}</td></tr>`;
+  }).join("");
   const div = document.createElement("div");
   div.className = "link-grid";
-  div.innerHTML = `
+  div.innerHTML = `<div style="display:flex;flex-direction:column;gap:10px;max-width:560px">
     <table id="link-table" style="max-width:560px">
-      <tr><th>IBIS-AMI Rx</th><td><b>${ami.model}</b> (${ami.where}) on
+      <tr><th>IBIS-AMI Rx</th><td><b>${escHtml(ami.model)}</b> (${ami.where}) on
         ${ami.probe}, ${ami.modulation}, UI ${fmtSI(ami.ui)}s</td></tr>
       <tr><th>counted BER</th><td><b>${berTxt}</b>
         <span class="link-hint">(GetWave + its recovered clock, after
@@ -3866,10 +4026,15 @@ function renderAmi(holder, ami) {
       <tr><th>linear fit</th><td>${(100 * ami.linear_residual).toFixed(1)} % residual
         <span class="link-hint">(how far the link is from the LTI channel
         Init assumes)</span></td></tr>
-      <tr><th>Init</th><td class="link-hint">${ami.init_message}</td></tr>
-      <tr><th>Init design</th><td class="link-hint">${design}</td></tr>
-      <tr><th>adapted (end)</th><td class="link-hint">${fin}</td></tr>
+      <tr><th>Init</th><td class="link-hint">${escHtml(ami.init_message)}</td></tr>
     </table>
+    <table class="ami-adapt">
+      <tr><th colspan="3">Rx adaptation <span class="link-hint">(Init's design
+        &rarr; the end of GetWave; highlighted rows moved; vs time in the
+        chart${ami.td.trace_t_ui.length > 1 ? "" : " (no trace)"})</span></th></tr>
+      <tr class="hdr"><td>quantity</td><td>Init</td><td>end</td></tr>
+      ${adaptRows}
+    </table></div>
     <div id="ami-plots" style="display:flex;gap:12px;flex-wrap:wrap;flex:1;min-width:340px"></div>`;
   holder.appendChild(div);
   const box = div.querySelector("#ami-plots");
@@ -3908,6 +4073,8 @@ function renderAmi(holder, ami) {
   });
   if (t.length > 1 && keys.length) {
     const ad = document.createElement("div");
+    ad.innerHTML = `<div class="ami-plot-title">Rx adaptation vs time
+      (GetWave; click legend entries to show / hide)</div>`;
     box.appendChild(ad);
     // ppm and gain live on other scales: listed, toggled on from the legend
     plots.push(new uPlot({ width: 420, height: ph, scales: { x: { time: false } },

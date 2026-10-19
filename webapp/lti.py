@@ -122,6 +122,41 @@ def build(kind: str, settings: dict, log: list) -> tuple[str, dict]:
                    f"({loss:g} dB at {f_nyq / 1e9:g} GHz)")
         return key, {"real": (A, B, C, D, 0.0)}
 
+    if kind == "rflink":
+        from photonflux import rfnet
+
+        f_nyq = float(settings.get("f_nyq", 26.5625e9))
+        n_poles = int(settings.get("n_poles", 32))
+        # log-spaced below 60 MHz so the fit holds the DC level (long PAM4
+        # runs); linear to 8 f_nyq, where the link has rolled off, so the
+        # fit's instant feedthrough d stays ~1e-4 instead of a flat floor
+        f = np.unique(np.concatenate([np.logspace(5, np.log10(60e6), 40),
+                                      np.linspace(60e6, 8 * f_nyq, 2800)]))
+        link = rfnet.host_module_link(
+            f, loss_db=float(settings.get("loss_db", 10.0)), f_nyq=f_nyq,
+            c_src=float(settings.get("c_src", 150e-15)),
+            c_load=float(settings.get("c_load", 100e-15)),
+            host_to_module=settings.get("direction", "host->module")
+            != "module->host")
+        H = link["net"].transfer(float(settings.get("r_src", 50.0)),
+                                 float(settings.get("r_load", 50.0)))
+        H = H * (-1.0 if float(settings.get("polarity", 1.0)) < 0 else 1.0)
+        # drop the flight delay (a rational fit cannot hold it): the group
+        # delay at f_nyq / 4 less one UI of lead, so what remains is causal
+        w = 2 * np.pi * f
+        k4 = int(np.argmin(np.abs(f - f_nyq / 4)))
+        tau = max(-np.gradient(np.unwrap(np.angle(H)), w)[k4] - 0.5 / f_nyq, 0.0)
+        poles, res, d, err = vf.vector_fit(f, H * np.exp(1j * w * tau),
+                                           n_poles=n_poles, n_iter=30)
+        A, B, C, D = vf.realify(poles, res, d)
+        k = int(np.argmin(np.abs(f - f_nyq)))
+        log.append(f"PCB link fit: {100 * link['trace_m']:.1f} cm trace, "
+                   f"|H| {20 * np.log10(abs(H[k]) + 1e-30):.2f} dB at "
+                   f"{f_nyq / 1e9:g} GHz (into the termination), flight delay "
+                   f"{tau * 1e9:.3f} ns removed, {n_poles} poles, rel err "
+                   f"{err:.2e}")
+        return key, {"real": (A, B, C, D, 0.0)}
+
     if kind == "s2p":
         fid = str(settings.get("file", "")).strip()
         safe = "".join(c for c in fid if c.isalnum() or c in "._-")

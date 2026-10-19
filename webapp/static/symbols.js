@@ -881,6 +881,25 @@ function chanGlyph(tag) {
 }
 S.channel = chanGlyph("CHAN");
 S.s2p_channel = chanGlyph("S2P");
+// host-board transmission line between a package and a module: the
+// classic coax / TL cylinder (body + end ellipses) with the signal conductor
+// through it, a package pad block at each end and a ground return below
+S.pcb_link = {
+  w: 120, h: 44, pins: { inp: [0, 20], out: [120, 20] },
+  label: [30, -6], pinLabels: true,
+  draw: () => `
+    <line class="${EL}" x1="0" y1="20" x2="10" y2="20"/>
+    <rect class="${EL} body-fill" x="10" y="13" width="10" height="14" rx="1"/>
+    <path class="${EL} body-fill" d="M32 8 H88 A6 12 0 0 1 88 32 H32 A6 12 0 0 1 32 8 Z"/>
+    <ellipse class="${EL}" cx="32" cy="20" rx="6" ry="12" fill="none"/>
+    <line class="${EL}" x1="20" y1="20" x2="94" y2="20" stroke-width="1.6"/>
+    <rect class="${EL} body-fill" x="100" y="13" width="10" height="14" rx="1"/>
+    <line class="${EL}" x1="94" y1="20" x2="100" y2="20"/>
+    <line class="${EL}" x1="110" y1="20" x2="120" y2="20"/>
+    <line class="${EL}" x1="10" y1="40" x2="110" y2="40" stroke-dasharray="3 2"
+      stroke-width="0.8"/>
+    <text x="44" y="30" style="font-size:7px">PCB TL</text>`,
+};
 
 S.fiber_cd = {
   w: 80, h: 26, pins: { p1: [0, 13], p2: [80, 13] }, label: [14, -8],
@@ -975,6 +994,20 @@ S.ctle = {
     <text x="22" y="16" style="font-size:8px">CTLE</text>`,
 };
 
+S.mod_driver = {
+  w: 80, h: 60,
+  pins: { inp: [0, 30], outp: [80, 18], outn: [80, 42] },
+  label: [14, -6], pinLabels: true,
+  draw: () => `
+    <path class="${EL} body-fill" d="M12 4 L68 30 L12 56 Z"/>
+    <line class="${EL}" x1="0" y1="30" x2="12" y2="30"/>
+    <line class="${EL}" x1="56" y1="24" x2="80" y2="18"/>
+    <line class="${EL}" x1="56" y1="36" x2="80" y2="42"/>
+    <path class="${EL}" d="M16 38 h7 q4 0 6 -6 q2 -6 6 -6 h3"
+      fill="none" stroke-width="1.2"/>
+    <text x="16" y="22" style="font-size:7px">DRV</text>`,
+};
+
 S.rx_ffe = {
   w: 80, h: 50,
   pins: { inp: [0, 25], out: [80, 25] },
@@ -1051,6 +1084,7 @@ const HEADLINE_PARAM = {
   resistor: "R", capacitor: "C", inductor: "L", diode: "Is",
   nmos: "W", pmos: "W", opamp: "A", tia: "gain_ohm", ctle: "peaking_db",
   rx_ffe: "n_taps", rx_dfe: "n_taps", ami_rx: "model",
+  mod_driver: "peaking_db", pcb_link: "loss_db",
   channel: "loss_db", s2p_channel: "z0", fiber_cd: "length_km",
   fiber_nl: "gamma_per_W_km",
   sky130_nfet: "w_um", sky130_nfet_lvt: "w_um", sky130_nfet_5v: "w_um",

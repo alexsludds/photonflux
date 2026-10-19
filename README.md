@@ -141,7 +141,7 @@ volts).
   photonflux's open-source `pf_tx` / `pf_rx`) around any channel,
   electrical or optical; the Link tab reports counted BER from the model's
   own recovered clock, the statistical eye, bathtubs and the adaptation
-  trace (examples 50–53, [IBIS-AMI](#ibis-ami-serdes-models--examplesibis_ami)).
+  trace (examples 50–54, [IBIS-AMI](#ibis-ami-serdes-models--examplesibis_ami)).
 - **44 example circuits**, grouped: photonic links, lasers/modulators (SOA
   Fabry-Perot laser, Vernier tunable ring laser, TPA/FCA-limited high-Q ring,
   χ(3) four-wave mixing in a waveguide and resonantly enhanced inside a Kerr

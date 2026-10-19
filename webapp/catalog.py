@@ -1201,6 +1201,37 @@ CATALOG: dict[str, dict] = {
         ],
         "lti": "chan",
     },
+    "pcb_link": {
+        "label": "Host PCB Link (NPO)",
+        "category": "Channels",
+        "doc": "A host-board link between a SerDes package and a near-package "
+               "optical module, terminated at both ends (photonflux.rfnet."
+               "host_module_link): pi-coil die pad, bump, 10 mm package "
+               "trace, BGA ball, backdrilled via, a PCB stripline sized for "
+               "loss_db at f_nyq (causal skin + Djordjevic-Sarkar dielectric), "
+               "via, LGA interposer, module substrate, bump, pi-coil pad, in "
+               "the odd mode of a 100 Ohm pair. Drive inp with the source's "
+               "EMF (r_src and c_src are inside the block); out is the voltage "
+               "across the load's r_load termination, with every reflection "
+               "between the two ends included. The terminated transfer is "
+               "vector-fitted with its bulk flight delay removed (the log "
+               "reports the fit error and the delay). polarity -1 crosses the "
+               "P/N pair.",
+        "ports": _ports("inp:e out:e"),
+        "params": [
+            _p("loss_db", 10.0, "dB", "Trace loss @ f_nyq", rebuild=True),
+            _p("f_nyq", 26.5625e9, "Hz", "Nyquist freq", rebuild=True),
+            _p("direction", "host->module", "", "Direction", rebuild=True,
+               kind="enum", choices=["host->module", "module->host"]),
+            _p("r_src", 50.0, "Ohm", "Source R (odd mode)", rebuild=True),
+            _p("c_src", 150e-15, "F", "Source pad C", rebuild=True),
+            _p("r_load", 50.0, "Ohm", "Load R (odd mode)", rebuild=True),
+            _p("c_load", 100e-15, "F", "Load pad C", rebuild=True),
+            _p("polarity", 1.0, "", "P/N polarity (+1 / -1)", rebuild=True),
+            _p("n_poles", 32, "", "Fit order", rebuild=True),
+        ],
+        "lti": "rflink",
+    },
     "s2p_channel": {
         "label": "S2P Channel (file)",
         "category": "Channels",
@@ -1509,6 +1540,28 @@ CATALOG: dict[str, dict] = {
             _p("A_out", 1.0, "V/V", "Output scale"),
         ],
     },
+    "mod_driver": {
+        "label": "Modulator Driver (CTLE)",
+        "category": "Amplifiers & EQ",
+        "doc": "Linear differential modulator driver: high-impedance input, "
+               "a CTLE (the CTLE block's 1 zero / 2 poles, unity in the "
+               "peaked band), a pre-driver pole at pre_bw, gain, and a "
+               "current-steering output stage that limits as "
+               "vsat_d * tanh(v / vsat_d). outp / outn drive vcm +/- v/2 as "
+               "ideal EMFs: add the back-termination resistors (and pad "
+               "capacitance) yourself, so the reflections between driver and "
+               "load come out of the circuit.",
+        "ports": _ports("inp:e outp:e outn:e"),
+        "params": [
+            _p("peaking_db", 6.0, "dB", "CTLE peaking"),
+            _p("f_p1", 30e9, "Hz", "CTLE first pole"),
+            _p("fp2_mult", 2.0, "x", "CTLE 2nd pole mult."),
+            _p("pre_bw", 55e9, "Hz", "Pre-driver bandwidth"),
+            _p("gain", 10.0, "V/V", "Gain"),
+            _p("vsat_d", 3.0, "V", "Diff. output limit"),
+            _p("vcm", 0.0, "V", "Output common mode"),
+        ],
+    },
     "rx_ffe": {
         "label": "Rx FFE",
         "category": "Amplifiers & EQ",
@@ -1557,8 +1610,12 @@ CATALOG: dict[str, dict] = {
                "AMI_GetWave on the waveform itself (recovered clock, counted "
                "BER, and the adaptation trace of everything the model "
                "reports, e.g. CTLE, DFE / FFE taps and CDR phase). "
-               "Parameters overrides the model's .ami defaults as name=value "
-               "pairs, e.g. `ctle_fp1=12.5e9 dfe_ntaps=8 cdr_mode=2`. "
+               "The inspector lists every parameter of the chosen model's "
+               ".ami file (grouped, with its range or choices); values set "
+               "away from the default are highlighted and written to "
+               "Overrides (text) as name=value pairs, e.g. "
+               "`ctle_fp1=12.5e9 dfe_ntaps=8 cdr_mode=2`, which can also be "
+               "edited directly. "
                "noise_rms adds white Gaussian noise (V rms per sample at 32 "
                "samples/UI) at the Rx input for both flows. pf_rx is "
                "photonflux's open-source model (CTLE, AGC, FFE, DFE, CDR); "
@@ -1567,7 +1624,7 @@ CATALOG: dict[str, dict] = {
         "params": [
             _p("model", "pf_rx", "", "AMI model", kind="enum",
                choices=["pf_rx"]),
-            _p("ami_params", "", "", "Parameters", kind="line"),
+            _p("ami_params", "", "", "Overrides (text)", kind="line"),
             _p("noise_rms", 0.0, "V", "Input noise (rms)"),
         ],
         "ami": "rx",
@@ -1950,15 +2007,16 @@ CATALOG["ami_tx"] = {
            "(photonflux.ibisami, parsed by PyAMI): the PRBS / PAM4 pattern "
            "(jitter included) is the IBIS +/-0.5 V stimulus, the model's "
            "AMI_GetWave shapes it (e.g. pf_tx's FFE presets and driver "
-           "bandwidth) and v0 / v1 scale the result. Parameters overrides "
-           "the model's .ami defaults as name=value pairs, e.g. "
+           "bandwidth) and v0 / v1 scale the result. The inspector lists "
+           "every parameter of the model's .ami file; values set away from "
+           "the default go to Overrides (text) as name=value pairs, e.g. "
            "`tx_preset=7` or `tx_tap_m1=-0.1 tx_tap_p1=-0.2 tx_bw=30e9`. "
            "The waveform is baked at compile time: edits recompile it.",
     "ports": _ports("p1:e p2:e"),
     "params": [
         _p("model", "pf_tx", "", "AMI model", rebuild=True, kind="enum",
            choices=["pf_tx"]),
-        _p("ami_params", "", "", "Parameters", rebuild=True, kind="line"),
+        _p("ami_params", "", "", "Overrides (text)", rebuild=True, kind="line"),
     ] + [dict(p) for p in CATALOG["prbs"]["params"]
          if p["name"] not in ("ffe_pre", "ffe_post", "rlm_vpi")],
     "wave": "prbs",
@@ -2267,6 +2325,46 @@ def _ctle():
         }, {"x1": s.x1 / wp1, "x2": s.x2 / wp2}
 
     return CTLE
+
+
+def _mod_driver():
+    """Differential modulator driver: CTLE (as _ctle) -> one pre-driver pole
+    -> gain -> vsat_d * tanh(. / vsat_d) -> outp / outn = vcm +/- v / 2,
+    driven as ideal EMFs."""
+    import jax.numpy as jnp
+    from circulax.components.base_component import Signals, States, component
+
+    @component(ports=("inp", "outp", "outn"),
+               states=("x1", "x2", "x3", "i_p", "i_n"))
+    def ModDriver(
+        signals: Signals,
+        s: States,
+        peaking_db: float = 6.0,
+        f_p1: float = 30e9,
+        fp2_mult: float = 2.0,
+        pre_bw: float = 55e9,
+        gain: float = 10.0,
+        vsat_d: float = 3.0,
+        vcm: float = 0.0,
+    ) -> tuple[dict, dict]:
+        wp1 = 2.0 * jnp.pi * jnp.maximum(f_p1, 1.0)
+        wp2 = fp2_mult * wp1
+        wp3 = 2.0 * jnp.pi * jnp.maximum(pre_bw, 1.0)
+        k = 10.0 ** (peaking_db / 20.0)
+        wz = wp1 / k
+        vin = signals.inp.real
+        y = (s.x2 + (wp2 / wz) * (s.x1 - s.x2)).real / k
+        vs = jnp.maximum(vsat_d, 1e-9)
+        v = vs * jnp.tanh(gain * s.x3.real / vs)
+        return {
+            "inp": 0.0,
+            "x1": s.x1 - vin, "x2": s.x2 - s.x1, "x3": s.x3 - y,
+            "outp": s.i_p, "outn": s.i_n,
+            "i_p": signals.outp - (vcm + 0.5 * v),
+            "i_n": signals.outn - (vcm - 0.5 * v),
+        }, {"x1": s.x1 / wp1, "x2": s.x2 / wp2, "x3": s.x3 / wp3}
+
+    return ModDriver
 
 
 def _rx_eq_buffer():
@@ -3429,6 +3527,7 @@ def _builtin_factories() -> dict[str, Any]:
         "opamp": const(el.IdealOpAmp),
         "tia": _tia,
         "ctle": _ctle,
+        "mod_driver": _mod_driver,
         "rx_ffe": _rx_eq_buffer,
         "rx_dfe": _rx_eq_buffer,
         "ami_rx": _rx_eq_buffer,

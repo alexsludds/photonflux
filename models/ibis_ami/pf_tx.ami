@@ -1,5 +1,5 @@
 (pf_tx
-    (Description "photonflux open-source IBIS-AMI transmitter: 6-tap FFE (2 pre, main, 3 post), PCIe-style presets, swing and driver bandwidth. Dual mode: Init and GetWave share one FIR.")
+    (Description "photonflux open-source IBIS-AMI transmitter: 6-tap FFE (2 pre, main, 3 post), PCIe-style presets, PAM4 level pre-distortion, swing and driver bandwidth. Dual mode: Init and GetWave share one FIR; the PAM4 pre-distortion is GetWave-only.")
 
     (Reserved_Parameters
         (AMI_Version (Usage Info) (Type String) (Value "7.1")
@@ -31,6 +31,10 @@
             (Description "Second post-cursor tap c(+2)."))
         (tx_tap_p3 (Usage In) (Type Float) (Range 0.0 -0.2 0.2)
             (Description "Third post-cursor tap c(+3)."))
+        (tx_pam4_lo (Usage In) (Type Float) (Range -0.3333333333333333 -0.9 -0.05)
+            (Description "PAM4 pre-distortion: the lower inner level, relative to outer levels at -1 / +1 (GetWave only; -1/3 = off)."))
+        (tx_pam4_hi (Usage In) (Type Float) (Range 0.3333333333333333 0.05 0.9)
+            (Description "PAM4 pre-distortion: the upper inner level (GetWave only; +1/3 = off)."))
         (tx_swing (Usage In) (Type Float) (Range 1.0 0.1 2.0)
             (Description "Output swing scale (1.0 = the +/-0.5 V stimulus at the main cursor with no de-emphasis)."))
         (tx_bw (Usage In) (Type Float) (Range 0.0 0.0 200e9)

@@ -25,7 +25,11 @@ Its steps share *flow variables*::
          "fom": {"rel_oma_db": ">= -2", "tdecq_db": "<= 1.5", "il_db": null}}]}
 
 ``set`` targets are ``INST.param`` (``*.param`` broadcasts like a sweep) and
-values are numbers or expressions over the variables. Optimize re-runs its
+values are numbers or expressions over the variables. ``INST.ami:name``
+writes one parameter of an IBIS-AMI block's model (its ``ami_params``
+overrides), e.g. ``"TX1.ami:tx_tap_m1": "c_m1"``. A transient whose
+``analysis.link`` probe feeds an IBIS-AMI Rx also gives its outputs
+``ami_ber`` (statistical) and ``ami_ber_counted``. Optimize re-runs its
 ``inner`` step chain per evaluation -- Bayesian (``"method": "bayes"``, see
 bayesopt.py) or Nelder-Mead (the default for steps saved without a method) --
 so a resonance found by the first step is re-found for every candidate
@@ -51,6 +55,7 @@ import exprs
 
 MAX_STEPS = 12
 MAX_ITERS = 120
+MAX_PARAMS = 10        # optimize: knobs per step (Bayes needs ~5-6 evals per knob)
 METHODS = ("bayes", "nelder-mead")     # optimize: Bayesian (GP) or simplex
 SAMPLES_PER_UI = 16    # evaluate: save points per UI of the full-period record
 SETTLE_UI = 16         # figures of merit: start-up dropped before scoring
@@ -239,6 +244,10 @@ def objective_terms(objective: str) -> tuple[list[str], str | None]:
 # ---------------------------------------------------------------------------
 
 def _split_key(key: str) -> tuple[str, str]:
+    if ".ami:" in str(key):        # INST.ami:name, name may be dotted
+        inst, _, name = str(key).partition(".ami:")
+        if inst and name:
+            return inst, "ami:" + name
     inst, dot, param = str(key).rpartition(".")
     if not dot or not inst or not param:
         raise FlowError(f"set target {key!r}: write it as INSTANCE.param "
@@ -269,11 +278,34 @@ def _prepare(base: dict, flow: dict, overrides: dict, step_set: dict | None,
 
     sch = copy.deepcopy(simulate.with_global_ui(base))
     for inst, param, val in _assignments(flow, overrides, step_set, vars_):
+        if param.startswith("ami:"):
+            _set_ami(sch, inst, param[4:], val)
+            continue
         try:
             simulate._patch_point(sch, inst, param, val)
         except simulate.NetlistError as exc:
             raise FlowError(f"set {inst}.{param}: {exc}") from None
     return sch
+
+
+def _set_ami(sch: dict, inst: str, key: str, val: float) -> None:
+    """``INST.ami:key = val``: one model parameter of an IBIS-AMI block,
+    merged into its ``ami_params`` overrides line (integers stay integers)."""
+    import amilink
+    import simulate
+
+    node = (sch.get("instances") or {}).get(inst)
+    if node is None or not simulate.CATALOG.get(node.get("type"), {}).get("ami"):
+        raise FlowError(f"set {inst}.ami:{key}: {inst!r} is not an IBIS-AMI "
+                        "block on the canvas")
+    if not _IDENT.fullmatch(key.replace(".", "_")):
+        raise FlowError(f"set {inst}.ami:{key}: not a parameter name")
+    settings = node.setdefault("settings", {})
+    over = amilink.parse_overrides(settings.get("ami_params"))
+    over[key] = float(val)          # the model coerces to the parameter's type
+    settings["ami_params"] = " ".join(
+        f"{k}={v!r}" if isinstance(v, float) else f"{k}={v}"
+        for k, v in over.items())
 
 
 def _expand(sch: dict, inst: str, param: str) -> list[str]:
@@ -375,6 +407,12 @@ def fom_values(score: dict, p_in_mw: float) -> dict:
     for k in ("tdecq_db", "tdec_db", "rlm"):
         if k in score:
             out[k] = score[k]
+    # TDECQ / TDEC are penalties against an ideal eye and cannot be negative;
+    # stateye has scored closed eyes as large negative values (-47 dB), which
+    # an optimizer then chases. Treat them as undefined (a failed evaluation).
+    for k in ("tdecq_db", "tdec_db"):
+        if k in out and out[k] is not None and out[k] < 0:
+            out[k] = nan
     return {k: (float(v) if math.isfinite(v) else None) for k, v in out.items()}
 
 
@@ -398,6 +436,12 @@ def _result_ctx(res: dict, sch: dict, vars_: dict, flow: dict):
             ctx.setdefault(row["name"], float(row["value"]))
     for s in res.get("scalars") or []:
         ctx.setdefault(s["name"], float(s["value"]))
+    # the IBIS-AMI Rx link report (NaN, i.e. undefined, if it did not run)
+    ctx["ami_ber"] = ctx["ami_ber_counted"] = float("nan")
+    ami = res.get("ami") or {}
+    if ami:
+        ctx["ami_ber"] = float(ami["stat"]["ber"])
+        ctx["ami_ber_counted"] = float(ami["td"]["counted"]["ber"])
 
     funcs = exprs._make_funcs(x)
 
@@ -602,8 +646,8 @@ class _Runner:
         params = step.get("params") or []
         if not params:
             raise FlowError("optimize: add at least one parameter to vary")
-        if len(params) > 8:
-            raise FlowError("optimize: at most 8 parameters")
+        if len(params) > MAX_PARAMS:
+            raise FlowError(f"optimize: at most {MAX_PARAMS} parameters")
         objective = str(step.get("objective") or "").strip()
         if not objective:
             raise FlowError("optimize: no objective (an output name or an "
@@ -632,7 +676,14 @@ class _Runner:
                 node = (start_sch.get("instances") or {}).get(p["inst"])
                 if node is None:
                     raise FlowError(f"optimize: no instance {p['inst']!r}")
-                cur = (node.get("settings") or {}).get(p["param"])
+                settings = node.get("settings") or {}
+                if str(p["param"]).startswith("ami:"):
+                    import amilink
+                    cur = amilink.parse_overrides(
+                        settings.get("ami_params")).get(p["param"][4:])
+                    cur = cur if isinstance(cur, (int, float)) else None
+                else:
+                    cur = settings.get(p["param"])
             keys.append(key)
             lo.append(a)
             hi.append(b)
@@ -902,9 +953,21 @@ class _Runner:
         except FlowError:
             return []
         resolved: dict = {}
+        ami_nodes: dict = {}      # IBIS-AMI parameters fold into ami_params
         for inst, param, val in assigns:
+            if param.startswith("ami:"):
+                if inst not in ami_nodes:
+                    base_node = (self.base.get("instances") or {}).get(inst)
+                    if base_node is None:
+                        continue
+                    ami_nodes[inst] = {"instances": {inst: copy.deepcopy(base_node)}}
+                _set_ami(ami_nodes[inst], inst, param[4:], val)
+                continue
             for name in _expand(self.base, inst, param):
                 resolved[(name, param)] = val
+        for inst, sub in ami_nodes.items():
+            resolved[(inst, "ami_params")] = (
+                sub["instances"][inst]["settings"]["ami_params"])
         return [{"inst": i, "param": p, "value": v}
                 for (i, p), v in resolved.items()]
 

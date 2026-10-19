@@ -221,6 +221,16 @@ class Handler(BaseHTTPRequestHandler):
             else:
                 self._json({"ok": True, "path": src[0], "source": src[1]})
             return
+        if path == "/api/ami_params":
+            # an IBIS-AMI model's settable parameters, for the inspector form
+            import amilink
+            from urllib.parse import parse_qs, urlsplit
+            name = (parse_qs(urlsplit(self.path).query).get("model") or [""])[0]
+            try:
+                self._json({"ok": True, **amilink.describe(name)})
+            except Exception as exc:  # noqa: BLE001 - unknown / unbuildable model
+                self._json({"ok": False, "error": f"{type(exc).__name__}: {exc}"})
+            return
         if path.startswith("/api/examples/"):
             p = EXAMPLES / (path.rsplit("/", 1)[1] + ".json")
             if p.is_file() and p.resolve().parent == EXAMPLES.resolve():

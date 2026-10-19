@@ -10,6 +10,13 @@
  * stays at tx_swing whatever the de-emphasis. tx_preset selects one of the
  * PCIe 3.0-6.0 coefficient presets P0..P9 instead of the manual taps.
  *
+ * PAM4 level pre-distortion (GetWave only): tx_pam4_lo / tx_pam4_hi place
+ * the two inner levels, relative to outer levels at -1 / +1, before the FFE
+ * -- the usual fix for a compressing modulator (raise the outer eyes
+ * relative to the inner one). The stimulus is mapped piecewise-linearly
+ * through (-1, lo, hi, +1) in +/-0.5 V units, so edges stay continuous; the
+ * defaults -1/3, +1/3 are the identity. Init models the linear FFE only.
+ *
  * The FIR is causal: the main tap sits two UI (the pre-cursor span) behind
  * the newest input, in Init and GetWave alike, so the two modes produce the
  * same pulse response sample for sample. The FFE and the bandwidth filter
@@ -34,6 +41,7 @@ typedef struct {
     double c[NTAPS]; /* c[0] = c(-2) ... c[NPRE] = main ... */
     double swing;
     double bw;
+    double lvl_lo, lvl_hi; /* inner PAM4 levels, outer = -1 / +1 */
     pf_biquad drv;
     pf_delay hist;
     long preset;
@@ -80,6 +88,8 @@ static void configure(pf_tx *m, const pf_params *p)
     }
     m->c[NPRE] = 1.0 - side;
     m->swing = pf_param_double(p, "tx_swing", 1.0);
+    m->lvl_lo = pf_param_double(p, "tx_pam4_lo", -1.0 / 3.0);
+    m->lvl_hi = pf_param_double(p, "tx_pam4_hi", 1.0 / 3.0);
     m->bw = pf_param_double(p, "tx_bw", 0.0);
 }
 
@@ -100,8 +110,20 @@ static void report(pf_tx *m)
     pf_str_printf(&m->params_out, "(pf_tx (tx_taps");
     for (int k = 0; k < NTAPS; k++)
         pf_str_printf(&m->params_out, " %.6g", m->c[k]);
-    pf_str_printf(&m->params_out, ") (tx_preset %ld) (tx_swing %.6g))",
-                  m->preset, m->swing);
+    pf_str_printf(&m->params_out, ") (tx_preset %ld) (tx_swing %.6g)"
+                                  " (tx_pam4_levels %.6g %.6g))",
+                  m->preset, m->swing, m->lvl_lo, m->lvl_hi);
+}
+
+/* PAM4 pre-distortion: the +/-0.5 V stimulus mapped piecewise-linearly
+ * through (-0.5, -0.5), (-1/6, lo/2), (1/6, hi/2), (0.5, 0.5); outside
+ * +/-0.5 the end segments extend. */
+static double predistort(const pf_tx *m, double x)
+{
+    static const double xs[4] = {-0.5, -1.0 / 6.0, 1.0 / 6.0, 0.5};
+    const double ys[4] = {-0.5, 0.5 * m->lvl_lo, 0.5 * m->lvl_hi, 0.5};
+    int k = x < xs[1] ? 0 : (x < xs[2] ? 1 : 2);
+    return ys[k] + (ys[k + 1] - ys[k]) * (x - xs[k]) / (xs[k + 1] - xs[k]);
 }
 
 /* y[n] = swing * drv( sum_k c[k] x[n - (NTAPS-1-k) * nspui] ) is the
@@ -163,6 +185,10 @@ PF_AMI_EXPORT long AMI_Init(double *impulse_matrix, long row_size,
     report(m);
     pf_str_printf(&m->msg, "pf_tx: %d-tap FFE, main %.4f, swing %.3g, "
                            "bw %.3g Hz", NTAPS, m->c[NPRE], m->swing, m->bw);
+    if (fabs(m->lvl_lo + 1.0 / 3.0) > 1e-9 || fabs(m->lvl_hi - 1.0 / 3.0) > 1e-9)
+        pf_str_printf(&m->msg, "; PAM4 levels -1 / %.4g / %.4g / +1 in "
+                               "GetWave only (Init is the linear FFE)",
+                      m->lvl_lo, m->lvl_hi);
     *AMI_parameters_out = m->params_out.s;
     *msg = m->msg.s;
     return 1;
@@ -176,7 +202,7 @@ PF_AMI_EXPORT long AMI_GetWave(double *wave, long wave_size,
     if (!m || !wave)
         return 0;
     for (long i = 0; i < wave_size; i++) {
-        pf_delay_push(&m->hist, wave[i]);
+        pf_delay_push(&m->hist, predistort(m, wave[i]));
         double acc = 0.0;
         for (int k = 0; k < NTAPS; k++)
             acc += m->c[k] *

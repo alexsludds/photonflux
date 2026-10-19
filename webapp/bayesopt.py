@@ -1,7 +1,7 @@
 """Bayesian optimization for the flow Optimize step (BoTorch).
 
 Why not Nelder-Mead for these flows: one evaluation is a whole inner chain
-(tens of seconds), the budget is tens of evaluations over up to 8 knobs, and
+(tens of seconds), the budget is tens of evaluations over up to 10 knobs, and
 the usual objective is a worst-case margin ``min(m1, ..., mk)``. A simplex
 needs hundreds of evaluations in 8-D, and it stalls on the kinks where the
 binding spec changes.

@@ -367,13 +367,38 @@ def transient(emf: np.ndarray, r_term: float) -> dict:
 # TDECQ and the surrogate
 # ---------------------------------------------------------------------------
 
+def levels(p_mw: np.ndarray, per: np.ndarray) -> np.ndarray:
+    """The four PAM4 levels (mW) at TP2: through the reference receiver, at
+    the best sampling phase, the mean of each symbol's samples (neighbours'
+    ISI averages out over the PRBS)."""
+    q = tdec.reference_receiver(p_mw[-PERIOD * NSPUI:], TS, BAUD)
+    x = q.reshape(PERIOD, NSPUI)
+    A = np.conj(np.fft.fft(per - 1.5))
+    best = (-np.inf, 0, 0)
+    for ph in range(NSPUI):
+        c = np.fft.ifft(np.fft.fft(x[:, ph] - x[:, ph].mean()) * A).real
+        k = int(np.argmax(c))
+        if c[k] > best[0]:
+            best = (c[k], ph, k)
+    _, ph, k = best
+    s = np.roll(per, k)                  # x[n, ph] carries symbol s[n]
+    return np.array([x[8:, ph][s[8:] == v].mean() for v in range(4)])
+
+
 def tdecq(p_mw: np.ndarray, per: np.ndarray, dec: int = 1) -> dict:
-    """TDECQ (802.3cd reference receiver + 5-tap FFE) of the scored period."""
+    """TDECQ (802.3cd reference receiver + 5-tap FFE) of the scored period,
+    with OMA_outer, ER and RLM."""
     p = p_mw[-PERIOD * NSPUI:][::dec]
     m = tdec.measure_pam4(p, TS * dec, BAUD, symbols=per, strict=False)
-    return {k: float(m.get(k, np.nan)) for k in
-            ("tdecq_outer", "oma_outer", "er_db", "rlm", "ceq")} | {
-        "ffe_taps": [float(c) for c in m.get("ffe_taps", [])]}
+    lv = levels(p_mw, per)
+    vm = (lv[0] + lv[3]) / 2
+    es1, es2 = (lv[1] - vm) / (lv[0] - vm), (lv[2] - vm) / (lv[3] - vm)
+    return {"tdecq_outer": float(m.get("tdecq_outer", np.nan)),
+            "oma_outer": float(m.get("oma_outer", np.nan)),
+            "er_db": float(m.get("extinction_ratio_outer", np.nan)),
+            "rlm": float(min(3 * es1, 3 * es2, 2 - 3 * es1, 2 - 3 * es2)),
+            "ceq": float(m.get("ceq", np.nan)),
+            "ffe_taps": [float(c) for c in m.get("ffe_taps", [])]}
 
 
 class Surrogate:
@@ -426,14 +451,14 @@ def _taps(x) -> dict:
     return {k: round(float(v), 3) for k, v in zip(TAP_KEYS, x[1:])}
 
 
-def adapt(sur: Surrogate, per, rec, ch, x0, max_iter: int) -> tuple[np.ndarray, list]:
+def adapt(sur: Surrogate, per, rec, ch, x0, max_iter: int) -> tuple[np.ndarray, list, float]:
     """CTLE peaking x Tx FFE minimizing the surrogate's TDECQ: a peaking
     sweep at the starting taps, then Nelder-Mead on all four."""
     cache = {}
 
     def f(x):
         x = np.clip(x, [b[0] for b in BOUNDS], [b[1] for b in BOUNDS])
-        key = (round(float(x[0]), 2),) + tuple(_taps(x).values())
+        key = (round(float(x[0]) * 2) / 2,) + tuple(_taps(x).values())  # 0.5 dB CTLE codes
         if key not in cache:
             d = drive(rec, key[0], _taps(x), ch)
             v = tdecq(np.repeat(sur(d["emf"]), sur.DEC), per, dec=sur.DEC)["tdecq_outer"]
@@ -442,15 +467,16 @@ def adapt(sur: Surrogate, per, rec, ch, x0, max_iter: int) -> tuple[np.ndarray, 
 
     sweep = [(pk, f(np.r_[pk, x0[1:]])) for pk in np.arange(0.0, PEAK_MAX_DB + 0.1, 2.0)]
     start = np.r_[min(sweep, key=lambda r: r[1])[0], x0[1:]]
-    r = minimize(f, start, method="Nelder-Mead", bounds=BOUNDS,
+    minimize(f, start, method="Nelder-Mead", bounds=BOUNDS,
                  options={"maxfev": max_iter, "xatol": 0.02, "fatol": 0.01,
                           "initial_simplex": [start, start + [2, 0, 0, 0],
                                               start + [0, -0.06, 0, 0],
                                               start + [0, 0, -0.08, 0],
                                               start + [0, 0, 0, 0.05]]})
-    best = np.clip(r.x, [b[0] for b in BOUNDS], [b[1] for b in BOUNDS])
-    best[0] = np.round(best[0] * 2) / 2                      # 0.5 dB CTLE codes
-    return best, sweep
+    # TDECQ is undefined (NaN, scored 30 dB) at some over-equalized corners,
+    # so take the best setting the search actually scored
+    key, val = min(cache.items(), key=lambda kv: kv[1])
+    return np.array(key), sweep, val
 
 
 def run_point(label, x, per, rec, ch, r_term) -> dict:
@@ -534,10 +560,9 @@ def main(argv=None) -> int:
         print(f"surrogate fit on '{points[-1]['label']}': residual {sur.residual_rel:.2%} of rms; "
               "searching CTLE peaking x Tx FFE ...")
         t0 = time.time()
-        x, sweep = adapt(sur, per, rec, ch["tx"], x if it else np.array([0, -0.05, -0.1, 0.0]),
-                         40 if args.quick else 80)
-        pred = tdecq(np.repeat(sur(drive(rec, x[0], _taps(x), ch["tx"])["emf"]), 2), per,
-                     dec=2)["tdecq_outer"]
+        x, sweep, pred = adapt(sur, per, rec, ch["tx"],
+                               x if it else np.array([0, -0.05, -0.1, 0.0]),
+                               40 if args.quick else 80)
         history.append({"sweep": sweep, "pred": pred, "x": x.tolist()})
         print(f"  surrogate optimum: CTLE {x[0]:.1f} dB, taps {_taps(x)}, predicted TDECQ "
               f"{pred:.2f} dB ({time.time() - t0:.0f} s)")

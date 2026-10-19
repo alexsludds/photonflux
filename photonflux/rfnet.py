@@ -74,7 +74,7 @@ class Line:
     def delay_s_m(self) -> float:
         """Group delay per metre at the grid's upper-middle frequencies."""
         w = 2 * np.pi * _f_safe(self.f)
-        beta = np.unwrap(self.gamma.imag)
+        beta = self.gamma.imag
         k = slice(len(w) // 8, len(w) // 4)
         return float(np.median(np.gradient(beta[k], w[k])))
 
@@ -98,7 +98,9 @@ def line_rlgc(f: np.ndarray, *, z0: float, er: float, tand: float = 0.0,
     z = rs * (1 + 1j) + 1j * w * l_ext
     y = 1j * w * c_vac * eps            # G = w C eps'' from the complex eps
     gamma = np.sqrt(z * y)
-    gamma = np.where(gamma.real < 0, -gamma, gamma)
+    # the forward wave: alpha >= 0, and beta > 0 where the line is lossless
+    flip = (gamma.real < 0) | ((gamma.real <= 1e-12 * np.abs(gamma)) & (gamma.imag < 0))
+    gamma = np.where(flip, -gamma, gamma)
     return Line(np.asarray(f, float), gamma, np.sqrt(z / y))
 
 

@@ -407,6 +407,12 @@ def fom_values(score: dict, p_in_mw: float) -> dict:
     for k in ("tdecq_db", "tdec_db", "rlm"):
         if k in score:
             out[k] = score[k]
+    # TDECQ / TDEC are penalties against an ideal eye and cannot be negative;
+    # stateye has scored closed eyes as large negative values (-47 dB), which
+    # an optimizer then chases. Treat them as undefined (a failed evaluation).
+    for k in ("tdecq_db", "tdec_db"):
+        if k in out and out[k] is not None and out[k] < 0:
+            out[k] = nan
     return {k: (float(v) if math.isfinite(v) else None) for k, v in out.items()}
 
 

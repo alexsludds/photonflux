@@ -63,3 +63,9 @@ def test_ami_ber_is_undefined_without_a_report(flow):
     res["ami"] = {"stat": {"ber": 1e-9}, "td": {"counted": {"ber": 0.0}}}
     ctx, _ = flow._result_ctx(res, _sch(), {}, {})
     assert ctx["ami_ber"] == 1e-9 and ctx["ami_ber_counted"] == 0.0
+
+
+def test_negative_tdecq_is_undefined(flow):
+    base = {"oma_mw": 2.0, "p_top_mw": 3.0, "er_db": 4.0, "rlm": 0.95}
+    assert flow.fom_values({**base, "tdecq_db": 1.2}, 1.0)["tdecq_db"] == 1.2
+    assert flow.fom_values({**base, "tdecq_db": -47.6}, 1.0)["tdecq_db"] is None

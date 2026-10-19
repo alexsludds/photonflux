@@ -699,16 +699,16 @@
  "flow": {
   "name": "Driver CTLE / gain / swing, Tx FFE + PAM4 pre-distortion, MZM bias and junction bias for max OMA_outer - TDECQ (RLM >= 0.95)",
   "vars": {
-   "peak_db": 12.46,
-   "drv_gain": 24.94,
-   "c_m1": -0.25,
-   "c_p1": -0.135,
-   "c_p2": 0.052,
-   "bias_deg": 89.1,
-   "v_m": 1.1,
-   "vsat_d": 3.0,
-   "pd_lo": -0.3333333333333333,
-   "pd_hi": 0.3333333333333333
+   "peak_db": 9.155,
+   "drv_gain": 27.5,
+   "c_m1": -0.2379,
+   "c_p1": -0.1488,
+   "c_p2": 0.0478,
+   "bias_deg": 86.64,
+   "v_m": 1.396,
+   "vsat_d": 2.98,
+   "pd_lo": -0.3302,
+   "pd_hi": 0.3318
   },
   "set": {
    "DRV.peaking_db": "peak_db",
@@ -773,8 +773,8 @@
      },
      {
       "var": "drv_gain",
-      "min": 10.0,
-      "max": 80.0
+      "min": 15.0,
+      "max": 60.0
      },
      {
       "var": "vsat_d",
@@ -803,18 +803,18 @@
      },
      {
       "var": "pd_lo",
-      "min": -0.6,
-      "max": -0.15
+      "min": -0.5,
+      "max": -0.25
      },
      {
       "var": "pd_hi",
-      "min": 0.15,
-      "max": 0.6
+      "min": 0.25,
+      "max": 0.5
      },
      {
       "var": "bias_deg",
-      "min": 45.0,
-      "max": 135.0
+      "min": 70.0,
+      "max": 110.0
      }
     ],
     "objective": "oma_minus_tdecq",

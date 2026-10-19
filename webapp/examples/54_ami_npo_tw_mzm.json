@@ -9,13 +9,14 @@
     "y": -360,
     "title": "Near-package optics, 53.125 GBd PAM4: IBIS-AMI SerDes, 15 dB host traces, CTLE driver, traveling-wave Si MZM",
     "lines": [
-     "TX1 (IBIS-AMI pf_tx, FFE) launches 2 Vppd EMF into CHT: package, BGA, vias, a PCB",
+     "Defaults = the flow's optimum. TX1 (IBIS-AMI pf_tx: FFE -0.287 / -0.155 / +0.032,",
+     "PAM4 inner levels -0.301 / +0.296) launches 2 Vppd EMF into CHT: package, BGA, vias, a PCB",
      "trace with 15 dB loss at 26.56 GHz, LGA and module substrate, terminated in the",
      "driver's 100 ohm input (reflections included).",
-     "DRV: CTLE, gain, tanh output stage; 40 ohm back-terminations, pads and flip-chip",
+     "DRV: CTLE 4.3 dB, gain 57, 5 V tanh swing limit; 40 ohm back-terminations, pads, flip-chip",
      "bumps feed two 3.5 mm traveling-wave PN arms (push-pull, loaded line ~40 ohm)",
-     "terminated on chip into the 2 V junction bias (VT). WG_B's length sets the MZM's",
-     "optical bias phase (90 deg = quadrature). TP2 = ptx, in fiber.",
+     "terminated on chip into the 3.1 V junction bias (VT). WG_B's length sets the MZM's",
+     "optical bias phase (88.9 deg; 90 = quadrature). TP2 = ptx, in fiber.",
      "500 m SMF, PD, 500 ohm TIA, CHR (the same 15 dB trace back, P/N crossed) and RX1",
      "(pf_rx: CTLE, 11-tap FFE, DFE, Mueller-Muller CDR, 5 nV/rtHz input noise).",
      "",
@@ -39,7 +40,7 @@
     "rot": 0,
     "settings": {
      "model": "pf_tx",
-     "ami_params": "tx_tap_m1=-0.161 tx_tap_p1=-0.142 tx_tap_p2=0.023 tx_bw=60e9",
+     "ami_params": "tx_tap_m1=-0.2865 tx_tap_p1=-0.1547 tx_tap_p2=0.0315 tx_pam4_lo=-0.3013 tx_pam4_hi=0.2962 tx_bw=60e9",
      "mode": "pam4",
      "sequence": "prbs+oma",
      "order": 13,
@@ -85,13 +86,13 @@
     "y": 440,
     "rot": 0,
     "settings": {
-     "peaking_db": 12.0,
+     "peaking_db": 4.32,
      "f_p1": 30000000000.0,
      "fp2_mult": 2.0,
      "pre_bw": 55000000000.0,
-     "gain": 25.3,
-     "vsat_d": 3.0,
-     "vcm": 2.0
+     "gain": 57.31,
+     "vsat_d": 5.0,
+     "vcm": 3.106
     }
    },
    "RBTA": {
@@ -286,7 +287,7 @@
     "y": 160,
     "rot": 0,
     "settings": {
-     "V": 2.0
+     "V": 3.106
     }
    },
    "GVT": {
@@ -351,7 +352,7 @@
     "y": 370,
     "rot": 0,
     "settings": {
-     "length_m": 2.01365625e-05,
+     "length_m": 2.0134863055555558e-05,
      "loss_dB_cm": 2.0,
      "neff": 2.4,
      "n_group": 4.0,
@@ -690,7 +691,7 @@
  },
  "analysis": {
   "mode": "transient",
-  "t_stop": 1.1565176470588236e-07,
+  "t_stop": 1.5058823529411766e-07,
   "points": 20000,
   "dtmax": 5.882352941176471e-13,
   "link": {
@@ -700,16 +701,16 @@
  "flow": {
   "name": "Driver CTLE / gain / swing, Tx FFE + PAM4 pre-distortion, MZM bias and junction bias for max OMA_outer - TDECQ (RLM >= 0.95)",
   "vars": {
-   "peak_db": 9.155,
-   "drv_gain": 27.5,
-   "c_m1": -0.2379,
-   "c_p1": -0.1488,
-   "c_p2": 0.0478,
-   "bias_deg": 86.64,
-   "v_m": 1.396,
-   "vsat_d": 2.98,
-   "pd_lo": -0.3302,
-   "pd_hi": 0.3318
+   "peak_db": 4.32,
+   "drv_gain": 57.31,
+   "vsat_d": 5.0,
+   "v_m": 1.606,
+   "c_m1": -0.2865,
+   "c_p1": -0.1547,
+   "c_p2": 0.0315,
+   "pd_lo": -0.3013,
+   "pd_hi": 0.2962,
+   "bias_deg": 88.88
   },
   "set": {
    "DRV.peaking_db": "peak_db",

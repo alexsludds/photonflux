@@ -150,7 +150,8 @@ def test_rx_getwave_adapts_and_decodes(mod):
 def test_rx_cold_start_learns_init_design():
     """adapt_start=1: GetWave starts from a pass-through FFE and LMS learns
     Init's MMSE design from the waveform, pre-cursor tap included, under a
-    CDR on the FFE input; a CDR on the slicer input holds that tap."""
+    CDR on the FFE input; a CDR on the slicer input holds that tap at Init's
+    value, and a fixed FFE / DFE keeps the whole start at Init's design."""
     ch = serdes.backplane(0.3, ts=TS, ui=UI, nfft=1 << 14).resized(128 * NSPUI)
     rx = ibisami.load("pf_rx")
     rx.params.update(ctle_mode=0, ffe_mode=2, ffe_ntaps=5, ffe_pre=1, dfe_mode=0,
@@ -166,7 +167,11 @@ def test_rx_cold_start_learns_init_design():
 
     td = serdes.time_domain_link(None, ch, rx, UI, modulation="PAM4", nsym=3000,
                                  skip=1000, rx_params={"cdr_mode": 2})
-    assert td.rx_trace.trace[-1]["ffe_taps"][0] == 0.0
+    assert td.rx_trace.trace[-1]["ffe_taps"][0] == td.rx_init.params_out["ffe_taps"][0]
+    assert "cold start" in td.rx_init.message
+
+    r = rx.init(ch.impulse, TS, UI, params={"dfe_mode": 1, "dfe_ntaps": 1})
+    assert "adapt_start ignored" in r.message
 
 
 def test_out_of_process_host_is_bit_identical():

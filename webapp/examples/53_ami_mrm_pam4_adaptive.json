@@ -20,7 +20,7 @@
      "(1 pre-cursor), 1 DFE tap, Mueller-Muller CDR on the FFE input, PAM4",
      "slicers, 6 mV rms input noise. adapt_start=1 starts AMI_GetWave cold",
      "(pass-through FFE, zero DFE): LMS learns every tap from the waveform",
-     "alone within ~2000 UI. Run, then open the Link tab: the IBIS-AMI card",
+     "alone within ~3000 UI. Run, then open the Link tab: the IBIS-AMI card",
      "plots each tap vs time and lists AMI_Init's statistical design beside",
      "the adapted taps.",
      "",

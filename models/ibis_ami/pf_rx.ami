@@ -73,7 +73,7 @@
         (cdr
             (cdr_mode (Usage In) (Type Integer) (List 0 1 2 3) (Default 1)
                 (List_Tip "fixed phase" "bang-bang" "Mueller-Muller" "Mueller-Muller, FFE input")
-                (Description "Clock recovery: Init's phase, Alexander bang-bang, baud-rate Mueller-Muller on the slicer input, or Mueller-Muller on the FFE input (timing from the channel alone, so every FFE tap but the main one may adapt)."))
+                (Description "Clock recovery: Init's phase, Alexander bang-bang, baud-rate Mueller-Muller on the slicer input, or Mueller-Muller on the FFE input (timing from the channel alone, so every FFE tap but the main one may adapt; it locks where the channel's own h(-1) = h(+1), so give the FFE a pre-cursor tap)."))
             (cdr_kp (Usage In) (Type Float) (Range 4e-3 0.0 0.1)
                 (Description "Proportional gain (UI per phase-detector unit)."))
             (cdr_ki (Usage In) (Type Float) (Range 4e-6 0.0 1e-3)
@@ -87,7 +87,7 @@
         )
         (adapt_start (Usage In) (Type Integer) (List 0 1) (Default 0)
             (List_Tip "Init design" "cold start")
-            (Description "Where GetWave's adaptation starts: Init's FFE / DFE design, or cold -- pass-through FFE and zero DFE taps (whichever adapt), with the gain, data level and sampling phase of the unequalized pulse -- so LMS and the CDR learn the equalizer from the waveform alone, as a DSP receiver does at power-up. Init's returned impulse and output parameters are its design either way."))
+            (Description "Where GetWave's adaptation starts: Init's FFE / DFE design, or cold -- pass-through FFE and zero DFE taps, with the gain, data level and sampling phase of the unequalized pulse -- so LMS and the CDR learn the equalizer from the waveform alone, as a DSP receiver does at power-up. Needs every FFE / DFE in use to adapt (mode 2). Under a CDR on the slicer input (cdr_mode 1, 2) the first pre-cursor tap keeps Init's value; with cdr_mode 3 it is learned too. Init's returned impulse and output parameters are its design either way."))
         (level_mu (Usage In) (Type Float) (Range 1e-3 0.0 0.05)
             (Description "Data-level (slicer reference) tracking step."))
         (rx_noise_nv (Usage In) (Type Float) (Range 5.0 0.0 100.0)

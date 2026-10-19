@@ -53,13 +53,18 @@ in -> CTLE -> AGC -> UI-spaced FFE -(+)-> out (slicer input)
   `AMI_parameters_out` after every call reports CTLE, AGC, level, CDR phase
   and frequency, and the FFE / DFE taps.
 * **Cold start** (`adapt_start` 1): GetWave starts from a pass-through FFE
-  and zero DFE taps (whichever adapt), with the gain, data level and phase
-  of the unequalized pulse, and LMS learns the equalizer from the waveform
-  alone. Init still returns, and reports, its own design.
+  and zero DFE taps, with the gain, data level and phase of the unequalized
+  pulse, and LMS learns the equalizer from the waveform alone. Every FFE /
+  DFE in use must adapt (mode 2): a stage fixed at Init's design was
+  designed around its partner, so then GetWave starts from Init's design
+  and the Init message says so. Under a CDR on the slicer input the held
+  pre-cursor tap keeps Init's value. Init still returns, and reports, its
+  own design.
 * `cdr_mode` 3 runs the Mueller-Muller detector on the FFE input's
   main-tap sample: the loop locks where the channel's own h(-1) = h(+1),
   whatever the taps do, so the pre-cursor tap adapts too. Init then
-  designs the equalizer at that phase. From a cold start this is the
+  designs the equalizer at that phase, which on a channel with a strong
+  post-cursor is late: give the FFE a pre-cursor tap. From a cold start this is the
   combination that learns every tap (`examples/ibis_ami/mrm_pam4_adaptive_rx.py`).
 * `Modulation` (reserved, In): `NRZ` or `PAM4` (Gray, thresholds at 0 and
   +/-2/3 of the adapted outer level).

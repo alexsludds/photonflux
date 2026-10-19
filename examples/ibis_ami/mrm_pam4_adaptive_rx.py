@@ -120,6 +120,8 @@ def main(argv=None) -> int:
     ap.add_argument("--nui", type=int, default=20000, help="transient length [UI]")
     ap.add_argument("--quick", action="store_true", help="fewer noise points")
     args = ap.parse_args(argv)
+    if args.nui < 3000:
+        ap.error("--nui: at least 3000 UI (the Rx needs ~3000 to adapt)")
     ensure_built()
 
     doc = json.loads(EXAMPLE.read_text())
@@ -273,10 +275,10 @@ def main(argv=None) -> int:
     ax.legend(fontsize=7)
 
     ax = axs[2, 2]
-    for (lab, runs), col in zip(noise_runs.items(), ("C1", "C3")):
-        ax.loglog(sig * 1e3, np.maximum([r.td.qfit["ber_est"] for r in runs], 1e-30), "--",
-                  color=col, label=f"{lab}: Q-fit")
-        plot_counted(ax, sig, [r.td for r in runs], f"{lab}: counted", color=col)
+    for (lab, sweep_runs), col in zip(noise_runs.items(), ("C1", "C3")):
+        ax.loglog(sig * 1e3, np.maximum([r.td.qfit["ber_est"] for r in sweep_runs], 1e-30),
+                  "--", color=col, label=f"{lab}: Q-fit")
+        plot_counted(ax, sig, [r.td for r in sweep_runs], f"{lab}: counted", color=col)
     ax.set_ylim(1e-12, 1)
     ax.set(xlabel="Rx input noise [mV rms / sample]", ylabel="BER (Gray)",
            title="BER vs noise: the DFE tap cancels h1 without noise gain")

@@ -105,7 +105,9 @@ minimizes the crosstalk it actually receives.
 and zero DFE taps; decision-directed LMS learns the equalizer from the
 received waveform, as an optical DSP does at power-up. With the
 Mueller-Muller CDR on the FFE input (`cdr_mode=3`) timing never depends on
-the taps, so every FFE tap but the main one adapts. On a 0.3 m backplane
+the taps, so every FFE tap but the main one adapts (under `cdr_mode` 1 or 2
+the first pre-cursor tap keeps Init's value; an FFE or DFE fixed at Init's
+design keeps the whole start there). On a 0.3 m backplane
 the learned 5-tap FFE lands within 0.03 of `AMI_Init`'s MMSE design
 (`tests/test_ibisami.py`).
 
@@ -121,7 +123,7 @@ residual), 6 mV rms Rx noise, 20000 UI:
 | FFE 3 / 5 / 7 | 0 / 0 / 0 | 2.8e-6 / 2.5e-7 / 5.7e-8 |
 | FFE 3 / 5 / 7 + DFE 1 | 0 / 0 / 0 | 1.1e-7 / 5.0e-8 / 5.1e-9 |
 
-Every tap converges within ~2000 UI. The FFE's c(+1) and the DFE tap both
+Every tap converges within ~3000 UI. The FFE's c(+1) and the DFE tap both
 cancel the first post-cursor, so the error surface is nearly flat along
 their trade-off: the cold start settles at c(+1) = -0.05, b1 = 0.15, while
 `AMI_Init`'s design (and LMS seeded from it) uses c(+1) = +0.2, b1 = 0.4,

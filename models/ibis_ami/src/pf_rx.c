@@ -456,12 +456,18 @@ PF_AMI_EXPORT long AMI_Init(double *impulse_matrix, long row_size,
         best.n0 = 0;
     }
     m->ctle_peak = best_pk;
-    /* a cold start samples the unequalized (CTLE-only) pulse at its peak,
-     * or where a CDR on the FFE input locks on it (Init's phase) */
+    /* A cold start needs every equalizer stage in use to adapt: a fixed FFE
+     * (DFE) was designed around its partner's Init taps. It samples the
+     * unequalized (CTLE-only) pulse at its peak, or at Init's phase under a
+     * fixed-phase CDR or one on the FFE input (which locks there on this
+     * pulse). */
+    int ffe_fixed = m->ffe_mode == 1;
+    int dfe_fixed = m->dfe_mode == 1 && m->dfe_n > 0;
+    int cold = m->cold && best.fom > 0.0 && !ffe_fixed && !dfe_fixed &&
+               (m->ffe_mode == 2 || (m->dfe_mode == 2 && m->dfe_n > 0));
     long cold_n0 = -1;
     double cold_main = 0.0;
-    if (m->cold && best.fom > 0.0 &&
-        (m->ffe_mode == 2 || m->dfe_mode == 2)) {
+    if (cold) {
         memcpy(hc, h, (size_t)n * sizeof(double));
         if (m->ctle_mode > 0) {
             design_ctle(&m->ctle, m->ts, m->ctle_peak, m->ctle_fp1,
@@ -478,7 +484,7 @@ PF_AMI_EXPORT long AMI_Init(double *impulse_matrix, long row_size,
             if (cold_n0 < 0 || pulse[i] > pulse[cold_n0])
                 cold_n0 = i;
         }
-        if (m->cdr_mode == 3)
+        if (m->cdr_mode == 0 || m->cdr_mode == 3)
             cold_n0 = best.n0;
         cold_main = pulse[cold_n0];
     }
@@ -527,10 +533,12 @@ PF_AMI_EXPORT long AMI_Init(double *impulse_matrix, long row_size,
                 acc -= h[i - N];
             pulse[i] = acc;
         }
-        for (long k = n_main; k < n_main + N && k < n; k++) {
+        for (long k = n_main; k < n_main + N && k + 1 < n; k++) {
+            if (k - N < 0)
+                continue;
             double d0 = pulse[k] - pulse[k - N];
             double d1 = pulse[k + 1] - pulse[k + 1 - N];
-            if (k - N >= 0 && d0 >= 0.0 && d1 < 0.0) {
+            if (d0 >= 0.0 && d1 < 0.0) {
                 mb = k;
                 break;
             }
@@ -560,13 +568,21 @@ PF_AMI_EXPORT long AMI_Init(double *impulse_matrix, long row_size,
 
     /* Cold start: the adaptive taps are reset, and with an adaptive FFE the
      * gain, data level and sampling phase come from the unequalized pulse,
-     * so LMS and the CDR learn the rest from the waveform */
+     * so LMS and the CDR learn the rest from the waveform. A CDR on the
+     * slicer input holds the first pre-cursor tap (see GetWave): it keeps
+     * Init's value. */
+    double design_phase = m->init_phase;
     if (cold_n0 >= 0 && cold_main > 0.0) {
         if (m->dfe_mode == 2)
             memset(m->dfe_b, 0, sizeof m->dfe_b);
         if (m->ffe_mode == 2) {
+            long hold = (m->cdr_mode == 1 || m->cdr_mode == 2)
+                            ? m->ffe_pre - 1 : -1;
+            double held = hold >= 0 ? m->ffe_w[hold] : 0.0;
             memset(m->ffe_w, 0, sizeof m->ffe_w);
             m->ffe_w[m->ffe_pre] = 1.0;
+            if (hold >= 0)
+                m->ffe_w[hold] = held;
             if (m->agc_mode > 0)
                 m->agc_gain = m->agc_target / (0.5 * cold_main);
             m->amp = 0.5 * cold_main * m->agc_gain;
@@ -577,6 +593,13 @@ PF_AMI_EXPORT long AMI_Init(double *impulse_matrix, long row_size,
     }
 
     free(hc); free(pulse); free(cur); free(g);
+    char start[96] = "";
+    if (cold)
+        snprintf(start, sizeof start, "; GetWave adapts from a cold start "
+                                      "at %.3f UI", m->init_phase);
+    else if (m->cold && best.fom > 0.0)
+        snprintf(start, sizeof start, "; adapt_start ignored: a fixed FFE "
+                                      "or DFE needs Init's design");
     pf_str_printf(&m->msg, "pf_rx: %s, CTLE %.3g dB%s, FFE %ld taps, DFE "
                            "%ld taps, FOM %.2f dB, sampling phase %.3f UI%s",
                   m->levels == 4 ? "PAM4" : "NRZ",
@@ -584,8 +607,7 @@ PF_AMI_EXPORT long AMI_Init(double *impulse_matrix, long row_size,
                   m->ctle_mode == 2 ? " (adapted)"
                                     : (m->ctle_mode == 0 ? " (off)" : ""),
                   m->ffe_mode > 0 ? m->ffe_n : 0L, m->dfe_n, m->init_fom_db,
-                  m->init_phase,
-                  cold_n0 >= 0 ? ", GetWave adapts from a cold start" : "");
+                  design_phase, start);
     *AMI_parameters_out = m->params_out.s;
     *msg = m->msg.s;
     return 1;

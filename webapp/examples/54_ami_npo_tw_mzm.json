@@ -698,22 +698,27 @@
   }
  },
  "flow": {
-  "name": "Driver CTLE + Tx FFE + MZM bias for max OMA_outer - TDECQ (RLM >= 0.95)",
+  "name": "Driver CTLE + 4-tap Tx FFE + MZM bias and length for max OMA_outer - TDECQ (RLM >= 0.95)",
   "vars": {
    "peak_db": 12.0,
    "drv_gain": 25.3,
+   "c_m2": 0.0,
    "c_m1": -0.161,
    "c_p1": -0.142,
    "c_p2": 0.023,
-   "bias_deg": 90.0
+   "bias_deg": 90.0,
+   "mzm_mm": 3.5
   },
   "set": {
    "DRV.peaking_db": "peak_db",
    "DRV.gain": "drv_gain",
+   "TX1.ami:tx_tap_m2": "c_m2",
    "TX1.ami:tx_tap_m1": "c_m1",
    "TX1.ami:tx_tap_p1": "c_p1",
    "TX1.ami:tx_tap_p2": "c_p2",
-   "WG_B.length_m": "20e-6 + bias_deg / 360 * 1311e-9 / 2.4"
+   "WG_B.length_m": "20e-6 + bias_deg / 360 * 1311e-9 / 2.4",
+   "PN_A.length_m": "mzm_mm * 1e-3",
+   "PN_B.length_m": "mzm_mm * 1e-3"
   },
   "stateye": {
    "rx_bw": "auto",
@@ -752,7 +757,7 @@
    {
     "id": "opt",
     "kind": "optimize",
-    "title": "Maximize OMA_outer - TDECQ at RLM >= 0.95 (CTLE, gain, Tx FFE, MZM bias)",
+    "title": "Maximize OMA_outer - TDECQ at RLM >= 0.95 (CTLE, gain, 4-tap Tx FFE, MZM bias, MZM length)",
     "inner": [
      "eye"
     ],
@@ -766,6 +771,11 @@
       "var": "drv_gain",
       "min": 10.0,
       "max": 60.0
+     },
+     {
+      "var": "c_m2",
+      "min": -0.15,
+      "max": 0.15
      },
      {
       "var": "c_m1",
@@ -786,15 +796,20 @@
       "var": "bias_deg",
       "min": 45.0,
       "max": 135.0
+     },
+     {
+      "var": "mzm_mm",
+      "min": 3.5,
+      "max": 10.5
      }
     ],
     "objective": "oma_minus_tdecq",
     "maximize": true,
     "constraints": [
-     "rlm >= 0.95"
+     "rlm >= 0.97"
     ],
     "method": "bayes",
-    "iters": 40
+    "iters": 60
    },
    {
     "id": "final",

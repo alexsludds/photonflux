@@ -238,11 +238,24 @@ at 1e-6.
   pre-driver pole, gain and a tanh-limited differential EMF output; the
   back-terminations and pads are separate parts.
 
-Example 54 is `npo_tw_mzm_link.py` in the GUI, at the adapted settings:
-its Link tab reports pf_rx with 0 errors in 8190 bits, a statistical BER
-of 2.4e-12 and eyes of 40 / 49 / 37 mV at 1e-6. On its ~6k-UI prbs+oma
-record the Eye tab's Measure gives TDECQ 0.99 dB (OMA_outer 0.99 mW); the
-script's full PRBS13Q gives 0.88 dB.
+Example 54 is the same link in the GUI with **15 dB** host traces each way.
+Its flow (Run panel → Flow) runs a Bayesian search, 40 evaluations on a
+2k-UI eye, over six variables: the driver CTLE peaking (0-15 dB) and gain
+(10-60 V/V), pf_tx c(-1) / c(+1) / c(+2), and the MZM bias phase (45-135°,
+set through WG_B's length). It maximizes OMA_outer − TDECQ. A final 8k-UI
+run at the optimum reports TDECQ, OMA_outer, RLM, ER and the IBIS-AMI Rx
+BER. Flows set model parameters with `INST.ami:name` targets and read the
+Rx BER as `ami_ber` / `ami_ber_counted`.
+
+| | CTLE | gain | Tx FFE c(-1)/c(+1)/c(+2) | bias | TDECQ | OMA_outer | OMA − TDECQ | RLM | ER | Rx BER (stat / counted) |
+|---|---|---|---|---|---|---|---|---|---|---|
+| start (the 10 dB design) | 12 dB | 25.3 | −0.161 / −0.142 / +0.023 | 90° | 3.25 dB | −0.49 dBm | −3.74 dB | 0.84 | 2.0 dB | — |
+| optimized | 14.8 dB | 60 (bound) | −0.190 / −0.129 / +0.027 | 91.9° | 1.80 dB | 1.36 dBm | −0.45 dB | 0.78 | 3.3 dB | 5.0e-8 / 0 |
+
+The search buys OMA with driver swing: the gain ends at its upper bound,
+and the driver and MZM compression pull RLM down to 0.78. A real 802.3
+transmitter also needs RLM ≥ 0.95, which a constraint `rlm >= 0.95` on the
+optimize step would enforce.
 
 ## Building
 

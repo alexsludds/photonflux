@@ -22,7 +22,10 @@
      "Flow (Run panel -> Flow): Bayesian search over the driver CTLE peaking and gain,",
      "pf_tx c(-1) / c(+1) / c(+2) and the MZM bias phase for the largest OMA_outer - TDECQ",
      "on a 2k-UI eye, then a final 8k-UI run reporting TDECQ, OMA_outer, RLM, ER and the",
-     "IBIS-AMI Rx BER (statistical and counted).",
+     "IBIS-AMI Rx BER (statistical and counted). Result (40 evals, 47 min): CTLE 14.8 dB,",
+     "gain 60 (its bound), FFE -0.190 / -0.129 / +0.027, bias 91.9 deg -> TDECQ 1.80 dB,",
+     "OMA_outer 1.36 dBm, OMA - TDECQ -0.45 dB, RLM 0.78, ER 3.3 dB, Rx BER 5e-8 (0 counted);",
+     "start: TDECQ 3.25 dB, OMA -0.49 dBm, OMA - TDECQ -3.74 dB, RLM 0.84.",
      "CHT / CHR are exact terminated channels, vector-fitted with the flight delay",
      "removed (fit error ~0.1 %, echoes included)."
     ]

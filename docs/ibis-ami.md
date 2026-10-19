@@ -253,6 +253,7 @@ Rx BER as `ami_ber` / `ami_ber_counted`.
 | optimized, no RLM limit | 14.8 dB | 60 (bound) | −0.190 / −0.129 / +0.027 | 91.9° | 1.80 dB | 1.36 dBm | −0.45 dB | 0.78 | 3.3 dB | 5.0e-8 / 0 |
 | optimized, `rlm >= 0.95` | 15 dB (bound) | 21.0 | −0.208 / −0.114 / +0.036 | 85.0° | 1.25 dB | −2.98 dBm | −4.22 dB | 0.93 | 1.0 dB | 5.2e-4 / 1.2e-3 |
 | + c(-2), MZM 3.5-10.5 mm, `rlm >= 0.97` | 12.5 dB | 24.9 | c(-2) 0.000, −0.250 (bound) / −0.135 / +0.052 | 89.1°, 3.5 mm | 1.72 dB | −2.82 dBm | −4.55 dB | 0.94 | 1.2 dB | 2.3e-4 / 9.4e-5 |
+| 10 knobs (+ PAM4 pre-distortion, junction bias, swing limit), 8k-UI scoring | 4.3 dB | 57.3 | −0.287 / −0.155 / +0.032; levels −0.301 / +0.296 | 88.9°, 3.5 mm | **1.10 dB** | **1.47 dBm** | **+0.37 dB** | **0.973** | 3.1 dB | 9.8e-10 / 0 |
 
 Without a limit, the search buys OMA with driver swing: the gain ends at its
 bound, and driver and MZM compression pull RLM down to 0.78. With the
@@ -269,16 +270,25 @@ trustworthy, at about 4x the cost per evaluation. With 15 dB host traces,
 this driver, MZM and Tx FFE did not meet RLM ≥ 0.95 together with the Rx
 BER in any run.
 
-A fourth run scored on 8k UI throughout. It varied ten knobs: the run
+A fourth run, scored on 8k UI throughout, varied ten knobs: the run
 above's set minus c(-2) and the MZM length, plus pf_tx PAM4 pre-distortion
 (`tx_pam4_lo` / `tx_pam4_hi`), the junction reverse bias (held above the
 electrode swing so the junctions cannot forward-bias), the driver's swing
-limit, and wider c(-1) and gain bounds. It produced no usable design. At
-evaluation 27 a closed eye was mis-scored as TDECQ −47.6 dB, giving
-OMA − TDECQ ≈ +50 dB. The search then chased such points, and its "optimum"
-has Rx BER 0.37. The one real design meeting RLM ≥ 0.95 scored −22 dB, and
-the best real one scored −4.1 dB at RLM 0.92. A TDECQ that comes out
-negative or undefined should fail the evaluation rather than score.
+limit, and wider c(-1) and gain bounds. That run was derailed: stateye
+mis-scored closed eyes as TDECQ ≈ −47 dB, the search chased them, and its
+"optimum" had Rx BER 0.37.
+
+The flow now treats a negative TDECQ as undefined, so such an evaluation
+counts as failed. The fifth run, the last table row, tightened the ranges
+(gain 15–60, inner levels ±0.25–0.5, bias 70–110°) and started from the
+fourth run's best real design. It meets every spec: TDECQ 1.10 dB,
+OMA_outer 1.47 dBm, RLM 0.973 and Rx BER 1e-9.
+
+What did it: a 5 V driver swing limit with high gain (57) and little CTLE
+(4.3 dB) gives OMA without hard limiting, and c(-1) ≈ −0.29 works past the
+old −0.25 bound. Pulling both inner levels slightly inward (−0.301 /
++0.296) lifts RLM from ~0.93 to 0.97. The swing limit ends at its bound,
+so the driver's linear range remains the binding resource.
 
 ## Building
 

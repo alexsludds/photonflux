@@ -22,9 +22,10 @@
      "Flow (Run panel -> Flow): Bayesian search, scored on 8k UI, over driver CTLE / gain /",
      "swing limit, junction reverse bias, Tx FFE c(-1) / c(+1) / c(+2), pf_tx PAM4",
      "pre-distortion (inner levels) and MZM bias for max OMA_outer - TDECQ at RLM >= 0.95,",
-     "then an 8k-UI report with the IBIS-AMI Rx BER. Its last run (70 evals, 3.8 h) was",
-     "derailed by a mis-scored closed eye (TDECQ -47.6 dB, Rx BER 0.37): see",
-     "docs/ibis-ami.md for every run's results.",
+     "then an 8k-UI report with the IBIS-AMI Rx BER. Result (70 evals, 3.8 h): CTLE 4.3 dB,",
+     "gain 57, swing limit 5 V, junction margin 1.6 V, FFE -0.287 / -0.155 / +0.032,",
+     "pre-distortion -0.301 / +0.296, bias 88.9 deg -> TDECQ 1.10 dB, OMA_outer 1.47 dBm,",
+     "OMA - TDECQ +0.37 dB, RLM 0.973, ER 3.1 dB, Rx BER 1e-9 (0 counted): all checks pass.",
      "CHT / CHR are exact terminated channels, vector-fitted with the flight delay",
      "removed (fit error ~0.1 %, echoes included)."
     ]

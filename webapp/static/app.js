@@ -1683,7 +1683,7 @@ async function fillAmiForm(body, inst, cat) {
     const unit = (AMI_UNITS.find(([re]) => re.test(p.key)) || [0, ""])[1];
     let field;
     if (p.choices || p.type === "Boolean") {
-      const choices = p.choices || [true, false];
+      const choices = p.choices || ["True", "False"];
       const opts = choices.map((c, i) => {
         const lab = p.tips && p.tips[i] ? `${c} \u2014 ${p.tips[i]}` : String(c);
         const sel = String(c).toLowerCase() === String(v).toLowerCase();
@@ -3965,12 +3965,29 @@ function renderAmi(holder, ami) {
      &times; ${e["width_ui@1e-06"].toFixed(3)} UI @1e-6,
      ${(e["height_v@1e-12"] * 1e3).toFixed(1)} mV &times; ${e["width_ui@1e-12"].toFixed(3)} UI @1e-12`)
     .join("<br>");
-  const fmtParams = (params) => Object.entries(params || {})
-    .filter(([k, v]) => (typeof v === "number" || Array.isArray(v)) && k !== "symbols")
-    .map(([k, v]) => `${k} ${Array.isArray(v) ? v.map((x) => (+x).toFixed(3)).join(", ")
-      : (+v).toPrecision(4)}`).join("; ");
-  const fin = fmtParams(ami.final_params);
-  const design = fmtParams(ami.init_params);
+  // adaptation: one row per reported quantity (and per tap), Init's design
+  // against the value at the end of GetWave; rows that moved are marked
+  const flat = (params) => {
+    const out = {};
+    for (const [k, v] of Object.entries(params || {})) {
+      if (k === "symbols") continue;
+      if (Array.isArray(v)) v.forEach((x, i) => { out[`${k}[${i}]`] = +x; });
+      else if (typeof v === "number") out[k] = v;
+    }
+    return out;
+  };
+  const init = flat(ami.init_params);
+  const fin = flat(ami.final_params);
+  const fmtV = (x) => (x === undefined ? "\u2014" : Math.abs(x) >= 1e4 || (x !== 0 && Math.abs(x) < 1e-3)
+    ? x.toExponential(3) : (+x).toPrecision(4));
+  const adaptRows = [...new Set([...Object.keys(init), ...Object.keys(fin)])].map((k) => {
+    const a = init[k];
+    const b = fin[k];
+    const moved = a !== undefined && b !== undefined
+      && Math.abs(b - a) > 1e-4 * Math.max(Math.abs(a), Math.abs(b), 1e-12);
+    return `<tr class="${moved ? "moved" : ""}"><td>${k}</td><td>${fmtV(a)}</td>
+      <td>${fmtV(b)}</td></tr>`;
+  }).join("");
   const div = document.createElement("div");
   div.className = "link-grid";
   div.innerHTML = `
@@ -3993,8 +4010,13 @@ function renderAmi(holder, ami) {
         <span class="link-hint">(how far the link is from the LTI channel
         Init assumes)</span></td></tr>
       <tr><th>Init</th><td class="link-hint">${ami.init_message}</td></tr>
-      <tr><th>Init design</th><td class="link-hint">${design}</td></tr>
-      <tr><th>adapted (end)</th><td class="link-hint">${fin}</td></tr>
+    </table>
+    <table class="ami-adapt">
+      <tr><th colspan="3">Rx adaptation <span class="link-hint">(Init's design
+        &rarr; the end of GetWave; highlighted rows moved; vs time in the
+        chart${ami.td.trace_t_ui.length > 1 ? "" : " (no trace)"})</span></th></tr>
+      <tr class="hdr"><td>quantity</td><td>Init</td><td>end</td></tr>
+      ${adaptRows}
     </table>
     <div id="ami-plots" style="display:flex;gap:12px;flex-wrap:wrap;flex:1;min-width:340px"></div>`;
   holder.appendChild(div);
@@ -4034,6 +4056,8 @@ function renderAmi(holder, ami) {
   });
   if (t.length > 1 && keys.length) {
     const ad = document.createElement("div");
+    ad.innerHTML = `<div class="ami-plot-title">Rx adaptation vs time
+      (GetWave; click legend entries to show / hide)</div>`;
     box.appendChild(ad);
     // ppm and gain live on other scales: listed, toggled on from the legend
     plots.push(new uPlot({ width: 420, height: ph, scales: { x: { time: false } },

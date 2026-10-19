@@ -20,15 +20,16 @@ python -m photonflux ami info pf_rx      # one model's parameters (as PyAMI pars
 | [`electrical_nrz_backplane.py`](electrical_nrz_backplane.py) | 32 Gb/s NRZ over a 27.7 dB backplane with FEXT: Tx preset link training in the statistical flow, BER contours, bathtubs, GetWave DFE/CDR adaptation, counted BER, and statistical vs counted BER across four decades |
 | [`electrical_pam4.py`](electrical_pam4.py) | 106 Gb/s PAM4: Tx FFE (c-1, c+1) optimization, three-eye statistical analysis, Rx FFE + DFE + Mueller-Muller CDR adaptation, MM vs bang-bang CDR, frozen vs adapting Rx against the statistical prediction |
 | [`optical_links.py`](optical_links.py) | IBIS-AMI Tx/Rx around circulax optics (web examples 51/52): 25G NRZ over C-band fiber swept in length, 106G PAM4 over O-band swept in MZM drive. Where IBIS-AMI's LTI assumption breaks, and the linear-fit + distortion split that repairs the statistical flow |
-| [`npo_tw_mzm_link.py`](npo_tw_mzm_link.py) | near-package optics, 53.125 GBd PAM4: pf_tx -> 10 dB host trace (packages, BGA, vias, LGA, pads, every reflection) -> CTLE driver -> traveling-wave Si MZM (distributed PN electrode, terminations, walk-off) -> 500 m -> PD/TIA -> 10 dB trace -> pf_rx. Adapts the driver CTLE peaking and the Tx FFE for minimum TDECQ, then reports TDECQ from the full circuit transient and the Rx's BER |
+| [`npo_tw_mzm_link.py`](npo_tw_mzm_link.py) | near-package optics, 53.125 GBd PAM4: pf_tx -> 10 dB host trace (packages, BGA, vias, LGA, pads, every reflection) -> CTLE driver -> traveling-wave Si MZM (distributed PN electrode, terminations, walk-off) -> 500 m -> PD/TIA -> 10 dB trace -> pf_rx. Adapts the driver CTLE peaking and the Tx FFE for minimum TDECQ, then reports TDECQ from the full circuit transient and the Rx's BER. Web example 54 is the same link at the adapted settings |
 | [`mrm_pam4_adaptive_rx.py`](mrm_pam4_adaptive_rx.py) | 53.125 GBd PAM4 microring modulator link (web example 53): `pf_rx` as an ADC-DSP learns a 5-tap FFE and a 1-tap DFE in `AMI_GetWave` from a cold start; no EQ / DFE only / 3-5-7-tap FFE with and without the DFE, BER vs Rx noise, LMS vs Init's MMSE design |
 | [`public_models.py`](public_models.py) | every library model on one channel: Init vs GetWave consistency, every Tx x Rx pairing, and SiSoft's original 2008 i386 binary (in a container) against its native rebuild |
 | [`ami_model_tester.py`](ami_model_tester.py) | any model's parameters and impulse / step / frequency response, cross-checked against PyAMI's own `AMIModel.get_responses` |
 
 The web app has the same blocks, **IBIS-AMI Tx** (a pattern source) and
 **IBIS-AMI Rx** (on the receive path). Examples 50 (electrical), 51
-(C-band optical), 52 (106G PAM4 optical) and 53 (MRM PAM4, Rx adapting from
-a cold start) use them; the Link tab shows the IBIS-AMI report.
+(C-band optical), 52 (106G PAM4 optical), 53 (MRM PAM4, Rx adapting from
+a cold start) and 54 (near-package optics, the GUI version of
+`npo_tw_mzm_link.py`) use them; the Link tab shows the IBIS-AMI report.
 
 ## Freely available IBIS-AMI models
 

@@ -135,62 +135,28 @@ TIA_NOISE = 16e-12       # input-referred, A/rtHz
 # passive channels
 # ---------------------------------------------------------------------------
 
-def _materials():
-    return dict(
-        pcb=rfnet.line_rlgc(F, z0=50.0, er=3.6, tand=0.004, cond_db_m_rtghz=7.0,
-                            r_dc=8.0),        # 5 mil x 0.5 oz copper
-        pkg=rfnet.line_rlgc(F, z0=45.0, er=3.4, tand=0.010, cond_db_m_rtghz=14.0),
-        sub=rfnet.line_rlgc(F, z0=48.0, er=3.4, tand=0.010, cond_db_m_rtghz=14.0),
-        lga=rfnet.line_rlgc(F, z0=58.0, er=1.0),
-        via=rfnet.line_rlgc(F, z0=45.0, er=3.6, tand=0.004),
-    )
-
-
-def _via(m, stub_mm=0.25):
-    """Through-via (2 mm barrel, 45 Ohm) with the backdrill's residual stub."""
-    return rfnet.Net.line(m["via"], 2e-3) @ rfnet.Net.open_stub(m["via"], stub_mm * 1e-3)
-
-
-def _pad(c: float, z: float = 50.0) -> rfnet.Net:
-    """A die pad + ESD capacitance ``c`` distributed in a two-section
-    pi-coil ladder (C/4, L/2, C/2, L/2, C/4 with L = z^2 c): an artificial
-    line of impedance ``z``, the usual way a 100+ GHz-fT I/O hides its
-    capacitance (a bridged T-coil does the same in one stage)."""
-    n = rfnet.Net
-    half = n.series_l(F, z * z * c / 2)
-    return (n.shunt_c(F, c / 4) @ half @ n.shunt_c(F, c / 2) @ half
-            @ n.shunt_c(F, c / 4))
-
-
 def channels() -> dict:
     """Tx (SerDes -> driver) and Rx (TIA -> SerDes) channels, odd mode."""
-    m = _materials()
-    n = rfnet.Net
-    trace_m = rfnet.length_for_loss(m["pcb"], 10.0, F_NYQ)
-    pcb = n.line(m["pcb"], trace_m)
-    host = (n.series_l(F, 30e-12) @ n.line(m["pkg"], 10e-3)        # bump, package
-            @ n.shunt_c(F, 70e-15) @ n.series_l(F, 120e-12)         # BGA ball
-            @ _via(m))
-    module = (_via(m) @ n.line(m["lga"], 1.2e-3) @ n.shunt_c(F, 40e-15)   # LGA
-              @ n.line(m["sub"], 5e-3) @ n.series_l(F, 30e-12))     # substrate, bump
-    tx = dict(net=_pad(150e-15) @ host @ pcb @ module @ _pad(100e-15),
+    tx = dict(rfnet.host_module_link(F, f_nyq=F_NYQ, c_src=150e-15, c_load=100e-15),
               zs=50.0, zl=50.0, name="SerDes Tx -> driver")
-    rx = dict(net=_pad(80e-15) @ module.flipped() @ pcb @ host.flipped() @ _pad(200e-15),
+    rx = dict(rfnet.host_module_link(F, f_nyq=F_NYQ, c_src=80e-15, c_load=200e-15,
+                                     host_to_module=False),
               zs=50.0, zl=50.0, name="TIA -> SerDes Rx")
     for ch in (tx, rx):
         ch["H"] = ch["net"].transfer(ch["zs"], ch["zl"])
         ch["h"] = rfnet.impulse(F, ch["H"], TS, NFFT)
         ch["s"] = ch["net"].s(50.0)
     k = int(np.argmin(np.abs(F - F_NYQ)))
+    pcb, trace_m = tx["pcb"], tx["trace_m"]
     summary = {"trace_cm": 100 * trace_m,
-               "trace_delay_ns": 1e9 * m["pcb"].delay_s_m(F_NYQ) * trace_m,
-               "trace_il_db": -20 * np.log10(abs(n.line(m["pcb"], trace_m).s()[1, 0, k]))}
+               "trace_delay_ns": 1e9 * pcb.delay_s_m(F_NYQ) * trace_m,
+               "trace_il_db": -20 * np.log10(abs(rfnet.Net.line(pcb, trace_m).s()[1, 0, k]))}
     for key, ch in (("tx", tx), ("rx", rx)):
         s = ch["s"][:, :, k]
         summary[key] = {"il_db": -20 * np.log10(abs(s[1, 0])),
                         "rl_in_db": -20 * np.log10(abs(s[0, 0])),
                         "rl_out_db": -20 * np.log10(abs(s[1, 1]))}
-    return {"tx": tx, "rx": rx, "summary": summary, "pcb": m["pcb"]}
+    return {"tx": tx, "rx": rx, "summary": summary, "pcb": pcb}
 
 
 # ---------------------------------------------------------------------------

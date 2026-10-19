@@ -881,6 +881,7 @@ function chanGlyph(tag) {
 }
 S.channel = chanGlyph("CHAN");
 S.s2p_channel = chanGlyph("S2P");
+S.pcb_link = chanGlyph("PCB");
 
 S.fiber_cd = {
   w: 80, h: 26, pins: { p1: [0, 13], p2: [80, 13] }, label: [14, -8],
@@ -975,6 +976,20 @@ S.ctle = {
     <text x="22" y="16" style="font-size:8px">CTLE</text>`,
 };
 
+S.mod_driver = {
+  w: 80, h: 60,
+  pins: { inp: [0, 30], outp: [80, 18], outn: [80, 42] },
+  label: [14, -6], pinLabels: true,
+  draw: () => `
+    <path class="${EL} body-fill" d="M12 4 L68 30 L12 56 Z"/>
+    <line class="${EL}" x1="0" y1="30" x2="12" y2="30"/>
+    <line class="${EL}" x1="56" y1="24" x2="80" y2="18"/>
+    <line class="${EL}" x1="56" y1="36" x2="80" y2="42"/>
+    <path class="${EL}" d="M16 38 h7 q4 0 6 -6 q2 -6 6 -6 h3"
+      fill="none" stroke-width="1.2"/>
+    <text x="16" y="22" style="font-size:7px">DRV</text>`,
+};
+
 S.rx_ffe = {
   w: 80, h: 50,
   pins: { inp: [0, 25], out: [80, 25] },
@@ -1051,6 +1066,7 @@ const HEADLINE_PARAM = {
   resistor: "R", capacitor: "C", inductor: "L", diode: "Is",
   nmos: "W", pmos: "W", opamp: "A", tia: "gain_ohm", ctle: "peaking_db",
   rx_ffe: "n_taps", rx_dfe: "n_taps", ami_rx: "model",
+  mod_driver: "peaking_db", pcb_link: "loss_db",
   channel: "loss_db", s2p_channel: "z0", fiber_cd: "length_km",
   fiber_nl: "gamma_per_W_km",
   sky130_nfet: "w_um", sky130_nfet_lvt: "w_um", sky130_nfet_5v: "w_um",

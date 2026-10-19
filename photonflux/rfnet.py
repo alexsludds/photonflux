@@ -207,3 +207,46 @@ def length_for_loss(ln: Line, loss_db: float, f0: float, z0: float = 50.0) -> fl
         mid = 0.5 * (lo + hi)
         lo, hi = (mid, hi) if il(mid) < loss_db else (lo, mid)
     return 0.5 * (lo + hi)
+
+
+def pi_coil_pad(f: np.ndarray, c: float, z: float = 50.0) -> Net:
+    """A die pad + ESD capacitance ``c`` distributed in a two-section
+    pi-coil ladder (C/4, L/2, C/2, L/2, C/4 with L = z^2 c): an artificial
+    line of impedance ``z``, the usual way a 100+ GHz-fT I/O hides its
+    capacitance (a bridged T-coil does the same in one stage)."""
+    half = Net.series_l(f, z * z * c / 2)
+    return (Net.shunt_c(f, c / 4) @ half @ Net.shunt_c(f, c / 2) @ half
+            @ Net.shunt_c(f, c / 4))
+
+
+def host_module_link(f: np.ndarray, *, loss_db: float = 10.0, f_nyq: float = 26.5625e9,
+                     c_src: float = 150e-15, c_load: float = 100e-15,
+                     host_to_module: bool = True) -> dict:
+    """A host-board link between a switch / SerDes package and a
+    near-package optical module, in the odd mode of a 100 Ohm pair (50 Ohm
+    single-ended):
+
+    die pad (pi-coil, ``c_src``) - bump - 10 mm 45 Ohm package trace - BGA
+    ball - backdrilled via - PCB stripline sized for ``loss_db`` at
+    ``f_nyq`` (3.6 / 0.004 dielectric, 7 dB/m/rtGHz skin, 8 Ohm/m DC) - via
+    - LGA interposer - 5 mm module substrate - bump - die pad (``c_load``).
+
+    ``host_to_module=False`` runs the same hardware the other way (module
+    TIA to host SerDes). Returns ``net`` plus ``trace_m`` and the ``pcb``
+    line."""
+    pcb = line_rlgc(f, z0=50.0, er=3.6, tand=0.004, cond_db_m_rtghz=7.0, r_dc=8.0)
+    pkg = line_rlgc(f, z0=45.0, er=3.4, tand=0.010, cond_db_m_rtghz=14.0)
+    sub = line_rlgc(f, z0=48.0, er=3.4, tand=0.010, cond_db_m_rtghz=14.0)
+    lga = line_rlgc(f, z0=58.0, er=1.0)
+    via_ln = line_rlgc(f, z0=45.0, er=3.6, tand=0.004)
+    via = Net.line(via_ln, 2e-3) @ Net.open_stub(via_ln, 0.25e-3)
+    trace_m = length_for_loss(pcb, loss_db, f_nyq)
+    host = (Net.series_l(f, 30e-12) @ Net.line(pkg, 10e-3)          # bump, package
+            @ Net.shunt_c(f, 70e-15) @ Net.series_l(f, 120e-12)     # BGA ball
+            @ via)
+    module = (via @ Net.line(lga, 1.2e-3) @ Net.shunt_c(f, 40e-15)  # LGA
+              @ Net.line(sub, 5e-3) @ Net.series_l(f, 30e-12))      # substrate, bump
+    a, b = (host, module) if host_to_module else (module.flipped(), host.flipped())
+    net =(pi_coil_pad(f, c_src) @ a @ Net.line(pcb, trace_m) @ b
+           @ pi_coil_pad(f, c_load))
+    return {"net": net, "trace_m": trace_m, "pcb": pcb}

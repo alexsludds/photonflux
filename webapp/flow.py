@@ -55,6 +55,7 @@ import exprs
 
 MAX_STEPS = 12
 MAX_ITERS = 120
+MAX_PARAMS = 10        # optimize: knobs per step (Bayes needs ~5-6 evals per knob)
 METHODS = ("bayes", "nelder-mead")     # optimize: Bayesian (GP) or simplex
 SAMPLES_PER_UI = 16    # evaluate: save points per UI of the full-period record
 SETTLE_UI = 16         # figures of merit: start-up dropped before scoring
@@ -639,8 +640,8 @@ class _Runner:
         params = step.get("params") or []
         if not params:
             raise FlowError("optimize: add at least one parameter to vary")
-        if len(params) > 8:
-            raise FlowError("optimize: at most 8 parameters")
+        if len(params) > MAX_PARAMS:
+            raise FlowError(f"optimize: at most {MAX_PARAMS} parameters")
         objective = str(step.get("objective") or "").strip()
         if not objective:
             raise FlowError("optimize: no objective (an output name or an "

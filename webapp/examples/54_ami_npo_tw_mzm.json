@@ -1,7 +1,7 @@
 {
  "title": "IBIS-AMI near-package optics: TW-MZM PAM4 link",
  "group": "Photonic links",
- "description": "53.125 GBd PAM4 NPO: IBIS-AMI Tx (FFE) -> 15 dB host trace -> CTLE driver -> traveling-wave Si MZM -> 500 m -> PD/TIA -> 15 dB trace -> IBIS-AMI Rx; flow: CTLE, Tx FFE and MZM bias for max OMA_outer - TDECQ",
+ "description": "53.125 GBd PAM4 NPO: IBIS-AMI Tx (FFE) -> 15 dB host trace -> CTLE driver -> traveling-wave Si MZM -> 500 m -> PD/TIA -> 15 dB trace -> IBIS-AMI Rx; flow: driver, Tx FFE + PAM4 pre-distortion and MZM biases for max OMA_outer - TDECQ",
  "schematic": {
   "notes": [
    {
@@ -700,27 +700,31 @@
   }
  },
  "flow": {
-  "name": "Driver CTLE + 4-tap Tx FFE + MZM bias and length for max OMA_outer - TDECQ (RLM >= 0.95)",
+  "name": "Driver CTLE / gain / swing, Tx FFE + PAM4 pre-distortion, MZM bias and junction bias for max OMA_outer - TDECQ (RLM >= 0.95)",
   "vars": {
-   "peak_db": 12.0,
-   "drv_gain": 25.3,
-   "c_m2": 0.0,
-   "c_m1": -0.161,
-   "c_p1": -0.142,
-   "c_p2": 0.023,
-   "bias_deg": 90.0,
-   "mzm_mm": 3.5
+   "peak_db": 12.46,
+   "drv_gain": 24.94,
+   "c_m1": -0.25,
+   "c_p1": -0.135,
+   "c_p2": 0.052,
+   "bias_deg": 89.1,
+   "v_rev": 2.0,
+   "vsat_d": 3.0,
+   "pd_lo": -0.3333333333333333,
+   "pd_hi": 0.3333333333333333
   },
   "set": {
    "DRV.peaking_db": "peak_db",
    "DRV.gain": "drv_gain",
-   "TX1.ami:tx_tap_m2": "c_m2",
+   "DRV.vsat_d": "vsat_d",
+   "DRV.vcm": "v_rev",
+   "VT.V": "v_rev",
    "TX1.ami:tx_tap_m1": "c_m1",
    "TX1.ami:tx_tap_p1": "c_p1",
    "TX1.ami:tx_tap_p2": "c_p2",
-   "WG_B.length_m": "20e-6 + bias_deg / 360 * 1311e-9 / 2.4",
-   "PN_A.length_m": "mzm_mm * 1e-3",
-   "PN_B.length_m": "mzm_mm * 1e-3"
+   "TX1.ami:tx_pam4_lo": "pd_lo",
+   "TX1.ami:tx_pam4_hi": "pd_hi",
+   "WG_B.length_m": "20e-6 + bias_deg / 360 * 1311e-9 / 2.4"
   },
   "stateye": {
    "rx_bw": "auto",
@@ -740,10 +744,10 @@
    {
     "id": "eye",
     "kind": "analysis",
-    "title": "PAM4 eye at TP2 (2k UI)",
+    "title": "PAM4 eye at TP2 (8k UI)",
     "analysis": {
      "mode": "transient",
-     "t_stop": 3.855058823529412e-08,
+     "t_stop": 1.5058823529411766e-07,
      "points": 20000,
      "dtmax": 5.882352941176471e-13
     },
@@ -759,7 +763,7 @@
    {
     "id": "opt",
     "kind": "optimize",
-    "title": "Maximize OMA_outer - TDECQ at RLM >= 0.95 (CTLE, gain, 4-tap Tx FFE, MZM bias, MZM length)",
+    "title": "Maximize OMA_outer - TDECQ at RLM >= 0.95",
     "inner": [
      "eye"
     ],
@@ -772,16 +776,21 @@
      {
       "var": "drv_gain",
       "min": 10.0,
-      "max": 60.0
+      "max": 80.0
      },
      {
-      "var": "c_m2",
-      "min": -0.15,
-      "max": 0.15
+      "var": "vsat_d",
+      "min": 2.0,
+      "max": 5.0
+     },
+     {
+      "var": "v_rev",
+      "min": 1.0,
+      "max": 4.0
      },
      {
       "var": "c_m1",
-      "min": -0.25,
+      "min": -0.35,
       "max": 0.0
      },
      {
@@ -795,23 +804,28 @@
       "max": 0.15
      },
      {
+      "var": "pd_lo",
+      "min": -0.6,
+      "max": -0.15
+     },
+     {
+      "var": "pd_hi",
+      "min": 0.15,
+      "max": 0.6
+     },
+     {
       "var": "bias_deg",
       "min": 45.0,
       "max": 135.0
-     },
-     {
-      "var": "mzm_mm",
-      "min": 3.5,
-      "max": 10.5
      }
     ],
     "objective": "oma_minus_tdecq",
     "maximize": true,
     "constraints": [
-     "rlm >= 0.97"
+     "rlm >= 0.95"
     ],
     "method": "bayes",
-    "iters": 60
+    "iters": 70
    },
    {
     "id": "final",

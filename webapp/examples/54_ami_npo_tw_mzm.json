@@ -708,7 +708,7 @@
    "c_p1": -0.135,
    "c_p2": 0.052,
    "bias_deg": 89.1,
-   "v_rev": 2.0,
+   "v_m": 1.1,
    "vsat_d": 3.0,
    "pd_lo": -0.3333333333333333,
    "pd_hi": 0.3333333333333333
@@ -717,8 +717,8 @@
    "DRV.peaking_db": "peak_db",
    "DRV.gain": "drv_gain",
    "DRV.vsat_d": "vsat_d",
-   "DRV.vcm": "v_rev",
-   "VT.V": "v_rev",
+   "DRV.vcm": "v_m + 0.3 * vsat_d",
+   "VT.V": "v_m + 0.3 * vsat_d",
    "TX1.ami:tx_tap_m1": "c_m1",
    "TX1.ami:tx_tap_p1": "c_p1",
    "TX1.ami:tx_tap_p2": "c_p2",
@@ -748,7 +748,8 @@
     "analysis": {
      "mode": "transient",
      "t_stop": 1.5058823529411766e-07,
-     "points": 20000,
+     "points": 256000,
+     "max_points": 256000,
      "dtmax": 5.882352941176471e-13
     },
     "outputs": {
@@ -784,9 +785,9 @@
       "max": 5.0
      },
      {
-      "var": "v_rev",
-      "min": 1.0,
-      "max": 4.0
+      "var": "v_m",
+      "min": 0.3,
+      "max": 2.5
      },
      {
       "var": "c_m1",
@@ -834,7 +835,8 @@
     "analysis": {
      "mode": "transient",
      "t_stop": 1.5058823529411766e-07,
-     "points": 20000,
+     "points": 256000,
+     "max_points": 256000,
      "dtmax": 5.882352941176471e-13,
      "link": {
       "probe": "vrx"

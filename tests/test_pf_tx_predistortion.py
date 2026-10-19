@@ -22,7 +22,7 @@ def _levels(**params):
 
 
 def test_default_levels_are_unchanged():
-    assert np.allclose(_levels(), [-0.5, -1 / 6, 1 / 6, 0.5], atol=1e-9)
+    assert np.allclose(_levels(), [-0.5, -1 / 6, 1 / 6, 0.5], rtol=0, atol=1e-12)
 
 
 def test_inner_levels_move_outer_levels_stay():

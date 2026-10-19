@@ -185,6 +185,10 @@ PF_AMI_EXPORT long AMI_Init(double *impulse_matrix, long row_size,
     report(m);
     pf_str_printf(&m->msg, "pf_tx: %d-tap FFE, main %.4f, swing %.3g, "
                            "bw %.3g Hz", NTAPS, m->c[NPRE], m->swing, m->bw);
+    if (fabs(m->lvl_lo + 1.0 / 3.0) > 1e-9 || fabs(m->lvl_hi - 1.0 / 3.0) > 1e-9)
+        pf_str_printf(&m->msg, "; PAM4 levels -1 / %.4g / %.4g / +1 in "
+                               "GetWave only (Init is the linear FFE)",
+                      m->lvl_lo, m->lvl_hi);
     *AMI_parameters_out = m->params_out.s;
     *msg = m->msg.s;
     return 1;

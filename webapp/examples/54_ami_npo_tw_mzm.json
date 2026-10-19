@@ -698,7 +698,7 @@
   }
  },
  "flow": {
-  "name": "Driver CTLE + Tx FFE + MZM bias for max OMA_outer - TDECQ",
+  "name": "Driver CTLE + Tx FFE + MZM bias for max OMA_outer - TDECQ (RLM >= 0.95)",
   "vars": {
    "peak_db": 12.0,
    "drv_gain": 25.3,
@@ -752,7 +752,7 @@
    {
     "id": "opt",
     "kind": "optimize",
-    "title": "Maximize OMA_outer - TDECQ (CTLE, gain, Tx FFE, MZM bias)",
+    "title": "Maximize OMA_outer - TDECQ at RLM >= 0.95 (CTLE, gain, Tx FFE, MZM bias)",
     "inner": [
      "eye"
     ],
@@ -790,7 +790,9 @@
     ],
     "objective": "oma_minus_tdecq",
     "maximize": true,
-    "constraints": [],
+    "constraints": [
+     "rlm >= 0.95"
+    ],
     "method": "bayes",
     "iters": 40
    },
@@ -817,7 +819,8 @@
      "ber_counted": "ami_ber_counted"
     },
     "checks": [
-     "ber <= 2.4e-4"
+     "ber <= 2.4e-4",
+     "rlm >= 0.95"
     ]
    }
   ]

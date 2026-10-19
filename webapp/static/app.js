@@ -3990,7 +3990,7 @@ function renderAmi(holder, ami) {
   }).join("");
   const div = document.createElement("div");
   div.className = "link-grid";
-  div.innerHTML = `
+  div.innerHTML = `<div style="display:flex;flex-direction:column;gap:10px;max-width:560px">
     <table id="link-table" style="max-width:560px">
       <tr><th>IBIS-AMI Rx</th><td><b>${ami.model}</b> (${ami.where}) on
         ${ami.probe}, ${ami.modulation}, UI ${fmtSI(ami.ui)}s</td></tr>
@@ -4017,7 +4017,7 @@ function renderAmi(holder, ami) {
         chart${ami.td.trace_t_ui.length > 1 ? "" : " (no trace)"})</span></th></tr>
       <tr class="hdr"><td>quantity</td><td>Init</td><td>end</td></tr>
       ${adaptRows}
-    </table>
+    </table></div>
     <div id="ami-plots" style="display:flex;gap:12px;flex-wrap:wrap;flex:1;min-width:340px"></div>`;
   holder.appendChild(div);
   const box = div.querySelector("#ami-plots");

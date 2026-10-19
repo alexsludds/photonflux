@@ -189,6 +189,14 @@ body { display: flex; flex-direction: column; }
 }
 .insp-row input:focus { border-color: var(--accent); outline: none; }
 .insp-row .unit { color: var(--text-dim); font-size: 10px; width: 34px; }
+.insp-ami-head { margin: 10px 0 2px; font-size: 11px; font-weight: 700;
+  color: var(--text-dim); text-transform: uppercase; letter-spacing: .04em; }
+.insp-ami-group { margin: 8px 0 0; font-size: 11px; color: var(--accent);
+  border-bottom: 1px solid var(--border); }
+#insp-ami .insp-row label { font: 11px ui-monospace, monospace; }
+#insp-ami .insp-row.ami-set label { color: var(--accent); font-weight: 700; }
+#insp-ami .insp-row select { flex: 1; min-width: 0; }
+#insp-ami input.bad { border-color: #f87171; }
 .insp-btns { display: flex; gap: 6px; margin: 8px 0; }
 .insp-btns button {
   flex: 1; background: var(--panel2); color: var(--text);

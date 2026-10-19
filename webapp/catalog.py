@@ -1610,8 +1610,12 @@ CATALOG: dict[str, dict] = {
                "AMI_GetWave on the waveform itself (recovered clock, counted "
                "BER, and the adaptation trace of everything the model "
                "reports, e.g. CTLE, DFE / FFE taps and CDR phase). "
-               "Parameters overrides the model's .ami defaults as name=value "
-               "pairs, e.g. `ctle_fp1=12.5e9 dfe_ntaps=8 cdr_mode=2`. "
+               "The inspector lists every parameter of the chosen model's "
+               ".ami file (grouped, with its range or choices); values set "
+               "away from the default are highlighted and written to "
+               "Overrides (text) as name=value pairs, e.g. "
+               "`ctle_fp1=12.5e9 dfe_ntaps=8 cdr_mode=2`, which can also be "
+               "edited directly. "
                "noise_rms adds white Gaussian noise (V rms per sample at 32 "
                "samples/UI) at the Rx input for both flows. pf_rx is "
                "photonflux's open-source model (CTLE, AGC, FFE, DFE, CDR); "
@@ -1620,7 +1624,7 @@ CATALOG: dict[str, dict] = {
         "params": [
             _p("model", "pf_rx", "", "AMI model", kind="enum",
                choices=["pf_rx"]),
-            _p("ami_params", "", "", "Parameters", kind="line"),
+            _p("ami_params", "", "", "Overrides (text)", kind="line"),
             _p("noise_rms", 0.0, "V", "Input noise (rms)"),
         ],
         "ami": "rx",
@@ -2003,15 +2007,16 @@ CATALOG["ami_tx"] = {
            "(photonflux.ibisami, parsed by PyAMI): the PRBS / PAM4 pattern "
            "(jitter included) is the IBIS +/-0.5 V stimulus, the model's "
            "AMI_GetWave shapes it (e.g. pf_tx's FFE presets and driver "
-           "bandwidth) and v0 / v1 scale the result. Parameters overrides "
-           "the model's .ami defaults as name=value pairs, e.g. "
+           "bandwidth) and v0 / v1 scale the result. The inspector lists "
+           "every parameter of the model's .ami file; values set away from "
+           "the default go to Overrides (text) as name=value pairs, e.g. "
            "`tx_preset=7` or `tx_tap_m1=-0.1 tx_tap_p1=-0.2 tx_bw=30e9`. "
            "The waveform is baked at compile time: edits recompile it.",
     "ports": _ports("p1:e p2:e"),
     "params": [
         _p("model", "pf_tx", "", "AMI model", rebuild=True, kind="enum",
            choices=["pf_tx"]),
-        _p("ami_params", "", "", "Parameters", rebuild=True, kind="line"),
+        _p("ami_params", "", "", "Overrides (text)", rebuild=True, kind="line"),
     ] + [dict(p) for p in CATALOG["prbs"]["params"]
          if p["name"] not in ("ffe_pre", "ffe_post", "rlm_vpi")],
     "wave": "prbs",

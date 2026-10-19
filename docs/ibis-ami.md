@@ -221,8 +221,13 @@ at 1e-6.
   (split and pure-LTI), eye height / width, linear-fit residual, a
   statistical-eye map, bathtubs and every adapted quantity vs time. A
   transient with an AMI Rx is saved at 32 samples/UI automatically.
-* `Parameters` on both blocks takes `name=value` overrides of the `.ami`
-  defaults.
+* The inspector shows one row per settable parameter of the chosen model.
+  It reads them from the model's `.ami` file through `/api/ami_params`
+  (`AmiParams.describe`), grouped as in the file. List parameters get
+  their `List_Tip` labels, and Range parameters are checked against their
+  bounds. Values set away from the default are highlighted. They are kept
+  as `name=value` pairs in `Overrides (text)`, which can also be edited
+  directly; the two stay in sync.
 * **Host PCB Link (NPO)** (`pcb_link`, Channels): `rfnet.host_module_link`
   terminated at both ends (source R and pad C inside the block, so drive it
   with the source EMF), vector-fitted with the bulk flight delay removed.

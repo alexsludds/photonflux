@@ -57,6 +57,29 @@ def model_names(kind: str) -> list[str]:
     return [dflt] + [n for n in names if n != dflt]
 
 
+_DESCRIBED: dict[str, dict] = {}
+
+
+def describe(name: str) -> dict:
+    """A library model's settable parameters for the inspector's per-
+    parameter form (``AmiParams.describe``), cached per model. Reserved
+    parameters the block sets itself (``Modulation``) are left out."""
+    if name not in _DESCRIBED:
+        from photonflux import ibisami
+
+        with ibisami.load(name) as m:
+            _DESCRIBED[name] = {
+                "model": name, "kind": m.kind,
+                "description": m.params.description.strip('"'),
+                "params": [p for p in m.params.describe()
+                           if p["key"] not in BLOCK_SET]}
+    return _DESCRIBED[name]
+
+
+# reserved parameters the IBIS-AMI blocks set from the schematic
+BLOCK_SET = ("Modulation",)
+
+
 def _model(name: str, kind: str, overrides: dict):
     """A fresh instance per run (sweep points may run concurrently, and a
     model instance is stateful); the caller closes it."""

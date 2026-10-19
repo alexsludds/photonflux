@@ -297,6 +297,34 @@ class AmiParams:
         except (TypeError, ValueError):
             return default
 
+    def describe(self) -> list[dict]:
+        """Every settable (``In`` / ``InOut``) parameter, in file order, for a
+        form: ``key`` (the shortest name ``update`` accepts), ``group``
+        (its parent nodes), ``type``, ``format``, ``default``, ``min`` /
+        ``max`` (Range), ``choices`` and ``tips`` (List) and
+        ``description``."""
+        out = []
+        for path, value in self.values.items():
+            prm = self._leaves.get(path) or self.reserved[path[0]]
+            key = path[-1]
+            if len([p for p in self.values if p[-1] == key]) > 1:
+                key = ".".join(path)
+            fmt = prm.pformat
+            out.append({
+                "key": key, "group": ".".join(path[:-1]),
+                "reserved": path[0] in self.reserved,
+                "type": prm.ptype, "format": fmt, "default": value,
+                "min": (float(prm.pmin) if fmt == "Range" and prm.pmin is not None
+                        else None),
+                "max": (float(prm.pmax) if fmt == "Range" and prm.pmax is not None
+                        else None),
+                "choices": ([_coerce(x, prm.ptype) for x in prm.pvalue]
+                            if fmt == "List" else None),
+                "tips": list(prm.plist_tip) if fmt == "List" and prm.plist_tip else None,
+                "description": str(prm.pdescription or "").strip('"'),
+            })
+        return out
+
     # -- serialization -----------------------------------------------------
     def sexpr(self) -> str:
         """The ``AMI_parameters_in`` string: ``(root (name value) ...)``."""

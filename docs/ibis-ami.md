@@ -226,16 +226,18 @@ at 1e-6.
 * **Host PCB Link (NPO)** (`pcb_link`, Channels): `rfnet.host_module_link`
   terminated at both ends (source R and pad C inside the block, so drive it
   with the source EMF), vector-fitted with the bulk flight delay removed.
-  The fit includes log-spaced points down to 100 kHz so the DC level holds.
-  Its error is ~0.1 %, and the 2.3 ns trace echo stays in the response.
+  The fit runs from 100 kHz, log-spaced so the DC level holds, to 8 f_nyq,
+  so its instant feedthrough stays ~1e-4. Its error is ~0.1 %, and the
+  2.3 ns trace echo stays in the response.
 * **Modulator Driver (CTLE)** (`mod_driver`, Amplifiers & EQ): CTLE,
   pre-driver pole, gain and a tanh-limited differential EMF output; the
   back-terminations and pads are separate parts.
 
 Example 54 is `npo_tw_mzm_link.py` in the GUI, at the adapted settings:
-its Link tab reports pf_rx with 0 errors in 8216 bits and a statistical
-BER of 5e-12. On its ~6k-UI prbs+oma record the Eye tab's Measure gives
-TDECQ 1.0 dB; the script's full PRBS13Q gives 0.88 dB.
+its Link tab reports pf_rx with 0 errors in 8190 bits, a statistical BER
+of 2.4e-12 and eyes of 40 / 49 / 37 mV at 1e-6. On its ~6k-UI prbs+oma
+record the Eye tab's Measure gives TDECQ 0.99 dB (OMA_outer 0.99 mW); the
+script's full PRBS13Q gives 0.88 dB.
 
 ## Building
 

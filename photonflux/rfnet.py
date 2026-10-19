@@ -240,13 +240,16 @@ def host_module_link(f: np.ndarray, *, loss_db: float = 10.0, f_nyq: float = 26.
     lga = line_rlgc(f, z0=58.0, er=1.0)
     via_ln = line_rlgc(f, z0=45.0, er=3.6, tand=0.004)
     via = Net.line(via_ln, 2e-3) @ Net.open_stub(via_ln, 0.25e-3)
-    trace_m = length_for_loss(pcb, loss_db, f_nyq)
+    # size the trace at f_nyq itself, whatever grid the caller passed
+    pcb_nyq = line_rlgc(np.array([f_nyq]), z0=50.0, er=3.6, tand=0.004,
+                        cond_db_m_rtghz=7.0, r_dc=8.0)
+    trace_m = length_for_loss(pcb_nyq, loss_db, f_nyq)
     host = (Net.series_l(f, 30e-12) @ Net.line(pkg, 10e-3)          # bump, package
             @ Net.shunt_c(f, 70e-15) @ Net.series_l(f, 120e-12)     # BGA ball
             @ via)
     module = (via @ Net.line(lga, 1.2e-3) @ Net.shunt_c(f, 40e-15)  # LGA
               @ Net.line(sub, 5e-3) @ Net.series_l(f, 30e-12))      # substrate, bump
     a, b = (host, module) if host_to_module else (module.flipped(), host.flipped())
-    net =(pi_coil_pad(f, c_src) @ a @ Net.line(pcb, trace_m) @ b
+    net = (pi_coil_pad(f, c_src) @ a @ Net.line(pcb, trace_m) @ b
            @ pi_coil_pad(f, c_load))
     return {"net": net, "trace_m": trace_m, "pcb": pcb}

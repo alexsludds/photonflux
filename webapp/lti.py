@@ -128,10 +128,10 @@ def build(kind: str, settings: dict, log: list) -> tuple[str, dict]:
         f_nyq = float(settings.get("f_nyq", 26.5625e9))
         n_poles = int(settings.get("n_poles", 32))
         # log-spaced below 60 MHz so the fit holds the DC level (long PAM4
-        # runs), linear to 3.4 f_nyq, and f_nyq itself (the loss target)
+        # runs); linear to 8 f_nyq, where the link has rolled off, so the
+        # fit's instant feedthrough d stays ~1e-4 instead of a flat floor
         f = np.unique(np.concatenate([np.logspace(5, np.log10(60e6), 40),
-                                      np.linspace(60e6, 3.4 * f_nyq, 1200),
-                                      [f_nyq]]))
+                                      np.linspace(60e6, 8 * f_nyq, 2800)]))
         link = rfnet.host_module_link(
             f, loss_db=float(settings.get("loss_db", 10.0)), f_nyq=f_nyq,
             c_src=float(settings.get("c_src", 150e-15)),

@@ -1544,7 +1544,7 @@ CATALOG: dict[str, dict] = {
         "label": "Modulator Driver (CTLE)",
         "category": "Amplifiers & EQ",
         "doc": "Linear differential modulator driver: high-impedance input, "
-               "a CTLE (the Equalizer block's 1 zero / 2 poles, unity in the "
+               "a CTLE (the CTLE block's 1 zero / 2 poles, unity in the "
                "peaked band), a pre-driver pole at pre_bw, gain, and a "
                "current-steering output stage that limits as "
                "vsat_d * tanh(v / vsat_d). outp / outn drive vcm +/- v/2 as "

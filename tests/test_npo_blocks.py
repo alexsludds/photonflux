@@ -25,25 +25,39 @@ def _inst(typ, **s):
     return {"type": typ, "x": 0, "y": 0, "rot": 0, "settings": s}
 
 
-def test_pcb_link_fit_matches_the_exact_terminated_transfer():
+@pytest.mark.parametrize("direction,polarity,c_src,c_load", [
+    ("host->module", 1.0, 150e-15, 100e-15),
+    ("module->host", -1.0, 80e-15, 200e-15)])
+def test_pcb_link_fit_matches_the_exact_terminated_transfer(direction, polarity,
+                                                            c_src, c_load):
     import lti
 
     log = []
-    _, payload = lti.build("rflink", {"loss_db": 10.0, "f_nyq": 26.5625e9}, log)
+    settings = {"loss_db": 10.0, "f_nyq": 26.5625e9, "direction": direction,
+                "polarity": polarity, "c_src": c_src, "c_load": c_load}
+    _, payload = lti.build("rflink", settings, log)
     A, B, C, D, zin = payload["real"]
     assert zin == 0.0 and "rel err" in log[0]
     assert float(log[0].split("rel err ")[1]) < 1e-2
     assert np.all(np.linalg.eigvals(A).real < 0)            # stable
+    assert abs(D) < 1e-3                                     # ~no feedthrough
     f = np.array([1e6, 1e9, 26.5625e9])
     fit = np.array([(C @ np.linalg.solve(2j * np.pi * fk * np.eye(len(A)) - A, B)).item()
                     + D for fk in f])
-    ts = 1 / (64 * 26.5625e9)
-    F = rfnet.grid(ts, 1 << 15)
-    exact = rfnet.host_module_link(F)["net"].transfer(50.0, 50.0)
-    want = np.interp(f, F, np.abs(exact))
-    # magnitudes agree (the fit drops only the bulk flight delay)
-    assert np.allclose(np.abs(fit), want, rtol=0.01)
-    assert abs(fit[0]) == pytest.approx(0.5, rel=0.02)       # ~matched divider
+    exact = polarity * rfnet.host_module_link(
+        f, c_src=c_src, c_load=c_load,
+        host_to_module=direction == "host->module")["net"].transfer(50.0, 50.0)
+    # the removed delay, as the block computes it (the log rounds it)
+    fg = np.linspace(60e6, 8 * 26.5625e9, 2800)
+    Hg = rfnet.host_module_link(fg, c_src=c_src, c_load=c_load,
+                                host_to_module=direction == "host->module")[
+        "net"].transfer(50.0, 50.0)
+    k4 = int(np.argmin(np.abs(fg - 26.5625e9 / 4)))
+    tau = (-np.gradient(np.unwrap(np.angle(Hg)), 2 * np.pi * fg)[k4]
+           - 0.5 / 26.5625e9)
+    # the fit is the exact response with only the bulk flight delay removed
+    assert np.allclose(fit, exact * np.exp(2j * np.pi * f * tau), rtol=0.01, atol=1e-3)
+    assert fit[0].real * polarity == pytest.approx(0.49, rel=0.02)
 
 
 def test_mod_driver_dc_transfer_and_limit(sim):

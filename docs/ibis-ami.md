@@ -128,6 +128,56 @@ says 1e-300 at every length, while the split tracks the time domain:
 | 20 km | 28.5 % | 8e-6 | Q-fit 1.3e-4 |
 | 22 km | 29.6 % | 4.2e-2 | counted 4.6e-2 |
 
+## Near-package optics: host traces, driver, traveling-wave MZM
+
+`examples/ibis_ami/npo_tw_mzm_link.py` is a 53.125 GBd PAM4 link with the
+optics on the host board: pf_tx -> 10 dB PCB trace -> linear driver with a
+CTLE -> traveling-wave Si MZM -> 500 m SMF -> PD / TIA -> 10 dB PCB trace
+-> pf_rx. Each part is modeled where its physics lives:
+
+* **Host channels** (`photonflux.rfnet`, frequency domain, odd mode of the
+  100 Ohm pair): pi-coil-compensated die pads, bumps, a 10 mm 45 Ohm
+  package trace, BGA ball, backdrilled vias, an 18.4 cm stripline sized for
+  10.0 dB at 26.5625 GHz (sqrt(f) skin loss with a DC floor, causal
+  Djordjevic-Sarkar dielectric), an LGA interposer and the module substrate,
+  between the real source and load impedances. The terminated transfer
+  keeps every re-reflection, including the 2.3 ns trace round trip. Total
+  SDD21 at Nyquist is -12.3 dB; SDD11 / SDD22 are -10.6 to -22 dB.
+* **Driver** (numpy): input-referred noise, CTLE (0-12 dB in 0.5 dB codes),
+  pre-driver pole, a gain control that sets the output swing, and a tanh
+  output stage driving its EMF into the circuit.
+* **Driver output network to TIA** (circulax transient): 40 Ohm
+  back-termination, pad capacitance, flip-chip bump, then two
+  `pn_phase_shifter_tw` arms (3.5 mm, push-pull GSSG). Each is a
+  distributed RLC electrode loaded every 100 um by a sqrt-law depletion
+  junction, with walk-off and an on-chip 40 Ohm termination to the 2 V
+  junction bias. The terminations equal the loaded line's |Zc| at
+  f_nyq / 2 (47 Ohm at 1 GHz, 40.8 Ohm at Nyquist; |S11| at the driver
+  -12.5 dB). The EO response is -3.3 dB at Nyquist. Couplers and a
+  lambda/4 offset bias the MZM at quadrature. Then the fiber, PD and TIA.
+
+The search sets the driver CTLE and pf_tx's c(-1), c(+1), c(+2) for
+minimum TDECQ at TP2, the fiber after the PIC coupling (802.3cd method).
+A transient of the full PRBS13Q period costs ~100 s, so the search runs on
+a Wiener surrogate fitted to a transient: an FIR from the driver EMF to
+the optical power, then a cubic. The surrogate matches the circuit to
+0.25 % rms. Every reported number comes from a full transient at the
+chosen setting.
+
+Plain TDECQ can be gamed by over-equalizing. An overshooting drive that
+the reference FFE low-passes back (C_eq < 1) scored 0.25 dB while ER fell
+to 1.7 dB. The search therefore minimizes TDECQ - 10 log10(min(C_eq, 1)),
+which 802.3 also limits.
+
+| | CTLE | Tx FFE c(-1) / c(+1) / c(+2) | TDECQ | OMA_outer | ER | RLM | pf_rx counted BER | pf_rx statistical BER |
+|---|---|---|---|---|---|---|---|---|
+| no equalization | 0 dB | 0 / 0 / 0 | 16.05 dB | 3.0 dBm | 4.9 dB | 0.958 | 5.1e-4 | 2.0e-4 |
+| adapted | 12 dB (max) | -0.161 / -0.142 / +0.023 | **0.88 dB** (C_eq 0.975) | 0.1 dBm | 2.3 dB | 0.934 | 0 / 11868 bits | 3.7e-12 |
+
+The CTLE ends at its 12 dB limit and the Tx FFE covers the rest. After
+the 10 dB Rx trace, pf_rx opens eyes of 37 / 49 / 37 mV
+at 1e-6.
+
 ## The web app
 
 * **IBIS-AMI Tx** (`ami_tx`, Sources): the PRBS / PAM4 pattern, jitter

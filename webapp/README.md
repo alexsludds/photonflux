@@ -192,7 +192,7 @@ scored near relOMA -3.6 dB / TDECQ 1.4 dB.
 
 ## Serial-link (SERDES) workflow
 
-* **IBIS-AMI Tx / Rx** (examples 50–52): the **IBIS-AMI Tx** source runs
+* **IBIS-AMI Tx / Rx** (examples 50–53): the **IBIS-AMI Tx** source runs
   its pattern through a Tx model's `AMI_GetWave` when the circuit compiles;
   the **IBIS-AMI Rx** block is a unity buffer whose Link-tab report runs the
   Rx model on the "BER vs" probe: `AMI_Init` on the channel estimated from

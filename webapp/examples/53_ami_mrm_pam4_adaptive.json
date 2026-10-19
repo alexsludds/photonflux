@@ -1,0 +1,261 @@
+{
+ "title": "IBIS-AMI MRM PAM4, adaptive Rx FFE + DFE (53 GBd)",
+ "group": "Photonic links",
+ "description": "53.125 GBd PAM4 microring modulator link into an IBIS-AMI Rx whose 5-tap FFE and 1-tap DFE adapt by LMS in AMI_GetWave from a cold start",
+ "schematic": {
+  "notes": [
+   {
+    "x": 40,
+    "y": -330,
+    "title": "MRM PAM4 at 53.125 GBd, Rx equalizer learned in the time domain",
+    "lines": [
+     "TX1 (IBIS-AMI pf_tx, 30 GHz driver, no FFE) sends PAM4 PRBS-15 through",
+     "RD1 (50 ohm) into RING1's junction: 0..1.8 V steps the resonance by",
+     "45 pm/V toward LAS1, parked 120 pm on its red side (TIA1 inverts, so",
+     "less light is a higher symbol). PD1 and an 18 GHz TIA1 give the Rx a",
+     "22 % first post-cursor and a 12 % pre-cursor: unequalized, the PAM4",
+     "eyes are closed (BER ~4e-2).",
+     "",
+     "RX1 is an IBIS-AMI receiver (pf_rx) as an ADC-DSP: no CTLE, a 5-tap FFE",
+     "(1 pre-cursor), 1 DFE tap, Mueller-Muller CDR on the FFE input, PAM4",
+     "slicers, 6 mV rms input noise. adapt_start=1 starts AMI_GetWave cold",
+     "(pass-through FFE, zero DFE): LMS learns every tap from the waveform",
+     "alone within ~3000 UI. Run, then open the Link tab: the IBIS-AMI card",
+     "plots each tap vs time and lists AMI_Init's statistical design beside",
+     "the adapted taps.",
+     "",
+     "examples/ibis_ami/mrm_pam4_adaptive_rx.py runs this schematic and",
+     "compares no EQ, DFE only, FFE only and FFE + DFE, and BER vs noise."
+    ]
+   }
+  ],
+  "instances": {
+   "LAS1": {
+    "type": "cw_laser",
+    "x": 40,
+    "y": 200,
+    "rot": 0,
+    "settings": {
+     "wavelength_nm": 1310.12,
+     "power": 0.002
+    }
+   },
+   "GNDL": {
+    "type": "ground",
+    "x": 60,
+    "y": 300,
+    "rot": 0,
+    "settings": {}
+   },
+   "TX1": {
+    "type": "ami_tx",
+    "x": 40,
+    "y": 20,
+    "rot": 0,
+    "settings": {
+     "model": "pf_tx",
+     "ami_params": "tx_bw=30e9",
+     "mode": "pam4",
+     "sequence": "prbs",
+     "order": 15,
+     "v0": 0.0,
+     "v1": 1.8,
+     "tr": 6e-12,
+     "rj_ui": 0.01,
+     "sj_ui": 0.0,
+     "dj_ui": 0.0,
+     "seed": 1
+    }
+   },
+   "GNDT": {
+    "type": "ground",
+    "x": 60,
+    "y": 130,
+    "rot": 0,
+    "settings": {}
+   },
+   "RD1": {
+    "type": "resistor",
+    "x": 170,
+    "y": -20,
+    "rot": 90,
+    "settings": {
+     "R": 50.0
+    }
+   },
+   "RING1": {
+    "type": "ring_mod",
+    "x": 300,
+    "y": 150,
+    "rot": 0,
+    "settings": {
+     "lambda_nm": 1310.12,
+     "lambda_res_nm": 1310.0,
+     "radius_um": 7.5,
+     "n_g": 4.0,
+     "n_eff": 2.4,
+     "loss_db_m": 7000.0,
+     "kappa2": 0.1,
+     "dl_dv_pm": 45.0,
+     "cj_ff_um": 0.5
+    }
+   },
+   "GNDR": {
+    "type": "ground",
+    "x": 420,
+    "y": 140,
+    "rot": 0,
+    "settings": {}
+   },
+   "PD1": {
+    "type": "photodiode",
+    "x": 540,
+    "y": 180,
+    "rot": 0,
+    "settings": {
+     "R": 0.8,
+     "Cj": 3e-14
+    }
+   },
+   "GNDO": {
+    "type": "ground",
+    "x": 520,
+    "y": 280,
+    "rot": 0,
+    "settings": {}
+   },
+   "GNDA": {
+    "type": "ground",
+    "x": 580,
+    "y": 320,
+    "rot": 0,
+    "settings": {}
+   },
+   "TIA1": {
+    "type": "tia",
+    "x": 660,
+    "y": 180,
+    "rot": 0,
+    "settings": {
+     "gain_ohm": 500.0,
+     "f3db": 18000000000.0,
+     "vmax": 0.0,
+     "in_noise": 0.0
+    }
+   },
+   "RX1": {
+    "type": "ami_rx",
+    "x": 780,
+    "y": 180,
+    "rot": 0,
+    "settings": {
+     "model": "pf_rx",
+     "ami_params": "ctle_mode=0 ffe_mode=2 ffe_ntaps=5 ffe_pre=1 dfe_ntaps=1 cdr_mode=3 adapt_start=1 ffe_mu=6e-3 dfe_mu=6e-3",
+     "noise_rms": 0.006
+    }
+   },
+   "RT1": {
+    "type": "resistor",
+    "x": 930,
+    "y": 190,
+    "rot": 0,
+    "settings": {
+     "R": 1000000.0
+    }
+   },
+   "GNDX": {
+    "type": "ground",
+    "x": 970,
+    "y": 244,
+    "rot": 0,
+    "settings": {}
+   }
+  },
+  "wires": [
+   {
+    "from": "LAS1,p1",
+    "to": "RING1,pin"
+   },
+   {
+    "from": "LAS1,p2",
+    "to": "GNDL,p1"
+   },
+   {
+    "from": "TX1,p1",
+    "to": "RD1,p1"
+   },
+   {
+    "from": "TX1,p2",
+    "to": "GNDT,p1"
+   },
+   {
+    "from": "RD1,p2",
+    "to": "RING1,vp"
+   },
+   {
+    "from": "RING1,vn",
+    "to": "GNDR,p1"
+   },
+   {
+    "from": "RING1,gnd",
+    "to": "GNDR,p1"
+   },
+   {
+    "from": "RING1,pout",
+    "to": "PD1,po_p"
+   },
+   {
+    "from": "PD1,po_n",
+    "to": "GNDO,p1"
+   },
+   {
+    "from": "PD1,cat",
+    "to": "GNDA,p1"
+   },
+   {
+    "from": "PD1,an",
+    "to": "TIA1,inp"
+   },
+   {
+    "from": "TIA1,out",
+    "to": "RX1,inp"
+   },
+   {
+    "from": "RX1,out",
+    "to": "RT1,p1"
+   },
+   {
+    "from": "RT1,p2",
+    "to": "GNDX,p1"
+   }
+  ],
+  "probes": [
+   {
+    "name": "vdrv",
+    "at": "RING1,vp",
+    "color": "#6ecbf5"
+   },
+   {
+    "name": "popt",
+    "at": "RING1,pout",
+    "color": "#e6862c"
+   },
+   {
+    "name": "vrx",
+    "at": "TIA1,out",
+    "color": "#8fd18f"
+   }
+  ],
+  "globals": {
+   "baud": 53125000000.0
+  }
+ },
+ "analysis": {
+  "mode": "transient",
+  "t_stop": 1.5058823529411764e-07,
+  "points": 20000,
+  "link": {
+   "probe": "vrx"
+  }
+ }
+}

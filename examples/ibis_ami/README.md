@@ -21,13 +21,14 @@ python -m photonflux ami info pf_rx      # one model's parameters (as PyAMI pars
 | [`electrical_pam4.py`](electrical_pam4.py) | 106 Gb/s PAM4: Tx FFE (c-1, c+1) optimization, three-eye statistical analysis, Rx FFE + DFE + Mueller-Muller CDR adaptation, MM vs bang-bang CDR, frozen vs adapting Rx against the statistical prediction |
 | [`optical_links.py`](optical_links.py) | IBIS-AMI Tx/Rx around circulax optics (web examples 51/52): 25G NRZ over C-band fiber swept in length, 106G PAM4 over O-band swept in MZM drive. Where IBIS-AMI's LTI assumption breaks, and the linear-fit + distortion split that repairs the statistical flow |
 | [`npo_tw_mzm_link.py`](npo_tw_mzm_link.py) | near-package optics, 53.125 GBd PAM4: pf_tx -> 10 dB host trace (packages, BGA, vias, LGA, pads, every reflection) -> CTLE driver -> traveling-wave Si MZM (distributed PN electrode, terminations, walk-off) -> 500 m -> PD/TIA -> 10 dB trace -> pf_rx. Adapts the driver CTLE peaking and the Tx FFE for minimum TDECQ, then reports TDECQ from the full circuit transient and the Rx's BER |
+| [`mrm_pam4_adaptive_rx.py`](mrm_pam4_adaptive_rx.py) | 53.125 GBd PAM4 microring modulator link (web example 53): `pf_rx` as an ADC-DSP learns a 5-tap FFE and a 1-tap DFE in `AMI_GetWave` from a cold start; no EQ / DFE only / 3-5-7-tap FFE with and without the DFE, BER vs Rx noise, LMS vs Init's MMSE design |
 | [`public_models.py`](public_models.py) | every library model on one channel: Init vs GetWave consistency, every Tx x Rx pairing, and SiSoft's original 2008 i386 binary (in a container) against its native rebuild |
 | [`ami_model_tester.py`](ami_model_tester.py) | any model's parameters and impulse / step / frequency response, cross-checked against PyAMI's own `AMIModel.get_responses` |
 
 The web app has the same blocks, **IBIS-AMI Tx** (a pattern source) and
 **IBIS-AMI Rx** (on the receive path). Examples 50 (electrical), 51
-(C-band optical) and 52 (106G PAM4 optical) use them; the Link tab shows the
-IBIS-AMI report.
+(C-band optical), 52 (106G PAM4 optical) and 53 (MRM PAM4, Rx adapting from
+a cold start) use them; the Link tab shows the IBIS-AMI report.
 
 ## Freely available IBIS-AMI models
 
@@ -39,7 +40,7 @@ evaluation license, and nearly all of them ship only Windows DLLs or Linux
 
 | model (library name) | source | license | what it is | how it runs |
 |---|---|---|---|---|
-| `pf_tx`, `pf_rx` | this repo, [`models/ibis_ami`](../../models/ibis_ami) | BSD-3 | Tx: 6-tap FFE, PCIe presets, driver bandwidth. Rx: adaptive CTLE, AGC, FFE, DFE, bang-bang / Mueller-Muller CDR, NRZ / PAM4 | built from C99 source for any OS |
+| `pf_tx`, `pf_rx` | this repo, [`models/ibis_ami`](../../models/ibis_ami) | BSD-3 | Tx: 6-tap FFE, PCIe presets, driver bandwidth. Rx: adaptive CTLE, AGC, FFE, DFE (from Init's design or a cold start), bang-bang / Mueller-Muller CDR, NRZ / PAM4 | built from C99 source for any OS |
 | `ibisami.example_tx`, `ibisami.example_rx` | [capn-freako/ibisami](https://github.com/capn-freako/ibisami) @ `74555dd`, vendored in [`public/ibisami`](public/ibisami) | BSD-3 | David Banas's public-domain model infrastructure: Tx FIR, Rx CTLE + adaptive DFE (no CDR) | built from source (needs Boost headers), with a one-line fix: the Rx CTLE's filter state leaked from `AMI_Init` into `AMI_GetWave` |
 | `sisoft.IBIS_AMI_Tx` | SiSoft IBIS-AMI Eval Toolkit v2.21 (2009), posted to the [IBIS ATM work archive](https://ibis.org/macromodel_wip/archive/20090930/toddwesterhoff/) and mirrored by [IBIS-Library/IBIS-AMI-test-kits](https://github.com/IBIS-Library/IBIS-AMI-test-kits); the original ZIP is in [`public/sisoft_eval_v2.21`](public/sisoft_eval_v2.21) | SiSoft's permissive license (redistribution with all original files and the notice) | 4-tap FFE Tx: the IBIS ATM reference model | built natively from the kit's C source (its header lacked a struct field the 2008 `.c` uses) |
 | `sisoft.IBIS_AMI_Tx@linux-x86` | the same kit's original 2008 Linux i386 `libIBIS_AMI_Tx.so` | as above | as above | out-of-process in a `linux/386` container (Docker); output identical to the native build |

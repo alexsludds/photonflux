@@ -141,7 +141,7 @@ volts).
   photonflux's open-source `pf_tx` / `pf_rx`) around any channel,
   electrical or optical; the Link tab reports counted BER from the model's
   own recovered clock, the statistical eye, bathtubs and the adaptation
-  trace (examples 50–52, [IBIS-AMI](#ibis-ami-serdes-models--examplesibis_ami)).
+  trace (examples 50–53, [IBIS-AMI](#ibis-ami-serdes-models--examplesibis_ami)).
 - **44 example circuits**, grouped: photonic links, lasers/modulators (SOA
   Fabry-Perot laser, Vernier tunable ring laser, TPA/FCA-limited high-Q ring,
   χ(3) four-wave mixing in a waveguide and resonantly enhanced inside a Kerr
@@ -171,11 +171,12 @@ td = serdes.time_domain_link(tx, ch, rx, 1/32e9)        # td.counted, td.adaptat
 
 `python -m photonflux ami build | list | info` builds and lists the models:
 photonflux's own BSD-3 `pf_tx` / `pf_rx` (FFE; CTLE, AGC, FFE, DFE,
-bang-bang / Mueller-Muller CDR, NRZ / PAM4), the public ibisami and SiSoft
+bang-bang / Mueller-Muller CDR, NRZ / PAM4, cold-start LMS adaptation), the
+public ibisami and SiSoft
 reference models, and any vendor kit dropped into `examples/ibis_ami/vendor/`.
 Linux-only (even 32-bit) vendor binaries run in a Docker container. The
 [examples README](examples/ibis_ami/README.md) catalogs the freely available
-models and the five example studies; [docs/ibis-ami.md](docs/ibis-ami.md) has
+models and the six example studies; [docs/ibis-ami.md](docs/ibis-ami.md) has
 the design notes.
 
 ## Deploy it as a public web app ([docs/README-DEPLOY.md](docs/README-DEPLOY.md))

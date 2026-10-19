@@ -543,7 +543,7 @@ def eye(ax, p, per_ui=2, title=""):
     n = per_ui * NSPUI
     seg = p[: len(p) // n * n].reshape(-1, n)
     t = np.tile(np.arange(n) / NSPUI, seg.shape[0])
-    ax.hist2d(t, seg.ravel(), bins=(n, 160), cmap="inferno", cmin=1)
+    ax.hist2d(t, seg.ravel(), bins=(n, 160), cmap="inferno")
     ax.set_xlabel("time [UI]")
     ax.set_ylabel("optical power [mW]")
     ax.set_title(title, fontsize=9)
@@ -633,7 +633,9 @@ def main(argv=None) -> int:
     ax.legend(fontsize=7)
 
     ax = axs[0, 1]
-    ax.plot(fg[sel], np.abs(el["zc"][sel]), "C1", label="loaded line |Zc| [Ohm]")
+    zsel = sel & (fg >= 0.5)              # Zc -> sqrt(R / jwC) blows up toward DC
+    ax.plot(fg[zsel], np.abs(el["zc"][zsel]), "C1", label="loaded line |Zc| [Ohm]")
+    ax.set_ylim(0, 80)
     ax.axhline(r_term, color="C1", ls=":", lw=0.8, label=f"terminations {r_term:.0f} Ohm")
     ax.set_ylabel("Ohm")
     ax.set_xlabel("frequency [GHz]")
@@ -653,7 +655,7 @@ def main(argv=None) -> int:
     ax = axs[0, 2]
     for i, h in enumerate(history):
         pk, v = zip(*h["sweep"])
-        ax.plot(pk, v, "o-", ms=4, label=f"surrogate #{i + 1}, peaking sweep")
+        ax.plot(pk, v, "o-", ms=4, label=f"surrogate #{i + 1}: peaking sweep at the start taps")
     for p in points:
         ax.plot(p["peaking_db"], p["tdecq"]["score"], "k*" if p is best else "kx", ms=10)
     ax.set_xlabel("driver CTLE peaking [dB]")

@@ -252,14 +252,22 @@ Rx BER as `ami_ber` / `ami_ber_counted`.
 | start (the 10 dB design) | 12 dB | 25.3 | −0.161 / −0.142 / +0.023 | 90° | 3.25 dB | −0.49 dBm | −3.74 dB | 0.84 | 2.0 dB | — |
 | optimized, no RLM limit | 14.8 dB | 60 (bound) | −0.190 / −0.129 / +0.027 | 91.9° | 1.80 dB | 1.36 dBm | −0.45 dB | 0.78 | 3.3 dB | 5.0e-8 / 0 |
 | optimized, `rlm >= 0.95` | 15 dB (bound) | 21.0 | −0.208 / −0.114 / +0.036 | 85.0° | 1.25 dB | −2.98 dBm | −4.22 dB | 0.93 | 1.0 dB | 5.2e-4 / 1.2e-3 |
+| + c(-2), MZM 3.5-10.5 mm, `rlm >= 0.97` | 12.5 dB | 24.9 | c(-2) 0.000, −0.250 (bound) / −0.135 / +0.052 | 89.1°, 3.5 mm | 1.72 dB | −2.82 dBm | −4.55 dB | 0.94 | 1.2 dB | 2.3e-4 / 9.4e-5 |
 
 Without a limit, the search buys OMA with driver swing: the gain ends at its
 bound, and driver and MZM compression pull RLM down to 0.78. With the
 constraint `rlm >= 0.95`, the search keeps the swing small. Its pick reads
 RLM 0.948 on the 2k-UI eye but 0.93 on the 8k-UI record, so the short record
 overstates RLM. At OMA_outer −3 dBm the Rx BER also fails the KP4 limit of
-2.4e-4. With 15 dB host traces, this driver, MZM and Tx FFE cannot meet
-RLM ≥ 0.95 and the Rx BER together.
+2.4e-4. The third run adds the second pre-cursor tap and lets the MZM
+grow to 10.5 mm, with `rlm >= 0.97` in the search to cover that gap. The
+search keeps the shortest MZM, leaves c(-2) at zero, and puts c(-1) on its
+bound. Its pick reads RLM 0.97 on 2k UI but 0.94 on 8k UI, and the Rx BER
+of 2.3e-4 only just passes. A 2k-UI eye is not a reliable RLM estimate
+for this link; scoring RLM on the 8k-UI record would make the constraint
+trustworthy, at about 4x the cost per evaluation. With 15 dB host traces,
+this driver, MZM and Tx FFE did not meet RLM ≥ 0.95 together with the Rx
+BER in any run.
 
 ## Building
 

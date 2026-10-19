@@ -25,7 +25,9 @@
      "IBIS-AMI Rx BER (statistical and counted), with an RLM >= 0.95 constraint.",
      "Unconstrained run: TDECQ 1.80 dB, OMA_outer 1.36 dBm, RLM 0.78, BER 5e-8 (gain at 60).",
      "Constrained run: TDECQ 1.25 dB, OMA_outer -2.98 dBm, RLM 0.93 on 8k UI (0.948 on the",
-     "2k-UI eye), ER 1.0 dB, BER 5e-4: RLM and Rx BER cannot both be met at 15 dB here.",
+     "2k-UI eye), ER 1.0 dB, BER 5e-4. With c(-2) and MZM length 3.5-10.5 mm (RLM >= 0.97",
+     "in the search): 3.5 mm, FFE 0 / -0.25 / -0.135 / +0.052 -> TDECQ 1.72 dB, OMA_outer",
+     "-2.82 dBm, RLM 0.94 on 8k UI (0.97 on 2k), BER 2.3e-4: still short of RLM 0.95.",
      "CHT / CHR are exact terminated channels, vector-fitted with the flight delay",
      "removed (fit error ~0.1 %, echoes included)."
     ]

@@ -25,7 +25,11 @@ Its steps share *flow variables*::
          "fom": {"rel_oma_db": ">= -2", "tdecq_db": "<= 1.5", "il_db": null}}]}
 
 ``set`` targets are ``INST.param`` (``*.param`` broadcasts like a sweep) and
-values are numbers or expressions over the variables. Optimize re-runs its
+values are numbers or expressions over the variables. ``INST.ami:name``
+writes one parameter of an IBIS-AMI block's model (its ``ami_params``
+overrides), e.g. ``"TX1.ami:tx_tap_m1": "c_m1"``. A transient whose
+``analysis.link`` probe feeds an IBIS-AMI Rx also gives its outputs
+``ami_ber`` (statistical) and ``ami_ber_counted``. Optimize re-runs its
 ``inner`` step chain per evaluation -- Bayesian (``"method": "bayes"``, see
 bayesopt.py) or Nelder-Mead (the default for steps saved without a method) --
 so a resonance found by the first step is re-found for every candidate
@@ -269,11 +273,34 @@ def _prepare(base: dict, flow: dict, overrides: dict, step_set: dict | None,
 
     sch = copy.deepcopy(simulate.with_global_ui(base))
     for inst, param, val in _assignments(flow, overrides, step_set, vars_):
+        if param.startswith("ami:"):
+            _set_ami(sch, inst, param[4:], val)
+            continue
         try:
             simulate._patch_point(sch, inst, param, val)
         except simulate.NetlistError as exc:
             raise FlowError(f"set {inst}.{param}: {exc}") from None
     return sch
+
+
+def _set_ami(sch: dict, inst: str, key: str, val: float) -> None:
+    """``INST.ami:key = val``: one model parameter of an IBIS-AMI block,
+    merged into its ``ami_params`` overrides line (integers stay integers)."""
+    import amilink
+    import simulate
+
+    node = (sch.get("instances") or {}).get(inst)
+    if node is None or not simulate.CATALOG.get(node.get("type"), {}).get("ami"):
+        raise FlowError(f"set {inst}.ami:{key}: {inst!r} is not an IBIS-AMI "
+                        "block on the canvas")
+    if not _IDENT.fullmatch(key.replace(".", "_")):
+        raise FlowError(f"set {inst}.ami:{key}: not a parameter name")
+    settings = node.setdefault("settings", {})
+    over = amilink.parse_overrides(settings.get("ami_params"))
+    over[key] = int(val) if float(val).is_integer() and abs(val) < 1e15 else val
+    settings["ami_params"] = " ".join(
+        f"{k}={v!r}" if isinstance(v, float) else f"{k}={v}"
+        for k, v in over.items())
 
 
 def _expand(sch: dict, inst: str, param: str) -> list[str]:
@@ -398,6 +425,10 @@ def _result_ctx(res: dict, sch: dict, vars_: dict, flow: dict):
             ctx.setdefault(row["name"], float(row["value"]))
     for s in res.get("scalars") or []:
         ctx.setdefault(s["name"], float(s["value"]))
+    ami = res.get("ami") or {}
+    if ami:                                    # the IBIS-AMI Rx link report
+        ctx["ami_ber"] = float(ami["stat"]["ber"])
+        ctx["ami_ber_counted"] = float(ami["td"]["counted"]["ber"])
 
     funcs = exprs._make_funcs(x)
 
